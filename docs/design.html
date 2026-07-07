@@ -1,0 +1,680 @@
+<title>sett v2 — System Design</title>
+<style>
+  :root {
+    --bg: #0A1420;
+    --panel: #0F1D2E;
+    --card: #12233A;
+    --line: #1D3350;
+    --cyan: #64D2FF;
+    --cyan-deep: #32ADE6;
+    --gold: #FFD60A;
+    --gold-dim: #C9930A;
+    --text: #E8F1F8;
+    --muted: #8FA6B8;
+    --good: #4CD97B;
+    --bad: #FF6B6B;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+    --rounded: ui-rounded, -apple-system, system-ui, sans-serif;
+  }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.65 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+    margin: 0;
+  }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 0 24px 96px; }
+  a { color: var(--cyan); text-decoration: none; }
+  a:hover, a:focus-visible { text-decoration: underline; }
+  a:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; border-radius: 3px; }
+
+  header.hero { padding: 72px 0 40px; position: relative; }
+  .hero-glow {
+    position: absolute; top: -40px; right: 0; width: 380px; height: 380px;
+    background: radial-gradient(circle, rgba(100,210,255,.18) 0%, rgba(100,210,255,0) 68%);
+    pointer-events: none;
+  }
+  .eyebrow {
+    font-size: 12px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--cyan); font-weight: 600;
+  }
+  h1 {
+    font-family: var(--rounded);
+    font-size: clamp(40px, 7vw, 64px); font-weight: 800; line-height: 1.05;
+    margin: 10px 0 6px; text-wrap: balance;
+  }
+  h1 .v2 { color: var(--gold); }
+  .sub { color: var(--muted); max-width: 62ch; margin: 12px 0 0; font-size: 17px; }
+  .powerline { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 28px; }
+  .chip {
+    background: var(--card); border: 1px solid var(--line); border-radius: 999px;
+    padding: 6px 14px; font-size: 13px; color: var(--text);
+    font-variant-numeric: tabular-nums;
+  }
+  .chip b { color: var(--cyan); font-weight: 600; }
+  .chip.gold b { color: var(--gold); }
+
+  nav.toc {
+    position: sticky; top: 0; z-index: 5;
+    background: rgba(10,20,32,.88); backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--line);
+    margin: 0 -24px; padding: 10px 24px;
+    overflow-x: auto; white-space: nowrap;
+  }
+  nav.toc a { font-size: 13px; color: var(--muted); margin-right: 18px; font-weight: 500; }
+  nav.toc a:hover { color: var(--cyan); text-decoration: none; }
+
+  section { margin-top: 72px; }
+  .secnum { font-family: var(--mono); font-size: 12px; color: var(--gold-dim); letter-spacing: .08em; }
+  h2 { font-family: var(--rounded); font-size: 30px; font-weight: 800; margin: 4px 0 16px; text-wrap: balance; }
+  h3 { font-size: 19px; font-weight: 700; margin: 32px 0 10px; }
+  p, li { color: #C7D6E2; max-width: 72ch; }
+  p b, li b { color: var(--text); }
+  ul { padding-left: 22px; }
+  li { margin: 5px 0; }
+  .lead { font-size: 17px; color: var(--text); }
+
+  .card {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; padding: 20px 22px; margin: 18px 0;
+  }
+  .tablewrap { overflow-x: auto; margin: 16px 0; border: 1px solid var(--line); border-radius: 12px; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th {
+    text-align: left; font-size: 11.5px; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--muted); font-weight: 600; padding: 10px 14px;
+    background: var(--panel); border-bottom: 1px solid var(--line);
+    white-space: nowrap;
+  }
+  td {
+    padding: 9px 14px; border-bottom: 1px solid rgba(29,51,80,.55);
+    vertical-align: top; color: #C7D6E2; font-variant-numeric: tabular-nums;
+  }
+  tr:last-child td { border-bottom: none; }
+  td b { color: var(--text); }
+  td code, li code, p code {
+    font-family: var(--mono); font-size: .86em; background: rgba(100,210,255,.08);
+    color: var(--cyan); padding: 1.5px 6px; border-radius: 5px; white-space: nowrap;
+  }
+  .gold-t { color: var(--gold); font-weight: 600; }
+  .good { color: var(--good); font-weight: 600; }
+  .bad { color: var(--bad); font-weight: 600; }
+
+  pre {
+    background: #0B1929; border: 1px solid var(--line); border-radius: 12px;
+    padding: 16px 18px; overflow-x: auto; font-family: var(--mono);
+    font-size: 13px; line-height: 1.6; color: #BFE3F7; margin: 14px 0;
+  }
+  pre .c { color: #5E7A93; }
+  pre .k { color: var(--gold); }
+
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+
+  .decision { border-left: 3px solid var(--gold-dim); padding: 2px 0 2px 16px; margin: 14px 0; }
+  .decision .dt { font-weight: 700; color: var(--text); }
+  .decision .dd { color: var(--muted); font-size: 14.5px; }
+
+  .pill {
+    display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .06em;
+    text-transform: uppercase; border-radius: 999px; padding: 2px 10px; margin-right: 6px;
+  }
+  .pill.bronze { background: rgba(205,127,50,.16); color: #E0A56B; }
+  .pill.silver { background: rgba(190,205,220,.14); color: #C9D6E2; }
+  .pill.goldp  { background: rgba(255,214,10,.14); color: var(--gold); }
+  .pill.leg    { background: rgba(100,210,255,.14); color: var(--cyan); }
+
+  .flowstep { display: flex; gap: 14px; margin: 14px 0; }
+  .flowstep .n {
+    flex: 0 0 28px; height: 28px; border-radius: 999px; background: var(--card);
+    border: 1px solid var(--line); color: var(--cyan); font-family: var(--mono);
+    font-size: 13px; display: flex; align-items: center; justify-content: center; margin-top: 2px;
+  }
+  .flowstep p { margin: 0; }
+
+  footer { margin-top: 88px; border-top: 1px solid var(--line); padding-top: 20px; color: var(--muted); font-size: 13px; }
+  svg text { font-family: -apple-system, system-ui, sans-serif; }
+</style>
+
+<div class="wrap">
+
+<header class="hero">
+  <div class="hero-glow"></div>
+  <div class="eyebrow">System Design · July 2026 · invite-only iOS · v3 design language</div>
+  <h1>sett <span class="v2">v2</span><br>the Hypertrophic Time&nbsp;Chamber rewrite</h1>
+  <p class="sub">A ground-up redesign of the sett workout tracker: SwiftUI local-first client, a tiny self-hosted backend riding the existing Nett VPS, Oura sleep correlation, hybrid AI insights, and a Saiyan-inspired progression system — staged like a dark RPG, where the power level is the protagonist.</p>
+  <div class="powerline">
+    <span class="chip"><b>iOS 26+</b> SwiftUI · SwiftData</span>
+    <span class="chip"><b>FastAPI + Postgres 16</b> on existing VPS</span>
+    <span class="chip gold"><b>≈ $0.95/mo</b> infra (budget $10)</span>
+    <span class="chip"><b>Invite-only</b> · Sign in with Apple</span>
+    <span class="chip gold"><b>PL &gt; 9000</b> reachable month 4–6</span>
+  </div>
+</header>
+
+<nav class="toc" aria-label="Sections">
+  <a href="#tenets">Tenets</a>
+  <a href="#stories">Stories</a>
+  <a href="#arch">Architecture</a>
+  <a href="#client">Client</a>
+  <a href="#data">Data model</a>
+  <a href="#engine">Net engine</a>
+  <a href="#sync">Sync</a>
+  <a href="#backend">Backend</a>
+  <a href="#auth">Auth</a>
+  <a href="#oura">Oura</a>
+  <a href="#ai">AI</a>
+  <a href="#power">Gamification</a>
+  <a href="#ux">UX &amp; Dark Chamber</a>
+  <a href="#social">Friends &amp; gyms</a>
+  <a href="#hosting">Hosting &amp; cost</a>
+  <a href="#recon">Reconciliation</a>
+  <a href="#roadmap">Roadmap</a>
+  <a href="#risks">Risks</a>
+</nav>
+
+<section id="tenets">
+  <div class="secnum">00</div>
+  <h2>Design tenets</h2>
+  <p class="lead">Four principles every screen and feature is measured against.</p>
+  <div class="grid2">
+    <div class="card">
+      <h3 style="margin-top:0">1 · Rest runs itself</h3>
+      <p style="font-size:14.5px;margin-bottom:0">Finishing a set <b>is</b> starting the rest timer. No extra tap, ever. Per-exercise defaults (90 s compounds, 60 s isolation, editable inline), a pinned countdown capsule with −15/+15, 3-2-1 haptic ticks, and the countdown lives on the Dynamic Island and lock screen so the phone sits face-up on the bench.</p>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">2 · Zero-friction tracking</h3>
+      <p style="font-size:14.5px;margin-bottom:0">The app already knows what you're about to lift — you just confirm it. Every set pre-fills from <b>last week's same set</b> (or the routine plan); repeating it is one tap of the checkmark. The iPhone banner is a full logging surface: when rest ends, a <b>"Log set" action on the notification</b> commits the pre-filled set without unlocking the phone. Bodyweight logs in one thumb from Home.</p>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">3 · Animate everything (except input)</h3>
+      <p style="font-size:14.5px;margin-bottom:0">Every state change moves: numbers roll, auras breathe, charts draw in, badges stamp, tabs bounce. Two hard rules survive: nothing animates between your tap and the set being saved, and every effect has a Reduce Motion fallback. The motion grammar lives in <a href="#ux">§12</a>.</p>
+    </div>
+    <div class="card" style="border-color: rgba(255,214,10,.35)">
+      <h3 style="margin-top:0">4 · The power level is the protagonist</h3>
+      <p style="font-size:14.5px;margin-bottom:0">Not a widget beside a workout list — the organizing principle. Logged sets spawn power that visibly flies <em>into</em> it, every gauge counts toward it, ceremonies stage it, and it owns the gold hue exclusively. Numbers are <b>events, not labels</b>. Full spec: <a href="#ux">the Dark Chamber, §12</a>.</p>
+    </div>
+  </div>
+</section>
+
+<section id="stories">
+  <div class="secnum">01</div>
+  <h2>User stories → where they're served</h2>
+  <div class="tablewrap"><table>
+    <tr><th>#</th><th>Story</th><th>Served by</th></tr>
+    <tr><td>1</td><td><b>Track every workout</b></td><td>Offline-first logging (Train tab, full-screen session), month-grouped history, per-set timestamps, Live Activity rest timer</td></tr>
+    <tr><td>2</td><td><b>Plan reps &amp; sets per exercise</b></td><td>Routines with per-set <code>PlannedSet</code> targets (order, reps, weight, warmup flag) + day-of-week scheduling</td></tr>
+    <tr><td>3</td><td><b>Net reps/weight WoW · MoM · YoY</b></td><td><code>ProgressEngine</code>: strict calendar-bucket nets keyed by exercise UUID, plus live per-set deltas vs your last session</td></tr>
+    <tr><td>4</td><td><b>Oura ring — sleep vs lifts</b></td><td>Server-side OAuth2 + daily pull into <code>sleep_daily</code>, synced to device; Sleep × Lifts scatter + correlation in the weekly digest</td></tr>
+    <tr><td>5</td><td><b>AI insights</b></td><td>Hybrid: on-device Foundation Models commentary after each workout + weekly Claude "Deep Scan" digest server-side</td></tr>
+    <tr><td>6</td><td><b>Smart graphs &amp; charts</b></td><td>Swift Charts: e1RM trends with gold PR dots, diverging net bars, volume stacks, goal rings, power-level timeline, bodyweight trend</td></tr>
+    <tr><td>7</td><td><b>Goals (e.g. N workouts/week)</b></td><td>Three goal kinds (<code>frequency</code>, <code>pr_target</code>, <code>volume_target</code>) with rings, streak-safe pausing, XP bonuses</td></tr>
+  </table></div>
+</section>
+
+<section id="arch">
+  <div class="secnum">02</div>
+  <h2>System architecture</h2>
+  <p class="lead">The phone is the source of truth; the server is backup, integration hub, and weekly brain. The app works forever with zero connectivity — sync is a background courtesy.</p>
+  <div class="card" style="overflow-x:auto;">
+  <svg viewBox="0 0 900 360" width="100%" style="min-width:700px" role="img" aria-label="Architecture diagram: iOS app syncs with FastAPI backend on the VPS; backend talks to Postgres, Oura API, and Claude API">
+    <defs>
+      <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#64D2FF"/>
+      </marker>
+    </defs>
+    <rect x="20" y="60" width="250" height="240" rx="16" fill="#12233A" stroke="#1D3350"/>
+    <text x="145" y="88" fill="#64D2FF" font-size="14" font-weight="700" text-anchor="middle">iPhone (iOS 26+)</text>
+    <rect x="40" y="104" width="210" height="34" rx="8" fill="#0F1D2E" stroke="#1D3350"/>
+    <text x="145" y="126" fill="#E8F1F8" font-size="12" text-anchor="middle">SwiftUI · @Observable stores</text>
+    <rect x="40" y="146" width="210" height="34" rx="8" fill="#0F1D2E" stroke="#1D3350"/>
+    <text x="145" y="168" fill="#E8F1F8" font-size="12" text-anchor="middle">SettCore: SwiftData · ProgressEngine</text>
+    <rect x="40" y="188" width="210" height="34" rx="8" fill="#0F1D2E" stroke="#1D3350"/>
+    <text x="145" y="210" fill="#E8F1F8" font-size="12" text-anchor="middle">ProgressionEngine (PL · XP · badges)</text>
+    <rect x="40" y="230" width="100" height="34" rx="8" fill="#0F1D2E" stroke="#C9930A"/>
+    <text x="90" y="252" fill="#FFD60A" font-size="11" text-anchor="middle">Foundation Models</text>
+    <rect x="150" y="230" width="100" height="34" rx="8" fill="#0F1D2E" stroke="#1D3350"/>
+    <text x="200" y="252" fill="#E8F1F8" font-size="11" text-anchor="middle">Widgets · Live Activity</text>
+    <rect x="390" y="40" width="290" height="280" rx="16" fill="#12233A" stroke="#1D3350"/>
+    <text x="535" y="68" fill="#64D2FF" font-size="14" font-weight="700" text-anchor="middle">Existing VPS (shared with Nett)</text>
+    <rect x="410" y="84" width="250" height="30" rx="8" fill="#0F1D2E" stroke="#1D3350"/>
+    <text x="535" y="104" fill="#E8F1F8" font-size="12" text-anchor="middle">nginx (Nett's) · sett.&lt;domain&gt; · TLS</text>
+    <rect x="410" y="122" width="250" height="30" rx="8" fill="#0F1D2E" stroke="#1D3350"/>
+    <text x="535" y="142" fill="#E8F1F8" font-size="12" text-anchor="middle">sett-api — FastAPI (GHCR image)</text>
+    <rect x="410" y="160" width="250" height="30" rx="8" fill="#0F1D2E" stroke="#1D3350"/>
+    <text x="535" y="180" fill="#E8F1F8" font-size="12" text-anchor="middle">sett-worker — APScheduler jobs</text>
+    <rect x="410" y="198" width="250" height="30" rx="8" fill="#0F1D2E" stroke="#1D3350"/>
+    <text x="535" y="218" fill="#E8F1F8" font-size="12" text-anchor="middle">sett-db — Postgres 16 (own volume)</text>
+    <rect x="410" y="240" width="250" height="30" rx="8" fill="#0F1D2E" stroke="#1D3350"/>
+    <text x="535" y="260" fill="#8FA6B8" font-size="12" text-anchor="middle">Nett stack (unchanged, same host)</text>
+    <rect x="760" y="60" width="120" height="44" rx="10" fill="#0F1D2E" stroke="#1D3350"/>
+    <text x="820" y="87" fill="#E8F1F8" font-size="12" text-anchor="middle">Apple JWKS</text>
+    <rect x="760" y="120" width="120" height="44" rx="10" fill="#0F1D2E" stroke="#1D3350"/>
+    <text x="820" y="147" fill="#E8F1F8" font-size="12" text-anchor="middle">Oura API v2</text>
+    <rect x="760" y="180" width="120" height="44" rx="10" fill="#0F1D2E" stroke="#C9930A"/>
+    <text x="820" y="207" fill="#FFD60A" font-size="12" text-anchor="middle">Claude API</text>
+    <rect x="760" y="240" width="120" height="44" rx="10" fill="#0F1D2E" stroke="#1D3350"/>
+    <text x="820" y="267" fill="#E8F1F8" font-size="12" text-anchor="middle">S3 backups</text>
+    <line x1="272" y1="150" x2="388" y2="120" stroke="#64D2FF" stroke-width="1.6" marker-end="url(#arr)" marker-start="url(#arr)"/>
+    <text x="330" y="118" fill="#8FA6B8" font-size="11" text-anchor="middle">push / pull sync</text>
+    <line x1="682" y1="100" x2="758" y2="84" stroke="#64D2FF" stroke-width="1.4" marker-end="url(#arr)"/>
+    <line x1="682" y1="160" x2="758" y2="144" stroke="#64D2FF" stroke-width="1.4" marker-end="url(#arr)"/>
+    <line x1="682" y1="190" x2="758" y2="202" stroke="#64D2FF" stroke-width="1.4" marker-end="url(#arr)"/>
+    <line x1="682" y1="225" x2="758" y2="258" stroke="#64D2FF" stroke-width="1.4" marker-end="url(#arr)"/>
+  </svg>
+  </div>
+  <ul>
+    <li><b>Local-first:</b> every feature — logging, nets, charts, badges, power level — computes from the on-device store. No spinner ever blocks a set.</li>
+    <li><b>One sync pipe:</b> workouts flow up; sleep data and AI digests flow down through the <em>same</em> cursor-based pull. No special-case endpoints.</li>
+    <li><b>Server-side only where it must be:</b> Apple token verification, invite enforcement, Oura OAuth + daily pulls, weekly Claude digests, backups.</li>
+  </ul>
+</section>
+
+<section id="client">
+  <div class="secnum">03</div>
+  <h2>iOS client</h2>
+  <div class="grid2">
+    <div class="card">
+      <h3 style="margin-top:0">Stack</h3>
+      <ul style="margin:0">
+        <li><b>iOS 26 minimum</b>, Swift 6 strict concurrency (default MainActor), Xcode 26</li>
+        <li>100% SwiftUI, <code>@Observable</code> feature stores — no Combine, no TCA, no third-party architecture</li>
+        <li><code>TabView</code> + typed <code>NavigationStack</code> routes; active workout is a <code>fullScreenCover</code> that survives tab switches</li>
+        <li>Deep links <code>sett://…</code> from notifications and the Oura OAuth return</li>
+        <li><b>ActivityKit</b> rest-timer Live Activity + actionable notifications: the "Log set" <code>UNNotificationAction</code> commits the pre-filled set via a background handler — no unlock, no app launch</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">Two-module split</h3>
+      <ul style="margin:0">
+        <li><b>Sett</b> (app target): views, theme, notifications, widgets</li>
+        <li><b>SettCore</b> (local SPM package, zero SwiftUI): models, ProgressEngine, ProgressionEngine, SyncActor, Foundation Models commentary, seed catalog</li>
+        <li>Swift Testing suites run against SettCore in seconds — engine, sync, and badge predicates are the test surface (v1 had zero tests)</li>
+        <li>App Group shares cached power level / goal ring with WidgetKit + Live Activity</li>
+      </ul>
+    </div>
+  </div>
+  <h3>Persistence: SwiftData</h3>
+  <p>On an iOS 26-only target SwiftData is third-generation and mature; <code>@Query</code>/<code>@Model</code> erase a glue layer for a solo dev, and the History API provides the change tracking the sync engine needs. One person's lifetime of sets is tens of thousands of rows — far below any scale where GRDB's raw SQL would matter. <b>Build gotcha (learned in practice):</b> never declare an inline <code>#Predicate</code> inside a <code>@Query</code> property — it times out the Swift 6 type-checker; configure queries in an explicit <code>init()</code>.</p>
+</section>
+
+<section id="data">
+  <div class="secnum">04</div>
+  <h2>Data model</h2>
+  <p class="lead">Every synced model shares four conventions: client-generated <code>UUID</code> identity, <code>updatedAt</code> for last-writer-wins, <code>deletedAt</code> soft-delete tombstones, and a <code>needsPush</code> dirty flag.</p>
+  <div class="card">
+    <b>Canonical rules that fix v1's flaws</b>
+    <ul style="margin-bottom:0">
+      <li><b>Weight = integer grams</b> everywhere (client, wire, Postgres). 0.25 kg = 250 g exactly; 2.5 lb = 1134 g and round-trips perfectly. Never a float. <em>(v1: integer lbs only.)</em></li>
+      <li><b>Every set has <code>completedAt</code></b> — timestamps drive pairing, buckets, and badges. <em>(v1: none.)</em></li>
+      <li><b>Workouts reference routines by loose UUID + name snapshot</b>, never a live relationship — deleting a routine can never damage history. <em>(v1: shared live objects.)</em></li>
+      <li><b>Badges are a code-defined key catalog</b>; only <code>BadgeAward</code> rows persist. <em>(v1: free-text strings holding SF Symbol names.)</em></li>
+      <li><b>Units are a display setting</b> (lb/kg, plate increment). <em>(v1: "lbs" hardcoded.)</em></li>
+    </ul>
+  </div>
+  <div class="tablewrap"><table>
+    <tr><th>Model</th><th>Key fields</th><th>Notes</th></tr>
+    <tr><td><b>Exercise</b></td><td>name, muscle (8 groups), equipment (5 types), isCustom, isArchived</td><td>67-exercise seed ships with <b>frozen UUIDs</b> identical on client and server (v1's catalog contained 2 exact duplicates — deduped)</td></tr>
+    <tr><td><b>Workout</b></td><td>title, startedAt, endedAt?, pausedSeconds, bodyweightGrams?, ratingHalfStars (0–10), notes, routineID? + routineNameSnapshot</td><td><code>endedAt == nil</code> ⇒ in progress (max one); only finished workouts sync</td></tr>
+    <tr><td><b>WorkoutExercise</b></td><td>orderIndex, exerciseID + nameSnapshot, notes, restSeconds?</td><td>cascade → sets</td></tr>
+    <tr><td><b>SetEntry</b></td><td>orderIndex, weightGrams, entryUnit, reps, isWarmup, completedAt, notes</td><td>the "sett" — warmups excluded from nets/PRs</td></tr>
+    <tr><td><b>Routine / RoutineExercise / PlannedSet</b></td><td>daysOfWeekMask; per-set targetReps + targetWeightGrams? (nil = "use last time")</td><td>user story 2 — per-set planning, copied into workouts on start</td></tr>
+    <tr><td><b>Goal</b></td><td>kind (<code>frequency</code> · <code>pr_target</code> · <code>volume_target</code>), targetValue, exerciseID?, start/end, isActive</td><td>progress always <em>computed</em>, never stored — can't drift</td></tr>
+    <tr><td><b>Gym</b></td><td>name, lat/lon, isHome, notes, optional day-pass price + quick rating</td><td>workouts carry <code>gymID?</code> + name snapshot (loose reference, like routines); auto-tagged within 150 m</td></tr>
+    <tr><td><b>BodyweightEntry</b></td><td>weightGrams, loggedAt, notes?</td><td>standalone bodyweight track (quick-log chip on Home; 90-day trend in Progress)</td></tr>
+    <tr><td><b>BadgeAward</b></td><td>badgeKey, tier, earnedAt, workoutID?/exerciseID?, valueSnapshot</td><td>catalog lives in code + <code>progression_config.json</code></td></tr>
+    <tr><td><b>SaiyanState</b></td><td>cached powerLevel, allTimePeakPL, characterKey, transformationTier</td><td>display cache only — always recomputable</td></tr>
+    <tr><td><b>SleepDay</b></td><td>dateKey (yyyymmdd), sleepScore, readinessScore, totalSleepSec, deepSec, remSec, avgHRV, restingHR</td><td>server-owned, pull-only</td></tr>
+    <tr><td><b>AIInsight</b></td><td>kind (<code>postWorkout</code> · <code>weeklyDigest</code>), body (markdown), source (onDevice · server · fallback)</td><td>digests pull-only; commentary pushed for backup</td></tr>
+  </table></div>
+</section>
+
+<section id="engine">
+  <div class="secnum">05</div>
+  <h2>Net-progress engine <span style="color:var(--muted);font-weight:400;font-size:18px">(user story 3)</span></h2>
+  <p>Pure functions in <code>ProgressEngine</code> over value-type set samples. No stored aggregates — recompute on demand (&lt;10 ms at this scale), memoized per screen, invalidated on save.</p>
+  <ul>
+    <li><b>Identity</b> = exercise UUID, never name or insertion order. Renames keep history.</li>
+    <li><b>Buckets</b> = ISO week / calendar month / year in the user's timezone, Monday first by default.</li>
+    <li><b>Net</b> = this bucket − the <em>immediately preceding</em> calendar bucket, for total reps and total volume (weight × reps). An empty previous bucket shows <b>NEW</b> rather than a misleading +everything; a regression shows honestly negative.</li>
+    <li><b>Live per-set deltas</b>: reference = your most recent <em>finished</em> workout containing that exercise; sets pair by <code>completedAt</code> order. Autofill pre-populates set <i>i</i> from reference set <i>i</i>, unless a routine plan specifies targets (plan wins).</li>
+    <li><b>e1RM = Epley with reps capped at 12</b>: <code>w × (1 + min(r,12)/30)</code> — monotonic, finite, un-fakeable with 50-rep bar work. Gold PR dots on charts come from <em>verified</em> bests (§11).</li>
+  </ul>
+</section>
+
+<section id="sync">
+  <div class="secnum">06</div>
+  <h2>Sync protocol</h2>
+  <p class="lead">Single user per account, multi-device rare ⇒ per-record last-writer-wins. No CRDTs. Pull-from-zero doubles as device restore, so there is no separate backup format.</p>
+  <div class="grid2">
+    <div class="card">
+      <b>Push · <code>POST /v1/sync/push</code></b>
+      <p style="font-size:14.5px">Client sends all <code>needsPush</code> rows (≤500/batch) in FK-safe order. Server upserts iff incoming <code>updated_at</code> is newer, answers <code>applied | stale</code> per row. Idempotent — retry blindly. Active workouts never push.</p>
+    </div>
+    <div class="card">
+      <b>Pull · <code>GET /v1/sync/pull?since=&lt;seq&gt;</code></b>
+      <p style="font-size:14.5px">One global <code>sync_seq</code> sequence, bumped on every insert/update across all synced tables (tombstones included). Client applies in order — local unpushed edits win — and persists the cursor. Sleep days and AI digests arrive through this same stream.</p>
+    </div>
+  </div>
+  <p><b>Triggers:</b> workout finished (debounced 5 s) · app foregrounded · connectivity regained · one overnight <code>BGAppRefreshTask</code> that lands fresh Oura data and digests before morning. Failures back off silently; the gym is never blocked. Auth failures degrade to a quiet "re-login" flag in Settings.</p>
+</section>
+
+<section id="backend">
+  <div class="secnum">07</div>
+  <h2>Backend</h2>
+  <p class="lead"><b>FastAPI</b> over Flask: the surface is schema-heavy cursor sync plus async outbound I/O (Apple JWKS, Oura, Claude) — Pydantic and native async pay immediately, while everything actually shared with Nett (compose shape, GHCR, nginx, S3) is framework-agnostic and reused unchanged.</p>
+  <p>Python 3.12 · SQLAlchemy 2 async · Alembic · PyJWT · httpx · APScheduler worker · official <code>anthropic</code> SDK · Fernet for Oura token encryption · Typer CLI for admin (<code>create-invite</code>, <code>run-digest</code>). <b>Status: implemented, 54 tests green.</b></p>
+  <h3>Postgres 16 schema (summary)</h3>
+  <div class="tablewrap"><table>
+    <tr><th>Table</th><th>Purpose / notable columns</th></tr>
+    <tr><td><code>users</code></td><td><code>apple_sub</code> unique, email (nullable — private relay), unit_pref, is_admin</td></tr>
+    <tr><td><code>invites</code></td><td>code PK (e.g. <code>SAIYAN-7F3K9Q</code>), created_by, expires_at (30 d), redeemed_by/at</td></tr>
+    <tr><td><code>devices</code></td><td>per-install UUID, hashed rotating refresh token, last_seen</td></tr>
+    <tr><td><code>exercises · routines · routine_exercises · planned_sets · workouts · workout_exercises · setts · goals · badge_events · bodyweight_entries</code></td><td>mirror of the client models; all carry <code>updated_at</code>, <code>deleted_at</code>, <code>sync_seq</code>; weights as <code>weight_g int</code>; indexes on <code>(user_id, sync_seq)</code> + <code>(user_id, started_at)</code></td></tr>
+    <tr><td><code>oura_connections</code></td><td>Fernet-encrypted access/refresh tokens, kind oauth|pat, status, last_pull_at</td></tr>
+    <tr><td><code>sleep_daily</code></td><td>PK (user_id, day): sleep/readiness scores, total/deep/REM/light seconds, HRV, resting HR, bedtimes, raw jsonb — synced down via <code>sync_seq</code></td></tr>
+    <tr><td><code>ai_digests</code></td><td>markdown content, model, token counts, cost_usd — synced down</td></tr>
+    <tr><td><code>friendships · gyms · gym_logs</code></td><td>mutual friend links (invite-lineage suggested); community gym registry keyed by rounded coords; per-user Chamber Logs (rating, day-pass price, note) aggregated by <code>GET /v1/gyms/nearby</code></td></tr>
+  </table></div>
+  <p>The seed migration inserts the 67-exercise catalog with the same frozen UUIDs the app bundle ships (a parity test guards byte-identity), so exercise identity agrees everywhere from day one.</p>
+</section>
+
+<section id="auth">
+  <div class="secnum">08</div>
+  <h2>Auth &amp; invite-only</h2>
+  <div class="flowstep"><div class="n">1</div><p>Client sends the Sign in with Apple <code>identityToken</code> (+ nonce, device id, invite code on first login) to <code>POST /v1/auth/apple</code>. On first authorization it also forwards the email Apple provides once — v1 discarded it forever.</p></div>
+  <div class="flowstep"><div class="n">2</div><p>Server verifies RS256 against Apple's JWKS (cached 24 h), checks issuer, audience (bundle ID), expiry, nonce; extracts the stable <code>sub</code>.</p></div>
+  <div class="flowstep"><div class="n">3</div><p><b>Invite enforcement:</b> new-user creation and invite redemption are one atomic transaction — <code>UPDATE invites … WHERE code=$c AND redeemed_by IS NULL AND expires_at &gt; now() RETURNING code</code>. Zero rows ⇒ 403, no account. One code, one account, no open registration path anywhere.</p></div>
+  <div class="flowstep"><div class="n">4</div><p><b>Sessions:</b> 1-hour HS256 access JWT + per-device 90-day opaque refresh token, stored hashed, rotated on every use. Reuse of a rotated token revokes the device (theft signal) and the client silently re-runs Sign in with Apple.</p></div>
+</section>
+
+<section id="oura">
+  <div class="secnum">09</div>
+  <h2>Oura integration</h2>
+  <ul>
+    <li><b>OAuth2 code flow</b> (free API v2 app): the client opens <code>/v1/oura/connect</code>'s authorize URL in <code>ASWebAuthenticationSession</code>; the server callback exchanges the code, Fernet-encrypts tokens, and bounces to <code>sett://oura/connected</code>. A personal-access-token fallback (<code>POST /v1/oura/pat</code>) works before the OAuth app is even registered.</li>
+    <li><b>Daily pull</b> (worker, 09:30 UTC + 15:30 retry sweep): <code>daily_sleep</code>, <code>sleep</code>, and <code>daily_readiness</code> over a trailing 7-day window — late-syncing rings self-heal via upsert. Bumps <code>sync_seq</code>; phones get it on next pull.</li>
+    <li><b>Token refresh</b> proactive (1 h before expiry) and reactive (on 401); repeated failure flips status to <code>error</code> so the app prompts a reconnect.</li>
+    <li><b>Rate limits:</b> 10 users × 3 calls/day vs Oura's 5,000 req/5 min — four orders of magnitude of headroom.</li>
+  </ul>
+</section>
+
+<section id="ai">
+  <div class="secnum">10</div>
+  <h2>AI insights — hybrid</h2>
+  <div class="grid2">
+    <div class="card">
+      <h3 style="margin-top:0">Instant · on-device</h3>
+      <p style="font-size:14.5px">Foundation Models (iOS 26, A17 Pro+) generates 2–3 sentences of post-workout commentary in <b>Vego's voice</b> — the proud-rival persona. Guided generation (<code>@Generable</code>) constrains shape; the prompt contains <b>structured facts only, never raw user text</b>; 10-second timeout. Unsupported devices get a deterministic template over the same facts — the screen looks identical, only the <code>source</code> field differs.</p>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">Deep Scan · weekly, server</h3>
+      <p style="font-size:14.5px">Monday-morning worker job assembles ≤6K tokens of pre-computed rollups — per-exercise weekly nets (8 weeks), goal progress, sleep-per-workout pairing table — and calls <code>claude-haiku-4-5</code> once per user. Fixed four sections: <b>Sleep × Performance · Plateau Watch · Deload Advice · Goal Check</b>. No medical claims; prompt-cached system prompt across users.</p>
+    </div>
+  </div>
+  <div class="tablewrap"><table>
+    <tr><th>Claude cost item</th><th>Tokens</th><th>$ / month (N=10)</th></tr>
+    <tr><td>Weekly digests (≈43/mo)</td><td>~5.5K in + 1.2K out each</td><td>≈ $0.50</td></tr>
+    <tr><td>On-demand analyses (~30/mo)</td><td>same shape</td><td>≈ $0.35</td></tr>
+    <tr><td><b>Total</b> (rate limit 3/day/user + $1/user/mo circuit breaker)</td><td></td><td><b class="gold-t">&lt; $1.00</b></td></tr>
+  </table></div>
+</section>
+
+<section id="power">
+  <div class="secnum">11</div>
+  <h2>Gamification — the Hypertrophic Time Chamber <span style="color:var(--muted);font-weight:400;font-size:16px">(hypertrophy × Hyperbolic Time Chamber)</span></h2>
+  <p class="lead">Power level, XP, and badges are <b>derived state</b>, always recomputable from raw training data (constants in a versioned <code>progression_config.json</code>). You cannot farm what is recomputed.</p>
+
+  <h3>Power Level</h3>
+  <pre>e1RM(set) = weightLb × (1 + min(reps, 12) / 30)          <span class="c">// rep-capped Epley</span>
+
+SS = Σ over 6 muscle groups of best <b>verified</b> e1RM, trailing 90 days
+WVL = mean weekly effective volume-load, trailing 28 days
+CM = 1 + 0.05 × min(streakWeeks, 10)                      <span class="c">// 1.00 – 1.50</span>
+
+<span class="k">PL = round( (4 × SS + 8 × √WVL) × CM )</span></pre>
+  <div class="tablewrap"><table>
+    <tr><th>Scenario</th><th>SS</th><th>Volume term</th><th>CM</th><th>PL</th></tr>
+    <tr><td>Week 1 — new user, 2 workouts</td><td>475</td><td>490</td><td>1.00</td><td><b>2,390</b></td></tr>
+    <tr><td>Month ~5 — honest 4×/week, 8-week streak</td><td>1,225</td><td>1,640</td><td>1.40</td><td><b class="gold-t">9,156 — over the threshold, earned</b></td></tr>
+    <tr><td>Cheater — 7 junk sessions/day, empty-bar 100-rep sets</td><td colspan="3">filtered before the math ever sees it</td><td class="bad">barely moves</td></tr>
+  </table></div>
+  <p><b>Anti-cheese, layered at the set level:</b> only "effective" sets count (reps 1–30, ≥40% of your e1RM once history exists, first 6 sets per exercise, first 30 per workout, first qualifying workout per day); √-compression on volume; PR jumps &gt;15% are <em>provisional</em> until repeated on another day ("the Scanner needs a second scan"); one workout of XP per day at full value, max 6 XP days per rolling 7, 300 XP/day cap. Editing or deleting workouts recomputes the whole ledger.</p>
+  <p><b>Rested Bonus (v3, new mechanic):</b> full rest days accrue a <em>recovered</em> XP segment — rendered as a gold band ahead of the cyan fill on the power gauge with a notch marker (the WoW rested-XP grammar). The first workout after a full rest day earns <b>1.25× workout XP</b> and visibly burns the gold segment first. Rest becomes a game resource instead of guilt — and it compounds the existing rest-day anti-cheese rather than fighting it. <em>(Engine change: flag for ProgressionEngine + config.)</em></p>
+
+  <h3>Characters — the Ashfall Clan (original names &amp; art, unmistakable lineage)</h3>
+  <p>Every character maps <b>1:1 to a Dragon Ball icon</b> — archetype, dynamic, and role lifted straight from the source; only the names and visual designs are original (the "reminds you of / isn't" line from the legal review). The relationships carry too: Torren mentors Zyn, Zia built all the tech, and Gosi's easy grin enrages Vego. Any fan knows exactly who everyone is.</p>
+  <div class="tablewrap"><table>
+    <tr><th>Character</th><th>Archetype (you know the one)</th><th>Vibe</th><th>Badge domain</th></tr>
+    <tr><td><b>Vego, the Ember Prince</b> — your main</td><td>The Proud Prince</td><td>Heir to a fallen warrior dynasty; flame-swept black hair, cyan-white segmented armor with gold trim, arms permanently crossed. Trains alone at dawn in the Time Chamber at maximum dilation. Calls your PRs "adequate." His grudging respect is the whole reward — and he's the AI voice.</td><td>PRs, perfect workouts, power milestones</td></tr>
+    <tr><td><b>Gosi, the Bottomless</b></td><td>The Cheerful Powerhouse</td><td>Unruly spikes, teal gi, gold sash, permanently mid-meal. Farm chores before sunrise, then trains <em>everything</em>, grinning the whole time. Somehow always a step ahead of Vego, who cannot stand it.</td><td>Exercise breadth &amp; dawn training</td></tr>
+    <tr><td><b>Barok the Mountain</b></td><td>The Legendary Giant</td><td>Enormous, gentle, monosyllabic; latent power that terrifies everyone except him. Moves boulders for fun.</td><td>Volume &amp; tonnage</td></tr>
+    <tr><td><b>Nyra Voss</b></td><td>The Tireless Android</td><td>Blonde bob, deadpan, machine-precise. Does not understand the concept of skipping. "Androids don't need rest days. You do. Take exactly one."</td><td>Streaks &amp; consistency</td></tr>
+    <tr><td><b>Torren Vex</b></td><td>The Stern Mentor</td><td>Caped alien veteran who meditates between sets and trains Zyn. His cape and turban are <b>weighted</b> — when you complete a goal, he removes them: things just got serious.</td><td>Goals &amp; routine adherence</td></tr>
+    <tr><td><b>Zia Q.</b></td><td>The Genius Engineer</td><td>Teal-haired, goggles up, lab coat over gym gear. Built the Hypertrophic Time Chamber <em>and</em> the Scanner. Reads your sleep data aloud whether you asked or not.</td><td>Sleep (Oura) &amp; recovery</td></tr>
+    <tr><td><b>Zyn</b></td><td>The Hidden-Power Kid</td><td>Earnest teenager drowning in Torren's hand-me-down cape; hidden strength that only surfaces when it matters most.</td><td>Comebacks, night training, momentum</td></tr>
+    <tr><td><b>Emperor Vexeth, the Crimson Star</b> — your rival</td><td>The Elegant Tyrant</td><td>Polite and terrifying in <b>obsidian-black segmented armor with crimson accents</b>, a dark-red bio-aura where everyone else burns cyan. Not playable: his power level advances on a script, pacing yours. Every time you catch him he sheds another restraint and reveals a new form — each darker and redder than the last, and he has not shown his final one.</td><td>The rival card — the number you chase</td></tr>
+  </table></div>
+  <p><b>The Hypertrophic Time Chamber</b> — Zia's masterpiece, <em>a year of gains in a day</em> — frames the transformation ladder as time dilation: Base <b>1×</b> → Kindled <b>7×</b> (cyan wisp) → Ascendant <b>30×</b> (cyan flame) → <span class="gold-t">Radiant 120× (gold blaze — the "Super" moment)</span> → Zenith <b>365×</b> (white-gold corona). Tier-ups gate on character level <em>and</em> a keystone badge; Vego's Zenith keystone is <code>scanner_breaker</code>: <b>PL &gt; 9000</b> — the Scanner Zia built shatters. Vexeth never gates anything — he's pure motivation, and his form reveals are celebration moments you <em>cause</em>. Art budget: 23 flat-vector illustrations (Vego ×5 states, five supporting ×3, Vexeth ×3 forms).</p>
+
+  <h3>Badge catalog — 30 badges <span style="font-weight:400;color:var(--muted)">(Bronze 100 · Silver 250 · Gold 600 · Legendary 1500 XP)</span></h3>
+  <div class="tablewrap"><table>
+    <tr><th>Badge</th><th>Rarity</th><th>Unlock predicate (machine-checkable)</th></tr>
+    <tr><td>New Ceiling</td><td><span class="pill bronze">Bronze</span></td><td>first verified PR</td></tr>
+    <tr><td>Limit Break / Walking Legend</td><td><span class="pill silver">Silver</span><span class="pill goldp">Gold</span></td><td>10 / 50 verified PRs</td></tr>
+    <tr><td>Triple Threat</td><td><span class="pill silver">Silver</span></td><td>PRs in 3 muscle groups in one week</td></tr>
+    <tr><td>Perfect Form</td><td><span class="pill goldp">Gold</span></td><td>≥4 exercises, every one net-positive vs last time <em>(revives v1's dead "Perfect Workout")</em></td></tr>
+    <tr><td>Scanner-Breaker</td><td><span class="pill leg">Legendary</span></td><td>PL &gt; 9000 — "The Scanner shatters." Once per lifetime.</td></tr>
+    <tr><td>Twenty-Ton Day · Hundred Grand · Million-Pound Club · Ten-Million</td><td><span class="pill silver">Silver</span><span class="pill bronze">Bronze</span><span class="pill goldp">Gold</span><span class="pill leg">Leg</span></td><td>20,000 lb in a day · 100K / 1M / 10M lifetime effective tonnage</td></tr>
+    <tr><td>Ignition · Steady Flame · Chamber Regular · Chamber Resident · Unbroken Year</td><td><span class="pill bronze">Bronze</span>→<span class="pill leg">Leg</span></td><td>first workout · 4 wks ×2 days · 4 wks ×3 · 12 wks ×3 · 52 straight weeks</td></tr>
+    <tr><td>Goal Getter · Marksman · Serial Achiever</td><td><span class="pill bronze">Bronze</span>→<span class="pill goldp">Gold</span></td><td>1 goal done · a PR-target goal done · 10 goals done</td></tr>
+    <tr><td>By the Book · Planner's Pride</td><td><span class="pill bronze">Bronze</span><span class="pill goldp">Gold</span></td><td>12 on-plan workouts · 4 straight fully-on-plan weeks</td></tr>
+    <tr><td>Lab Partner · Well Rested · Recovery Protocol</td><td><span class="pill bronze">Bronze</span>→<span class="pill goldp">Gold</span></td><td>Oura connected +7 nights · 5 workouts after 80+ sleep scores · a 7×7h-sleep week with 3 training days</td></tr>
+    <tr><td>Explorer · Full Arsenal</td><td><span class="pill bronze">Bronze</span><span class="pill silver">Silver</span></td><td>20 distinct exercises · all 6 muscle groups in 7 days</td></tr>
+    <tr><td>Momentum · Dawn Patrol · Midnight Oil · Return to Form · Reforged</td><td><span class="pill silver">Silver</span>→<span class="pill goldp">Gold</span></td><td>5 straight net-positive sessions of one routine · 10 pre-7am · 10 post-9pm · 3 workouts in 14 days after a 21+ day break · match a pre-break PR within 60 days of returning</td></tr>
+  </table></div>
+
+  <h3>Where the hype happens</h3>
+  <ul>
+    <li><b>The Scan Ritual</b> (every summary — v3, replaces the plain Power Scan): the screen vignettes down to scan-state; digits <em>scramble and resolve left-to-right</em> with accelerating tick haptics; the count-up <b>hit-stops</b> for ~100 ms at every +100 milestone then resumes faster; the final total <b>slams</b> in with a heavy haptic and a 2-px screen shake. Crossing a tier threshold or PR ceiling plays a <b>glass-crack overlay</b> — the old ceiling number fractures, light leaks through the fissures, and the new number punches through. Vego's one-liner below.</li>
+    <li><b>PR aura burst</b> (in-workout): gold ring + crit-scale floating text off the set row (2× scale, settle bounce). Provisional PRs get a dashed cyan ring; the burst fires on verification — "Confirmed. It was real."</li>
+    <li><b>Transformation Ceremony</b> (rare by design): full-screen takeover — the old tier card fractures from center, shards fall, the new tier is revealed beneath in a vertical light column, longer for rarer tiers. Never mid-workout — queued to the summary.</li>
+    <li><b>Vexeth form reveal</b> (whenever your PL catches his script): his card cracks, the screen dims to near-black, and the silhouette of the next form fades in under a crimson glow — "You've forced my hand." The only celebration in the app that runs red.</li>
+    <li><b>Weekly Power Scan</b> (Sunday 18:00): PL sparkline, tonnage delta, streak status, and Zia's sleep line from the Claude digest. The retention loop.</li>
+    <li>All: ≤4 s, tap-to-skip, silent, full Reduce Motion fallbacks (scramble → direct set, crack → crossfade). Goals pay flat completion bonuses and never feed the consistency multiplier — no event is ever paid twice.</li>
+  </ul>
+</section>
+
+<section id="ux">
+  <div class="secnum">12</div>
+  <h2>UX &amp; the Dark Chamber <span style="color:var(--muted);font-weight:400;font-size:16px">(design language v3)</span></h2>
+  <p class="lead">v3 principle, learned from Persona 5's method: <b>the theme owns the geometry, the motion, and the copy voice — or it's just a skin.</b> Remove sett's theme and the screens should stop working. Gold belongs to the power level <em>exclusively</em> (the Destiny sacred-number rule); cyan is ki — energy, gauges, action; crimson is Vexeth only. Numbers are events: nothing gold ever changes silently.</p>
+
+  <h3>The Dark Chamber — palette &amp; materials v3</h3>
+  <div class="tablewrap"><table>
+    <tr><th>Token</th><th>Value</th><th>Rule</th></tr>
+    <tr><td><b>Ground</b></td><td>warm near-black <code>#0B0908</code> (never #000 — flat black halates)</td><td>every screen; saturation is rationed so the two glow hues read as light sources</td></tr>
+    <tr><td><b>Surfaces</b></td><td>card <code>#151110</code> · nested <code>#1C1714</code></td><td>etched <b>dual-stroke borders</b> (1px near-black outer + 1px 20%-gold inner, reading as an engraved groove) + 4–6pt L-shaped corner ticks; no shadows, no glass</td></tr>
+    <tr><td><b>Text ramp</b></td><td>bone <code>#E8E1D0</code> · ash <code>#9B948A</code> · iron <code>#5C564E</code></td><td>never pure white on near-black (astigmatism halation); 4.5:1 minimum; text always on flat fills — grime lives <em>behind</em> panels, never under text</td></tr>
+    <tr><td><b>Sacred gold</b></td><td><code>#FFD60A→#FF9F0A</code> gradient fills</td><td><b>power level only.</b> No other element may be gold, ever — exclusivity is what makes the number sacred</td></tr>
+    <tr><td><b>Ki cyan</b></td><td><code>#64D2FF</code>, slightly desaturated at rest</td><td>gauges, active states, auras — the energy color, demoted from co-lead to supporting cast</td></tr>
+    <tr><td><b>Vignette</b></td><td>radial scrim, clear center → ~50% black corners</td><td>on every screen — the torchlit-center dungeon architecture; the PL numeral always sits in the brightest zone</td></tr>
+    <tr><td><b>Grime</b></td><td>one seamless "aged iron" texture tile, 3–6% luminance variation, directional</td><td>low-opacity overlay on panels (replaces v2's uniform noise); a single static asset, no shaders</td></tr>
+    <tr><td><b>Embers</b></td><td>≤20 warm particles, additive, slow rise</td><td>confined to a halo behind the PL numeral (the hearth of the app); burst to ~70 for 1 s on gains; paused off-screen + under Reduce Motion</td></tr>
+  </table></div>
+
+  <h3>The Sacred Number</h3>
+  <ul>
+    <li><b>Own glyph:</b> an original spark-sigil mark prefixes the PL everywhere (drawn in-house — think Destiny's diamond, but ours). Fixed anchor position on every screen that shows it; the app's largest type.</li>
+    <li><b>Own numeral cut:</b> ultra-heavy tabular digits, sheared ~10°, gold gradient fill with a hard dark outline — used for the PL and nothing else. (v1 of this = styled SF; long-term = commission an original numeral set. Never Exocet — it reads as Diablo.)</li>
+    <li><b>Odometer physics:</b> per-digit slot-reel resolve, never a crossfade; scale-punch entrance (140%→100% with overshoot); hit-stop at milestones; aura flare behind it scales with the magnitude of the gain, so users read size from motion before digits.</li>
+    <li><b>Power screen = character sheet:</b> massive PL numeral, then monospaced label:value stat rows (STRENGTH · VOLUME · STREAK · PRS THIS CYCLE), a radar chart of muscle-group balance, tier emblem as class icon.</li>
+  </ul>
+
+  <h3>Component kit v3 — no stock parts where power flows</h3>
+  <div class="tablewrap"><table>
+    <tr><th>Component</th><th>Spec</th><th>Replaces</th></tr>
+    <tr><td><b>Ki Gauge</b></td><td>Slanted (~12°) hard-edged <b>segmented</b> cells, glowing hot tip on the active cell, a small numeral fused to the gauge counting segments. <b>Overfillable:</b> at 100% it doesn't clamp — an "ultra" gold band sprouts past the frame edge. Decay (streak/consistency) renders as a dimmer trailing ghost segment that drains.</td><td>every rounded iOS progress bar</td></tr>
+    <tr><td><b>7-Slot Burst Row</b></td><td>Seven empty forged-medallion slots persist on Home; each completed workout flies a glowing sigil into the next slot with a pop. Filling all 7 materializes a <b>Burst button</b> that didn't exist before — firing it runs the weekly recap ceremony + XP multiplier. (Original iconography — never orange star-marked orbs.)</td><td>the weekly goal ring</td></tr>
+    <tr><td><b>Floating combat text</b></td><td>Every logged set spawns a rising <code>+42 PWR</code> (bone, monospace, 700 ms float-fade, digits staggered). PRs get the crit treatment: 2× scale, gold, settle bounce, unique haptic. End-of-workout batches everything into one gold total that rolls into the PL — sets visibly <em>feed</em> the number.</td><td>silent saves</td></tr>
+    <tr><td><b>Directive Panel</b></td><td>"Today's Directives": imperative quest rows + progress fraction + three-state claim button (Go → <b>pulsing gold Claim</b> → dimmed Claimed ✓), over a daily power track with crackable milestone nodes. Hard cap: this is the <em>only</em> quest surface in the app (badge-spam kills gacha lobbies).</td><td>scattered nudges</td></tr>
+    <tr><td><b>System Voice</b></td><td>Interrupting system-message modals that <em>materialize</em> (assemble from light, 300 ms) with terse all-caps copy: <code>READING COMPLETE</code> · <code>DIRECTIVE ISSUED</code> · <code>CEILING BROKEN</code>. The Solo Leveling grammar, reskinned as etched-stone gold/cyan-on-black — explicitly NOT the blue holo window (both IP-adjacent and the most-cloned look in fitness).</td><td>system alerts</td></tr>
+    <tr><td><b>Frame rarity ladder</b></td><td>One fixed card geometry; rank escalates through <b>material only</b>: matte iron → brushed steel → engraved gold → animated prismatic with a slow shine-sweep. Per-frame animation reserved exclusively for the top tier. Users read rank from the border finish before any text.</td><td>colored badges/labels</td></tr>
+    <tr><td><b>Numeral color as data</b></td><td>Rep and PL numerals encode state by color alone (the FighterZ combo-counter rule): bone on pace · gold on PR pace · dim blue on deload/assisted. No extra chips.</td><td>status labels</td></tr>
+  </table></div>
+
+  <h3>Compared against the source material <span style="font-weight:400;color:var(--muted)">(what we take · what we refuse)</span></h3>
+  <div class="tablewrap"><table>
+    <tr><th>sett v3 element</th><th>Borrowed from</th><th>We take</th><th>We refuse (IP / cliché)</th></tr>
+    <tr><td>Scan Ritual</td><td>DBZ scouter · Kakarot ki-sense</td><td>digit-scramble resolve, accelerating ticks, over-range shatter</td><td>green monocle silhouette, the Broly glyph alphabet, the "over 9000!" quote</td></tr>
+    <tr><td>Ki Gauge</td><td>FighterZ ki bars · Dokkan ki meter</td><td>slanted segments, glowing tip, fused numeral, overfill past 100%</td><td>Dokkan's LR lettermark styling</td></tr>
+    <tr><td>Screen-crack rank-ups</td><td>Dokkan awakening/summon</td><td>UI fractures at the biggest moments; escalation ladder users learn</td><td>Shenron staging, summon-gag recreations</td></tr>
+    <tr><td>7-Slot Burst Row</td><td>DB Legends Rising Rush</td><td>collect-7 → a button materializes → cinematic payoff</td><td>orange spheres with red stars (core trade dress)</td></tr>
+    <tr><td>Sacred Number</td><td>Destiny 2 Power level</td><td>exclusive hue, own glyph, fixed anchor, largest type</td><td>Destiny's diamond glyph &amp; sigils</td></tr>
+    <tr><td>Dark Chamber palette</td><td>Hades · Elden Ring · Diablo IV · Darkest Dungeon</td><td>one-hue darkness, vignette-as-architecture, grime texture, etched borders, ornament-as-rank</td><td>Exocet font, demonic filigree, red glass orbs, grace icon</td></tr>
+    <tr><td>Floating combat text</td><td>WoW/RPG damage numbers · Dokkan</td><td>crit scaling, color semantics, batch totals</td><td>number spam (batch or die)</td></tr>
+    <tr><td>Rested Bonus</td><td>WoW rested XP</td><td>two-color bar + notch; rest accrues boosted gains</td><td>— (nobody in fitness does this; it's ours)</td></tr>
+    <tr><td>System Voice</td><td>Solo Leveling's System window</td><td>interrupting modal grammar, materialize, all-caps terse voice, mono stat rows</td><td>the translucent royal-blue panel + circled "!" + scan lines (IP-adjacent AND the most-cloned fitness look)</td></tr>
+    <tr><td>Method itself</td><td>Persona 5</td><td>fiction dictates geometry/motion/copy on every screen</td><td>the red/black ransom-note look</td></tr>
+  </table></div>
+
+  <h3>Motion escalation ladder <span style="font-weight:400;color:var(--muted)">(big is never spent on small)</span></h3>
+  <div class="tablewrap"><table>
+    <tr><th>Event</th><th>Ceremony</th></tr>
+    <tr><td>Set logged</td><td>floating <code>+PWR</code> text, 700 ms</td></tr>
+    <tr><td>PR set</td><td>crit text 2× gold + aura burst off the row + double-pulse haptic</td></tr>
+    <tr><td>PL milestone (+100s)</td><td>hit-stop in the count-up, tick haptic</td></tr>
+    <tr><td>Character level</td><td>in-place cyan flare, no interruption</td></tr>
+    <tr><td>Tier-up</td><td>gold vertical light column, longer for rarer tiers</td></tr>
+    <tr><td>New character tier / Zenith</td><td>full-screen crack: old state fractures, shards fall, new state beneath</td></tr>
+    <tr><td>Vexeth form reveal</td><td>near-black dim + crimson glow silhouette — the only red ceremony</td></tr>
+  </table></div>
+  <p>Hard rules preserved from v2: <b>input latency is sacred</b> (celebration plays after the write), every effect has a Reduce Motion fallback, all ornament lives in scalable vector chrome so Dynamic Type survives, and charts stay clean (one gold PR dot is still the only gold allowed there — chart gold reads as PL-adjacent, which is correct).</p>
+
+  <h3>Tabs</h3>
+  <ul>
+    <li><b>Home</b> — streak chip, 7-Slot Burst Row, "Start Push Day" capsule, bodyweight quick-log chip, Directive Panel, latest insight, recent workouts; Settings gear</li>
+    <li><b>Train</b> — routines + 67-exercise library + per-exercise history charts</li>
+    <li><b>Progress</b> — W/M/Y segmented control driving net cards, e1RM sparklines, volume stacks, Sleep × Lifts, bodyweight trend, goals, insights feed</li>
+    <li><b>Power</b> — the character sheet: sacred PL numeral with ember halo, tier Ki Gauge, rival card, badge case, roster</li>
+  </ul>
+
+  <h3>The logging loop (tenets 1 &amp; 2, end to end)</h3>
+  <div class="flowstep"><div class="n">1</div><p><b>Ghost values are already there.</b> Every planned set shows last week's weight × reps for that same set (or the routine's target) in tertiary text. Stepper-first controls, 60 pt rows, decimal plates.</p></div>
+  <div class="flowstep"><div class="n">2</div><p><b>One tap of ✓</b> commits the ghost values, spawns the floating <code>+PWR</code> text, shows the net-vs-last-week chip (<span class="good">+5 lb</span>) — and <b>auto-starts the rest timer</b>. No second gesture exists in the happy path.</p></div>
+  <div class="flowstep"><div class="n">3</div><p><b>Phone goes down, banner takes over.</b> The Live Activity shows the countdown plus the <em>next</em> set's ghost values on the lock screen and Dynamic Island. 3-2-1 haptic ticks close it out.</p></div>
+  <div class="flowstep"><div class="n">4</div><p><b>Rest ends → time-sensitive banner with a "Log set" button.</b> Tapping it commits the pre-filled set from the lock screen via a background notification action — the phone never unlocks.</p></div>
+  <ul>
+    <li><b>Two widgets at launch:</b> weekly Burst Row state (home + lock screen circular) and the sacred PL numeral. Apple Watch deferred — the Live Activity covers the at-the-bench value.</li>
+    <li><b>Bodyweight nudge</b> at workout start (bodyweight-exercise e1RM depends on it) — a one-tap "same as last time" chip, never a blocking prompt.</li>
+    <li><b>Onboarding, 5 screens &lt;90 s:</b> invite code → Sign in with Apple → units → optional Oura connect → meet your rival (Vexeth reveals his first form) and your own power level rolls 0 → 100. No feature tour — empty states teach.</li>
+    <li><b>App icon:</b> dark-navy squircle, abstract cyan aura flame with a gold core. No character, no text. An alternate gold-flame icon unlocks at Zenith.</li>
+    <li><b>Share card:</b> the summary renders as a branded image (power number huge) for iMessage — the growth loop for an invite-only friends app.</li>
+  </ul>
+</section>
+
+<section id="social">
+  <div class="secnum">13</div>
+  <h2>Friends &amp; the Time Chamber Finder</h2>
+  <p class="lead">Invite-only means everyone in the database is someone you actually train with. That makes a social layer cheap to build and high-trust by default — and it makes crowd-sourced gym data (the only reliable source of day-pass prices anywhere) actually work at ten users.</p>
+
+  <h3>Power Rankings — track your friends' progress</h3>
+  <ul>
+    <li><b>Explicit, mutual friendships</b> via short friend codes (auto-suggested from the invite lineage). <code>POST /v1/friends/invite</code> · <code>/accept</code> · <code>GET /v1/friends</code>.</li>
+    <li><b>What friends see — a privacy-filtered snapshot, never raw data:</b> power level + peak, transformation tier, streak weeks, workouts this week, latest badges, last trained day. Sets, weights, bodyweight, and notes stay private; an opt-in "share PRs" toggle adds top e1RM per lift.</li>
+    <li><b>UX:</b> the Power tab gains a <b>Power Rankings</b> card — friends sorted by PL with tier auras, streak flames, and a one-tap <b>⚡ Respect</b> reaction (delivered on their next open; APNs deferred). Vexeth stays in the list as the house villain everyone shares.</li>
+    <li><b>Weekly digest hook:</b> "You out-lifted Marcos by 2,100 lb this week. He doesn't know yet."</li>
+    <li><b>No XP from social, ever</b> — friends are motivation, not currency.</li>
+  </ul>
+
+  <h3>Log where you trained</h3>
+  <ul>
+    <li>New synced <b>Gym</b> model; workouts carry <code>gymID?</code> + name snapshot — loose-reference pattern, so deleting a gym never touches history.</li>
+    <li><b>Auto-tag, zero friction:</b> one when-in-use location fix at workout start; within 150 m of a saved gym it tags silently, otherwise a "New chamber here?" chip. Never blocks logging, works offline.</li>
+    <li><b>Stats:</b> workouts per gym and a home/away split in Progress — vacation training counts toward streaks and goals like any other.</li>
+  </ul>
+
+  <h3>Time Chamber Finder — gyms while traveling</h3>
+  <ul>
+    <li><b>Discovery is free and native:</b> <code>MKLocalSearch</code> (MapKit) finds gyms near the map region on-device — no API key, no ToS drama. Results render as chamber pins.</li>
+    <li><b>Ratings enrichment:</b> a backend proxy to Google Places (free tier, quota-capped) adds star ratings on tap, caching only <code>place_id</code> per ToS; deep-links to the full Maps place page.</li>
+    <li><b>Chamber Logs — the community price layer:</b> no API knows gym day-pass prices, so sett users are the source. After a workout: optional 10-second log — stars, day-pass price paid, one-liner. Aggregated gym-level only, never who trained where or when.</li>
+    <li><b>Cost: $0.</b> MapKit free, Places inside free tier, Chamber Logs in our Postgres (<code>gyms</code> + <code>gym_logs</code>, <code>GET /v1/gyms/nearby</code>).</li>
+  </ul>
+</section>
+
+<section id="hosting">
+  <div class="secnum">14</div>
+  <h2>Hosting, CI/CD &amp; cost</h2>
+  <p class="lead">One new compose stack on the VPS you already run: <code>sett-api</code> + <code>sett-worker</code> (same GHCR image) + <code>sett-db</code> (own Postgres 16 container and volume). Nett's nginx stays the sole 80/443 owner and gains one server block for <code>sett.&lt;your-domain&gt;</code> over a shared <code>edge</code> docker network; one extra <code>-d</code> on the existing certbot cert.</p>
+  <ul>
+    <li><b>CI/CD (matches Nett):</b> push to main → pytest → <code>ghcr.io/borjainglefernandez/sett-api</code> → SSH deploy: <code>compose pull</code> → <code>alembic upgrade head</code> → <code>up -d</code>.</li>
+    <li><b>Backups:</b> nightly <code>pg_dump</code> → gzip → the existing Nett S3 bucket under <code>/sett/pg/</code>, 30-day lifecycle.</li>
+    <li><b>Monitoring, $0:</b> UptimeRobot on <code>/v1/health</code>, healthchecks.io dead-man pings after every scheduled job, Sentry free tier, log rotation.</li>
+  </ul>
+  <div class="tablewrap"><table>
+    <tr><th>Line item</th><th style="text-align:right">$/month</th></tr>
+    <tr><td>VPS marginal (existing host, ~300 MB extra RAM)</td><td style="text-align:right">0.00</td></tr>
+    <tr><td>Subdomain of existing domain + Let's Encrypt TLS</td><td style="text-align:right">0.00</td></tr>
+    <tr><td>GHCR + GitHub Actions (public repo)</td><td style="text-align:right">0.00</td></tr>
+    <tr><td>Claude API — weekly digests + on-demand (with circuit breakers)</td><td style="text-align:right">0.85</td></tr>
+    <tr><td>S3 backups</td><td style="text-align:right">0.10</td></tr>
+    <tr><td>Oura API v2 · UptimeRobot · healthchecks.io · Sentry</td><td style="text-align:right">0.00</td></tr>
+    <tr><td>MapKit search (free, native) + Google Places free tier (quota-capped proxy)</td><td style="text-align:right">0.00</td></tr>
+    <tr><td><b>Total</b></td><td style="text-align:right"><b class="gold-t">≈ 0.95</b></td></tr>
+    <tr><td>Hard ceiling if every limiter maxed simultaneously</td><td style="text-align:right">&lt; 10.00</td></tr>
+  </table></div>
+  <p style="color:var(--muted);font-size:14px">Not counted: Apple Developer Program ($99/yr) for TestFlight distribution — confirmed as a separate line.</p>
+</section>
+
+<section id="recon">
+  <div class="secnum">15</div>
+  <h2>Reconciliation log</h2>
+  <p>The four specialist designs were produced independently, then cross-checked. Conflicts found and resolved:</p>
+  <div class="decision"><div class="dt">Tabs: Home / Train / Progress / Power</div><div class="dd">UX owns navigation; client's typed-route architecture is unaffected. Profile-tab features moved to Power + a Settings sheet.</div></div>
+  <div class="decision"><div class="dt">Tier names: Base → Kindled → Ascendant → Radiant → Zenith</div><div class="dd">Gamification owns the ladder and its badge-gated thresholds.</div></div>
+  <div class="decision"><div class="dt">Weight canonical unit: integer grams end-to-end</div><div class="dd">Client, wire format, and Postgres (<code>weight_g int</code>). Gamification's lb-equivalent math is a pure conversion at compute time.</div></div>
+  <div class="decision"><div class="dt">Power level is derived, never summed from badge deltas</div><div class="dd">The windowed formula wins; <code>SaiyanState</code> is a display cache for widgets.</div></div>
+  <div class="decision"><div class="dt">Goal kinds unified to frequency · pr_target · volume_target</div><div class="dd">Gamification's taxonomy wins because the anti-double-reward XP rules are defined per kind.</div></div>
+  <div class="decision"><div class="dt">Per-set routine planning wins over per-exercise</div><div class="dd">Backend gains a <code>planned_sets</code> table mirroring the client's <code>PlannedSet</code>.</div></div>
+  <div class="decision"><div class="dt">One e1RM rule: Epley with reps capped at 12</div><div class="dd">Sets with 1–30 reps eligible; the cap defangs high-rep inflation.</div></div>
+  <div class="decision"><div class="dt">One AI persona: Vego</div><div class="dd">The on-device Foundation Models prompt and the server Claude digest share the proud-rival voice.</div></div>
+  <div class="decision"><div class="dt">Badges are client-authoritative in v1</div><div class="dd">Computed on device, pushed as <code>badge_events</code>; the server-side Python mirror is deferred to v1.1.</div></div>
+  <div class="decision"><div class="dt">Live Activity + widgets in v1 scope</div><div class="dd">Requires an App Group and a WidgetKit extension from day one.</div></div>
+  <div class="decision"><div class="dt">v3 (user feedback, July 7): the Dark Chamber replaces Apple-neutral theming</div><div class="dd">Permanently dark, warm near-black, vignette + grime + etched borders; gold becomes PL-exclusive; every stock progress bar becomes a Ki Gauge; numbers become events (scan ritual, combat text, screen-crack). The v2 "semantic system backgrounds" stance is retired.</div></div>
+</section>
+
+<section id="roadmap">
+  <div class="secnum">16</div>
+  <h2>Build roadmap</h2>
+  <div class="tablewrap"><table>
+    <tr><th>Phase</th><th>Deliverable</th><th>Exit criterion</th><th>Status</th></tr>
+    <tr><td><b>1 · Core</b></td><td>SettCore package: models, seed catalog, ProgressEngine + tests; log a full workout offline; summary with template commentary</td><td>You train with it daily instead of v1</td><td class="good">done — 76 tests green</td></tr>
+    <tr><td><b>2 · Loop</b></td><td>Routines + per-set plans + autofill; exercise library + per-exercise history; auto rest timer + Live Activity + "Log set" lock-screen action</td><td>A full week trained entirely in-app</td><td class="good">app running (Live Activity pending)</td></tr>
+    <tr><td><b>3 · Server</b></td><td>FastAPI stack on the VPS: auth + invites, sync push/pull, backups, monitoring; TestFlight to first friends</td><td>Fresh install restores history via pull-from-zero</td><td>code done (54 tests) — deploy + app wiring pending</td></tr>
+    <tr><td><b>4 · Insight</b></td><td>Oura OAuth + daily pulls; Progress charts; Foundation Models commentary; goals + notifications</td><td>Sleep × Lifts chart renders real correlation</td><td>charts done; Oura/FM wiring pending</td></tr>
+    <tr><td><b>5 · Power</b></td><td>ProgressionEngine + Power tab + celebrations + widgets; weekly Claude Deep Scan; character art (23 illustrations)</td><td>First friend breaks 9000</td><td>engine + tab done; art/widgets pending</td></tr>
+    <tr><td><b>6 · Multiplayer &amp; away games</b></td><td>Friendships + Power Rankings + Respect reactions; gym auto-tagging + home/away stats; Time Chamber Finder with Chamber Logs</td><td>A friend finds, reviews, and price-logs a vacation gym entirely in-app</td><td>backend done; app pending</td></tr>
+    <tr><td><b>7 · The Dark Chamber (v3)</b></td><td>Palette v3 + vignette + grime + etched borders; Sacred Number treatment (sigil, sheared numerals, odometer + hit-stop); Ki Gauges replace all progress bars; Scan Ritual + screen-crack ladder; floating combat text; 7-Slot Burst Row; Directive Panel; System Voice; Rested Bonus (engine + config)</td><td>The power level reading feels like an event; zero rounded stock progress bars remain; a stranger screenshots it and asks what game it is</td><td class="gold-t">next</td></tr>
+  </table></div>
+</section>
+
+<section id="risks">
+  <div class="secnum">17</div>
+  <h2>Open risks</h2>
+  <ul>
+    <li><b>Character artwork</b> (23 flat-vector illustrations) is the one asset code can't produce. Art routes through a swappable asset pack keyed by <code>characterKey</code> + tier, so a private personal build can carry any skin without touching the distributed app.</li>
+    <li><b>Foundation Models on real hardware</b> — latency and guardrail behavior need a device spike; the template fallback makes it non-blocking.</li>
+    <li><b>Oura OAuth app registration</b> must exist before the callback URL is final; the PAT fallback works from day one.</li>
+    <li><b>Badge revocation UX</b> — deleting a workout recomputes the ledger; show an "evidence removed" state rather than silent disappearance.</li>
+    <li><b>No APNs in v1</b> — Respect reactions arrive on next app open; push infra is a deliberate v2 line item.</li>
+    <li><b>Google Places ToS</b> permits caching <code>place_id</code> only — the Finder proxy re-fetches ratings per view; Chamber Logs carry the persistent layer.</li>
+    <li><b>v3 restraint risk</b> — the Dark Chamber's failure mode is Dokkan-lobby noise. Guardrails: one quest surface, big motion never for small events, ornament budgeted by rank, text always on flat fills at 4.5:1.</li>
+  </ul>
+</section>
+
+<footer>
+  sett v2 system design · v3 design language (Dark Chamber) added 2026-07-07 · sources: v1 codebase audit (6 agents) · 4 specialist designs + reconciliation · fair-use/App-Store research (4 agents) · game-UI research: Dokkan Battle, DB Legends, FighterZ, Xenoverse, Kakarot, Diablo IV, Hades, Elden Ring, Darkest Dungeon, Destiny 2, Solo Leveling, Persona 5, WoW, RuneScape (3 agents)
+</footer>
+
+</div>
