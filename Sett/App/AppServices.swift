@@ -73,13 +73,16 @@ public struct WorkoutSummaryData: Identifiable, Sendable {
     public let netVolumeGrams: Int
     public let netIsNew: Bool
     public let newBadgeKeys: [String]
+    /// XP gained by this workout, per character — only characters with a positive delta.
+    public let xpEarned: [CharacterKey: Int]
     public let commentary: String
     public let commentarySource: InsightSource
 
     public init(id: UUID, title: String, durationSeconds: Int,
                 powerLevelBefore: Int, powerLevelAfter: Int,
                 netReps: Int, netVolumeGrams: Int, netIsNew: Bool,
-                newBadgeKeys: [String], commentary: String, commentarySource: InsightSource) {
+                newBadgeKeys: [String], xpEarned: [CharacterKey: Int],
+                commentary: String, commentarySource: InsightSource) {
         self.id = id
         self.title = title
         self.durationSeconds = durationSeconds
@@ -89,6 +92,7 @@ public struct WorkoutSummaryData: Identifiable, Sendable {
         self.netVolumeGrams = netVolumeGrams
         self.netIsNew = netIsNew
         self.newBadgeKeys = newBadgeKeys
+        self.xpEarned = xpEarned
         self.commentary = commentary
         self.commentarySource = commentarySource
     }

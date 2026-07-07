@@ -25,7 +25,7 @@ struct ActiveWorkoutView: View {
                     Color.clear
                 }
             }
-            .background(SettColor.screen)
+            .dungeonBackground()
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {

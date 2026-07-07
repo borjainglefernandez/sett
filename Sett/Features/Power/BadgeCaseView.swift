@@ -32,7 +32,7 @@ struct BadgeCaseView: View {
             }
             .padding(16)
         }
-        .background(SettColor.screen)
+        .dungeonBackground()
         .navigationTitle("Badge Case")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(item: $selectedAward) { award in

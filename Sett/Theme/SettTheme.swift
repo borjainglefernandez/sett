@@ -2,24 +2,33 @@ import SwiftUI
 import UIKit
 
 // MARK: - Palette
+// Dungeon rules: the app is one permanently dark world — near-black blue-charcoal
+// stone, with the neon accents as the only light sources.
 // Cyan = action & identity. Gold = earned. Crimson = Vexeth only.
 // A screen never leads with both cyan and gold.
 
 public enum SettColor {
-    /// Hero cyan — v1's .systemCyan identity, kept.
-    public static let heroCyan = Color(dynamicLight: 0x32ADE6, dark: 0x64D2FF)
-    /// Saiyan gold — achievement/reward accent. Darkened in light mode for contrast.
-    public static let saiyanGold = Color(dynamicLight: 0xC9930A, dark: 0xFFD60A)
+    /// Hero cyan — v1's .systemCyan identity, kept. Now a glow source in the dark.
+    public static let heroCyan = Color(dynamicLight: 0x64D2FF, dark: 0x64D2FF)
+    /// Saiyan gold — achievement/reward accent.
+    public static let saiyanGold = Color(dynamicLight: 0xFFD60A, dark: 0xFFD60A)
     /// Villain crimson — reserved EXCLUSIVELY for Vexeth's rival card and form reveals.
-    public static let villainCrimson = Color(dynamicLight: 0xD70015, dark: 0xFF453A)
-    public static let villainVoid = Color(dynamicLight: 0x1C0D10, dark: 0x120A0C)
+    public static let villainCrimson = Color(dynamicLight: 0xFF453A, dark: 0xFF453A)
+    public static let villainVoid = Color(dynamicLight: 0x120A0C, dark: 0x120A0C)
 
     public static let positive = Color(uiColor: .systemGreen)
     public static let negative = Color(uiColor: .systemRed)
 
-    public static let card = Color(uiColor: .secondarySystemGroupedBackground)
-    public static let cardNested = Color(uiColor: .tertiarySystemGroupedBackground)
-    public static let screen = Color(uiColor: .systemGroupedBackground)
+    /// Near-black blue-charcoal — the gravity-chamber floor.
+    /// Both dynamic variants are dark on purpose: there is no light mode anymore,
+    /// but the initializer is kept so every call site keeps compiling.
+    public static let screen = Color(dynamicLight: 0x0A0D12, dark: 0x0A0D12)
+    /// A raised stone slab.
+    public static let card = Color(dynamicLight: 0x141A23, dark: 0x141A23)
+    /// An inset carved into a slab.
+    public static let cardNested = Color(dynamicLight: 0x1B2330, dark: 0x1B2330)
+    /// Hairline slab edge — consumed at 60% opacity by `.settCard()`.
+    public static let cardBorder = Color(dynamicLight: 0x2A3548, dark: 0x2A3548)
 }
 
 public extension Color {
@@ -67,6 +76,27 @@ public enum Aura {
     }
 }
 
+// MARK: - Aura glow (neon light in the dark — numerals, icons, scouter readouts)
+
+public struct AuraGlowStyle: ViewModifier {
+    let color: Color
+    let radius: CGFloat
+
+    public func body(content: Content) -> some View {
+        content
+            .shadow(color: color.opacity(0.55), radius: radius)
+            .shadow(color: color.opacity(0.35), radius: radius * 0.35)
+    }
+}
+
+public extension View {
+    /// Neon bloom for accent content: a wide soft shadow plus a tighter hot core.
+    /// Gold glows gold, cyan glows cyan. Static — nothing animates.
+    func auraGlow(_ color: Color, radius: CGFloat = 12) -> some View {
+        modifier(AuraGlowStyle(color: color, radius: radius))
+    }
+}
+
 // MARK: - Power numerals (the ONLY fixed type sizes in the app; everything else is Dynamic Type)
 
 public enum PowerFont {
@@ -103,6 +133,7 @@ public struct PowerNumeral: View {
             .monospacedDigit()
             .foregroundStyle(color)
             .contentTransition(.numericText(value: Double(value)))
+            .auraGlow(color, radius: glowRadius)
     }
 
     private var font: Font {
@@ -112,20 +143,115 @@ public struct PowerNumeral: View {
         case .m: PowerFont.m(mSize)
         }
     }
+
+    private var glowRadius: CGFloat {
+        switch size {
+        case .xl: 14
+        case .l: 12
+        case .m: 8
+        }
+    }
 }
 
-// MARK: - Cards (radius 16 continuous — the squircle pill language)
+// MARK: - Cards (radius 16 continuous — the squircle pill language, now edged stone)
 
 public struct SettCardStyle: ViewModifier {
     public func body(content: Content) -> some View {
         content
             .padding(16)
-            .background(SettColor.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .background {
+                let shape = RoundedRectangle(cornerRadius: 16, style: .continuous)
+                shape
+                    .fill(SettColor.card)
+                    .overlay {
+                        // Faint torchlight catching the top edge of the slab.
+                        shape.fill(
+                            LinearGradient(
+                                stops: [
+                                    .init(color: .white.opacity(0.04), location: 0),
+                                    .init(color: .clear, location: 0.28),
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                    }
+                    .overlay {
+                        shape.strokeBorder(SettColor.cardBorder.opacity(0.6), lineWidth: 1)
+                    }
+            }
     }
 }
 
 public extension View {
     func settCard() -> some View { modifier(SettCardStyle()) }
+}
+
+// MARK: - Dungeon background (gravity-chamber murk: glow bleed + stone grain)
+
+/// Full-bleed screen backdrop: near-black stone, a faint cyan glow bleeding from
+/// the top-leading corner, a fainter gold ember bottom-trailing, and a static
+/// grain of ~1200 seeded specks. Drawn once — no TimelineView, nothing animates,
+/// so Reduce Motion needs no special-casing.
+public struct DungeonBackground: View {
+    public init() {}
+
+    public var body: some View {
+        ZStack {
+            SettColor.screen
+            RadialGradient(
+                colors: [SettColor.heroCyan.opacity(0.06), .clear],
+                center: .topLeading,
+                startRadius: 0,
+                endRadius: 520
+            )
+            RadialGradient(
+                colors: [SettColor.saiyanGold.opacity(0.04), .clear],
+                center: .bottomTrailing,
+                startRadius: 0,
+                endRadius: 520
+            )
+            grain
+        }
+        .ignoresSafeArea()
+        .accessibilityHidden(true)
+    }
+
+    /// Deterministic noise: seeded LCG, never Date or SystemRandom — the texture
+    /// is identical every launch and never invalidates.
+    private var grain: some View {
+        Canvas { context, size in
+            var rng = LCG(seed: 0x5E77_0DD5)
+            context.opacity = 0.025
+            for _ in 0 ..< 1200 {
+                let x = rng.nextUnit() * size.width
+                let y = rng.nextUnit() * size.height
+                context.fill(
+                    Path(CGRect(x: x, y: y, width: 1, height: 1)),
+                    with: .color(.white)
+                )
+            }
+        }
+        .allowsHitTesting(false)
+    }
+
+    /// Minimal linear congruential generator (Knuth MMIX constants).
+    private struct LCG {
+        private var state: UInt64
+        init(seed: UInt64) { state = seed }
+        mutating func nextUnit() -> CGFloat {
+            state = state &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
+            return CGFloat(state >> 11) / CGFloat(UInt64(1) << 53)
+        }
+    }
+}
+
+public extension View {
+    /// Drop-in replacement for `.background(SettColor.screen)` on screens that
+    /// want the full dungeon treatment (glow bleed + grain).
+    func dungeonBackground() -> some View {
+        background(DungeonBackground())
+    }
 }
 
 // MARK: - Haptics (one vocabulary; nobody instantiates generators inline)

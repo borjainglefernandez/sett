@@ -14,6 +14,8 @@ struct PowerTabView: View {
     @Query private var saiyanStates: [SaiyanState]
     @Query private var badgeAwards: [BadgeAward]
 
+    @State private var showingHowPowerWorks = false
+
     init() {
         let badgeAwardFilter = #Predicate<BadgeAward> { $0.deletedAt == nil }
         _badgeAwards = Query(filter: badgeAwardFilter, sort: [SortDescriptor(\BadgeAward.earnedAt, order: .reverse)])
@@ -34,9 +36,22 @@ struct PowerTabView: View {
                 .padding(.horizontal, 16)
                 .padding(.bottom, 24)
             }
-            .background(SettColor.screen)
+            .dungeonBackground()
             .navigationTitle("Power")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showingHowPowerWorks = true
+                    } label: {
+                        Image(systemName: "info.circle")
+                    }
+                    .accessibilityLabel("How power works")
+                }
+            }
+            .sheet(isPresented: $showingHowPowerWorks) {
+                HowPowerWorksView()
+            }
             .task { progression.recompute(context: modelContext) }
         }
     }

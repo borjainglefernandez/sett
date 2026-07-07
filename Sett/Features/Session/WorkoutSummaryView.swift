@@ -7,7 +7,8 @@ import SettCore
 ///    up from its previous value (`contentTransition(.numericText)`) with a gold "+N ⚡" chip;
 /// 2. net progress vs previous same-exercise sessions;
 /// 3. badges earned (gold medallions, only when non-empty);
-/// 4. AI commentary + star rating + Done.
+/// 4. XP earned per character (only when non-empty), with a "How XP works" link;
+/// 5. AI commentary + star rating + Done.
 /// Tap anywhere skips straight to the final stage. Reduce Motion skips the scanline
 /// and snaps numbers.
 struct WorkoutSummaryView: View {
@@ -19,13 +20,14 @@ struct WorkoutSummaryView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private enum Stage: Int, Comparable {
-        case scanning, power, net, badges, commentary
+        case scanning, power, net, badges, xp, commentary
         static func < (lhs: Self, rhs: Self) -> Bool { lhs.rawValue < rhs.rawValue }
     }
 
     @State private var stage: Stage = .scanning
     @State private var displayedPowerLevel = 0
     @State private var ratingHalfStars = 0
+    @State private var showingHowXPWorks = false
 
     var body: some View {
         ScrollView {
@@ -39,6 +41,10 @@ struct WorkoutSummaryView: View {
                     badgesCard
                         .transition(.opacity.combined(with: .move(edge: .bottom)))
                 }
+                if stage >= .xp && !summary.xpEarned.isEmpty {
+                    xpCard
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                }
                 if stage >= .commentary {
                     commentaryCard
                         .transition(.opacity.combined(with: .move(edge: .bottom)))
@@ -48,10 +54,13 @@ struct WorkoutSummaryView: View {
             }
             .padding(16)
         }
-        .background(SettColor.screen)
+        .dungeonBackground()
         .contentShape(Rectangle())
         .onTapGesture { skipToEnd() }
         .task { await runStages() }
+        .sheet(isPresented: $showingHowXPWorks) {
+            HowPowerWorksView()
+        }
     }
 
     // MARK: Staging
@@ -79,6 +88,10 @@ struct WorkoutSummaryView: View {
         guard stage < .badges else { return }
         withAnimation(.snappy) { stage = .badges }
         if !summary.newBadgeKeys.isEmpty { Haptics.prSignature() }
+
+        try? await Task.sleep(for: .seconds(0.7))
+        guard stage < .xp else { return }
+        withAnimation(.snappy) { stage = .xp }
 
         try? await Task.sleep(for: .seconds(0.7))
         guard stage < .commentary else { return }
@@ -254,7 +267,55 @@ struct WorkoutSummaryView: View {
         progression.config?.badge(key)?.name ?? key
     }
 
-    // MARK: Stage 4 — commentary + wrap-up
+    // MARK: Stage 4 — XP earned
+
+    /// Characters that gained XP this workout, in roster order (Vego first).
+    private var xpEntries: [(character: CharacterKey, xp: Int)] {
+        CharacterKey.allCases.compactMap { character in
+            summary.xpEarned[character].map { (character, $0) }
+        }
+    }
+
+    private var xpCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("XP Earned", systemImage: "bolt.fill")
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(SettColor.saiyanGold)
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(xpEntries, id: \.character) { entry in
+                    xpRow(entry)
+                }
+            }
+            Button {
+                showingHowXPWorks = true
+            } label: {
+                Text("How XP works")
+                    .font(.footnote)
+                    .underline()
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("Opens an explainer of how XP and Power Level are earned")
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .settCard()
+    }
+
+    private func xpRow(_ entry: (character: CharacterKey, xp: Int)) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text("⚡ +\(entry.xp) XP")
+                .font(.subheadline.weight(.bold))
+                .monospacedDigit()
+                .foregroundStyle(SettColor.saiyanGold)
+            Text("— \(entry.character.displayName)")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(entry.character.displayName) earned \(entry.xp) XP")
+    }
+
+    // MARK: Stage 5 — commentary + wrap-up
 
     private var commentaryCard: some View {
         VStack(alignment: .leading, spacing: 12) {

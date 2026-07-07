@@ -127,9 +127,18 @@ public final class WorkoutSessionStore {
         touchAndSave(workout)
 
         let badgesBefore = earnedBadgeKeys()
+        let xpBefore = progression.snapshot?.characterXP ?? [:]
         progression.recompute(context: context)
         let badgesAfter = earnedBadgeKeys()
         let newBadges = badgesAfter.subtracting(badgesBefore).sorted()
+
+        // XP transparency: same before/after diff as badges, per character.
+        let xpAfter = progression.snapshot?.characterXP ?? [:]
+        var xpEarned: [CharacterKey: Int] = [:]
+        for (character, xp) in xpAfter {
+            let delta = xp - (xpBefore[character] ?? 0)
+            if delta > 0 { xpEarned[character] = delta }
+        }
 
         // Net vs previous same-exercise sessions (workout-level rollup).
         let samples = SampleExtractor.setSamples(context: context)
@@ -163,6 +172,7 @@ public final class WorkoutSessionStore {
             netVolumeGrams: net.volumeGrams,
             netIsNew: net.isNew,
             newBadgeKeys: newBadges,
+            xpEarned: xpEarned,
             commentary: commentary,
             commentarySource: source
         )

@@ -14,6 +14,7 @@ struct ProgressTabView: View {
     @Query private var insights: [AIInsight]
     @Query private var sleepDays: [SleepDay]
     @Query private var exercises: [Exercise]
+    @Query private var bodyweightEntries: [BodyweightEntry]
 
     init() {
         let goalFilter = #Predicate<Goal> { $0.deletedAt == nil && $0.isActive }
@@ -24,6 +25,10 @@ struct ProgressTabView: View {
 
         let exerciseFilter = #Predicate<Exercise> { $0.deletedAt == nil }
         _exercises = Query(filter: exerciseFilter)
+
+        let bodyweightFilter = #Predicate<BodyweightEntry> { $0.deletedAt == nil }
+        _bodyweightEntries = Query(filter: bodyweightFilter,
+                                   sort: [SortDescriptor(\BodyweightEntry.loggedAt)])
     }
 
     @State private var period: Period = .week
@@ -52,6 +57,7 @@ struct ProgressTabView: View {
                                        unit: unit, calendar: Self.isoCalendar)
                         VolumeChartCard(samples: setSamples, period: period,
                                         unit: unit, calendar: Self.isoCalendar)
+                        BodyweightCard(entries: bodyweightEntries, unit: unit)
                         E1RMTrendsCard(samples: setSamples, exerciseNames: exerciseNames, unit: unit)
                         SleepImpactCard(setSamples: setSamples, workoutSamples: workoutSamples,
                                         sleepDays: sleepDays, unit: unit, calendar: Self.isoCalendar)
@@ -65,7 +71,7 @@ struct ProgressTabView: View {
                 .padding(.bottom, 24)
                 .animation(.snappy, value: period)
             }
-            .background(SettColor.screen)
+            .dungeonBackground()
             .navigationTitle("Progress")
             .navigationBarTitleDisplayMode(.inline)
             .onAppear(perform: reload)

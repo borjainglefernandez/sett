@@ -12,6 +12,7 @@ struct HomeTabView: View {
     @Query private var routines: [Routine]
     @Query private var insights: [AIInsight]
     @Query private var frequencyGoals: [Goal]
+    @Query private var latestBodyweight: [BodyweightEntry]
 
     @State private var isShowingSettings = false
 
@@ -28,6 +29,14 @@ struct HomeTabView: View {
 
         let goalFilter = #Predicate<Goal> { $0.kindRaw == "frequency" && $0.isActive && $0.deletedAt == nil }
         _frequencyGoals = Query(filter: goalFilter)
+
+        let bodyweightFilter = #Predicate<BodyweightEntry> { $0.deletedAt == nil }
+        var bodyweightDescriptor = FetchDescriptor<BodyweightEntry>(
+            predicate: bodyweightFilter,
+            sortBy: [SortDescriptor(\BodyweightEntry.loggedAt, order: .reverse)]
+        )
+        bodyweightDescriptor.fetchLimit = 1
+        _latestBodyweight = Query(bodyweightDescriptor)
     }
 
     /// Streaks and weekly goals use ISO weeks (Monday start), matching the engines.
@@ -48,6 +57,7 @@ struct HomeTabView: View {
                         weeklyGoalCard
                         startCard
                     }
+                    BodyweightChipCard(latest: latestBodyweight.first)
                     if let insight = insights.first {
                         insightTeaser(insight)
                     }
@@ -56,7 +66,7 @@ struct HomeTabView: View {
                 .padding(.horizontal, 16)
                 .padding(.bottom, 24)
             }
-            .background(SettColor.screen)
+            .dungeonBackground()
             .navigationTitle("Home")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

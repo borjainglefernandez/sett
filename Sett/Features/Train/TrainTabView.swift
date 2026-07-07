@@ -31,7 +31,7 @@ struct TrainTabView: View {
                     ExerciseLibraryView()
                 }
             }
-            .background(SettColor.screen)
+            .dungeonBackground()
             .navigationTitle("Train")
             .navigationBarTitleDisplayMode(.inline)
             .onChange(of: segment) {

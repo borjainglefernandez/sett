@@ -24,7 +24,8 @@ public struct SplitMix64: RandomNumberGenerator {
 
 /// Seeds ~6 months of realistic, deterministic training history so every app surface has
 /// data to show: routines with schedules, dense workout history with progressive overload,
-/// a 24-day gap + comeback, a plateaued lift, nightly sleep, goals, gyms, and a weekly digest.
+/// a 24-day gap + comeback, a plateaued lift, nightly sleep, a bodyweight log, goals, gyms,
+/// and a weekly digest.
 @MainActor
 public enum DemoData {
 
@@ -234,6 +235,23 @@ public enum DemoData {
                 restingHR: 48 + Int.random(in: 0...14, using: &rng)
             )
             context.insert(sleep)
+        }
+
+        // 6b. Bodyweight log — ~3 morning weigh-ins per week across the whole range,
+        //     drifting around 79.4 kg (±1 kg wave) with a slight downward trend.
+        //     Separate RNG stream so the workout/sleep sequences above stay identical.
+        var bodyweightRNG = SplitMix64(seed: 0x5E77_DA7A_0000_0002)
+        for offset in 0..<totalDays {
+            guard Int.random(in: 0..<7, using: &bodyweightRNG) < 3,
+                  let date = day(at: offset),
+                  let loggedAt = cal.date(byAdding: .minute, value: 7 * 60 + 45, to: date) else { continue }
+            let progress = Double(offset) / Double(max(1, totalDays - 1))
+            let trend = Int(((0.5 - progress) * 1_600.0).rounded())            // +0.8 kg → -0.8 kg
+            let wave = Int((sin(Double(offset) / 12.0) * 600.0).rounded())     // slow ±0.6 kg oscillation
+            let grams = 79_400 + trend + wave + Int.random(in: -250...250, using: &bodyweightRNG)
+            let entry = BodyweightEntry(weightGrams: grams / 100 * 100, loggedAt: loggedAt)
+            entry.needsPush = false
+            context.insert(entry)
         }
 
         // 7. Goals: one completed, one active frequency, one PR target on the stalled lift.

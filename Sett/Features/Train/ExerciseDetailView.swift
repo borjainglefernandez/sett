@@ -59,7 +59,7 @@ struct ExerciseDetailView: View {
             }
             .padding(16)
         }
-        .background(SettColor.screen)
+        .dungeonBackground()
         .navigationTitle(exercise.name)
         .navigationBarTitleDisplayMode(.inline)
         .onAppear(perform: loadIfNeeded)

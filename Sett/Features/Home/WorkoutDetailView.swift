@@ -27,7 +27,7 @@ struct WorkoutDetailView: View {
             }
             .padding(16)
         }
-        .background(SettColor.screen)
+        .dungeonBackground()
         .navigationTitle(workout.title)
         .navigationBarTitleDisplayMode(.inline)
     }

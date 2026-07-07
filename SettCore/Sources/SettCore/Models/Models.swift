@@ -514,6 +514,34 @@ public final class Gym {
     }
 }
 
+// MARK: - BodyweightEntry (standalone bodyweight track)
+
+/// A quick scale reading, independent of any workout. `Workout.bodyweightGrams`
+/// stays as the per-session snapshot; this is the longitudinal track.
+@Model
+public final class BodyweightEntry {
+    @Attribute(.unique) public var id: UUID
+    /// Canonical weight in integer grams. Never a float.
+    public var weightGrams: Int
+    public var loggedAt: Date
+    public var notes: String?
+    public var createdAt: Date
+    public var updatedAt: Date
+    public var deletedAt: Date?
+    public var needsPush: Bool
+
+    public init(id: UUID = UUID(), weightGrams: Int, loggedAt: Date = .now, now: Date = .now) {
+        self.id = id
+        self.weightGrams = weightGrams
+        self.loggedAt = loggedAt
+        self.notes = nil
+        self.createdAt = now
+        self.updatedAt = now
+        self.deletedAt = nil
+        self.needsPush = true
+    }
+}
+
 // MARK: - SyncState (local-only)
 
 @Model
@@ -540,6 +568,6 @@ public enum SettSchema {
         [Exercise.self, Workout.self, WorkoutExercise.self, SetEntry.self,
          Routine.self, RoutineExercise.self, PlannedSet.self,
          Goal.self, BadgeAward.self, SaiyanState.self,
-         SleepDay.self, AIInsight.self, Gym.self, SyncState.self]
+         SleepDay.self, AIInsight.self, Gym.self, BodyweightEntry.self, SyncState.self]
     }
 }

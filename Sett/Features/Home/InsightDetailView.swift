@@ -25,7 +25,7 @@ struct InsightDetailView: View {
             .settCard()
             .padding(16)
         }
-        .background(SettColor.screen)
+        .dungeonBackground()
         .navigationTitle("Insight")
         .navigationBarTitleDisplayMode(.inline)
     }
