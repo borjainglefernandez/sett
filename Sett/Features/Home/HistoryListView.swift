@@ -10,12 +10,16 @@ struct HistoryListView: View {
     @Environment(AppServices.self) private var services
     @Environment(\.modelContext) private var modelContext
 
-    @Query(filter: #Predicate<Workout> { $0.endedAt != nil && $0.deletedAt == nil },
-           sort: [SortDescriptor(\Workout.startedAt, order: .reverse)])
-    private var workouts: [Workout]
+    @Query private var workouts: [Workout]
+    @Query private var badgeAwards: [BadgeAward]
 
-    @Query(filter: #Predicate<BadgeAward> { $0.deletedAt == nil })
-    private var badgeAwards: [BadgeAward]
+    init() {
+        let workoutFilter = #Predicate<Workout> { $0.endedAt != nil && $0.deletedAt == nil }
+        _workouts = Query(filter: workoutFilter, sort: [SortDescriptor(\Workout.startedAt, order: .reverse)])
+
+        let badgeAwardFilter = #Predicate<BadgeAward> { $0.deletedAt == nil }
+        _badgeAwards = Query(filter: badgeAwardFilter)
+    }
 
     private enum HistorySort: String, CaseIterable, Identifiable {
         case date = "Date"

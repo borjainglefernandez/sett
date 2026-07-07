@@ -10,18 +10,21 @@ struct ProgressTabView: View {
     @Environment(AppServices.self) private var services
     @Environment(\.modelContext) private var modelContext
 
-    @Query(filter: #Predicate<Goal> { $0.deletedAt == nil && $0.isActive },
-           sort: [SortDescriptor(\Goal.createdAt, order: .reverse)])
-    private var goals: [Goal]
-
-    @Query(filter: #Predicate<AIInsight> { $0.deletedAt == nil },
-           sort: [SortDescriptor(\AIInsight.createdAt, order: .reverse)])
-    private var insights: [AIInsight]
-
+    @Query private var goals: [Goal]
+    @Query private var insights: [AIInsight]
     @Query private var sleepDays: [SleepDay]
+    @Query private var exercises: [Exercise]
 
-    @Query(filter: #Predicate<Exercise> { $0.deletedAt == nil })
-    private var exercises: [Exercise]
+    init() {
+        let goalFilter = #Predicate<Goal> { $0.deletedAt == nil && $0.isActive }
+        _goals = Query(filter: goalFilter, sort: [SortDescriptor(\Goal.createdAt, order: .reverse)])
+
+        let insightFilter = #Predicate<AIInsight> { $0.deletedAt == nil }
+        _insights = Query(filter: insightFilter, sort: [SortDescriptor(\AIInsight.createdAt, order: .reverse)])
+
+        let exerciseFilter = #Predicate<Exercise> { $0.deletedAt == nil }
+        _exercises = Query(filter: exerciseFilter)
+    }
 
     @State private var period: Period = .week
     @State private var setSamples: [SetSample] = []

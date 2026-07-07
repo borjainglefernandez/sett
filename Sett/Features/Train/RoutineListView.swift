@@ -8,9 +8,12 @@ struct RoutineListView: View {
     @Environment(WorkoutSessionStore.self) private var session
     @Environment(\.modelContext) private var modelContext
 
-    @Query(filter: #Predicate<Routine> { $0.deletedAt == nil && !$0.isArchived },
-           sort: [SortDescriptor(\Routine.orderIndex)])
-    private var routines: [Routine]
+    @Query private var routines: [Routine]
+
+    init() {
+        let routineFilter = #Predicate<Routine> { $0.deletedAt == nil && !$0.isArchived }
+        _routines = Query(filter: routineFilter, sort: [SortDescriptor(\Routine.orderIndex)])
+    }
 
     var body: some View {
         Group {

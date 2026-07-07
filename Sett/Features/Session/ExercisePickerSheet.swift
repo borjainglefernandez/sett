@@ -8,11 +8,14 @@ struct ExercisePickerSheet: View {
     @Environment(WorkoutSessionStore.self) private var session
     @Environment(\.dismiss) private var dismiss
 
-    @Query(filter: #Predicate<Exercise> { !$0.isArchived && $0.deletedAt == nil },
-           sort: \Exercise.name)
-    private var exercises: [Exercise]
+    @Query private var exercises: [Exercise]
 
     @State private var searchText = ""
+
+    init() {
+        let exerciseFilter = #Predicate<Exercise> { !$0.isArchived && $0.deletedAt == nil }
+        _exercises = Query(filter: exerciseFilter, sort: [SortDescriptor(\Exercise.name)])
+    }
 
     var body: some View {
         NavigationStack {

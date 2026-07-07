@@ -12,10 +12,12 @@ struct PowerTabView: View {
     @Environment(\.modelContext) private var modelContext
 
     @Query private var saiyanStates: [SaiyanState]
+    @Query private var badgeAwards: [BadgeAward]
 
-    @Query(filter: #Predicate<BadgeAward> { $0.deletedAt == nil },
-           sort: [SortDescriptor(\BadgeAward.earnedAt, order: .reverse)])
-    private var badgeAwards: [BadgeAward]
+    init() {
+        let badgeAwardFilter = #Predicate<BadgeAward> { $0.deletedAt == nil }
+        _badgeAwards = Query(filter: badgeAwardFilter, sort: [SortDescriptor(\BadgeAward.earnedAt, order: .reverse)])
+    }
 
     var body: some View {
         NavigationStack {

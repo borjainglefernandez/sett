@@ -8,11 +8,14 @@ import SettCore
 struct BadgeCaseView: View {
     @Environment(ProgressionStore.self) private var progression
 
-    @Query(filter: #Predicate<BadgeAward> { $0.deletedAt == nil },
-           sort: [SortDescriptor(\BadgeAward.earnedAt, order: .reverse)])
-    private var awards: [BadgeAward]
+    @Query private var awards: [BadgeAward]
 
     @State private var selectedAward: BadgeAward?
+
+    init() {
+        let awardFilter = #Predicate<BadgeAward> { $0.deletedAt == nil }
+        _awards = Query(filter: awardFilter, sort: [SortDescriptor(\BadgeAward.earnedAt, order: .reverse)])
+    }
 
     private let columns = [
         GridItem(.flexible(), spacing: 12),

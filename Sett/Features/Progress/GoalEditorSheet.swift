@@ -10,9 +10,12 @@ struct GoalEditorSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(AppServices.self) private var services
 
-    @Query(filter: #Predicate<Exercise> { $0.deletedAt == nil && !$0.isArchived },
-           sort: [SortDescriptor(\Exercise.name)])
-    private var exercises: [Exercise]
+    @Query private var exercises: [Exercise]
+
+    init() {
+        let exerciseFilter = #Predicate<Exercise> { $0.deletedAt == nil && !$0.isArchived }
+        _exercises = Query(filter: exerciseFilter, sort: [SortDescriptor(\Exercise.name)])
+    }
 
     @State private var kind: GoalKind = .frequency
     @State private var frequencyTarget = 3

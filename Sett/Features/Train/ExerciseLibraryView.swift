@@ -9,9 +9,12 @@ struct ExerciseLibraryView: View {
     @Environment(AppServices.self) private var services
     @Environment(\.modelContext) private var modelContext
 
-    @Query(filter: #Predicate<Exercise> { $0.deletedAt == nil },
-           sort: \Exercise.name)
-    private var exercises: [Exercise]
+    @Query private var exercises: [Exercise]
+
+    init() {
+        let exerciseFilter = #Predicate<Exercise> { $0.deletedAt == nil }
+        _exercises = Query(filter: exerciseFilter, sort: [SortDescriptor(\Exercise.name)])
+    }
 
     @State private var searchText = ""
     @State private var selectedMuscle: Muscle?
@@ -221,8 +224,13 @@ private struct CreateExerciseSheet: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
-    @Query(filter: #Predicate<Exercise> { $0.deletedAt == nil })
-    private var existing: [Exercise]
+    @Query private var existing: [Exercise]
+
+    init(initialName: String) {
+        self.initialName = initialName
+        let existingFilter = #Predicate<Exercise> { $0.deletedAt == nil }
+        _existing = Query(filter: existingFilter)
+    }
 
     @State private var name = ""
     @State private var muscle: Muscle = .chest

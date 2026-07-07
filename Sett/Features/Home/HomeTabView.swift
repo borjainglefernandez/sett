@@ -8,22 +8,27 @@ struct HomeTabView: View {
     @Environment(AppServices.self) private var services
     @Environment(WorkoutSessionStore.self) private var session
 
-    @Query(filter: #Predicate<Workout> { $0.endedAt != nil && $0.deletedAt == nil },
-           sort: [SortDescriptor(\Workout.startedAt, order: .reverse)])
-    private var finishedWorkouts: [Workout]
-
-    @Query(filter: #Predicate<Routine> { $0.deletedAt == nil && !$0.isArchived },
-           sort: [SortDescriptor(\Routine.orderIndex)])
-    private var routines: [Routine]
-
-    @Query(filter: #Predicate<AIInsight> { $0.deletedAt == nil },
-           sort: [SortDescriptor(\AIInsight.createdAt, order: .reverse)])
-    private var insights: [AIInsight]
-
-    @Query(filter: #Predicate<Goal> { $0.kindRaw == "frequency" && $0.isActive && $0.deletedAt == nil })
-    private var frequencyGoals: [Goal]
+    @Query private var finishedWorkouts: [Workout]
+    @Query private var routines: [Routine]
+    @Query private var insights: [AIInsight]
+    @Query private var frequencyGoals: [Goal]
 
     @State private var isShowingSettings = false
+
+    init() {
+        let finishedFilter = #Predicate<Workout> { $0.endedAt != nil && $0.deletedAt == nil }
+        let finishedSort = [SortDescriptor(\Workout.startedAt, order: .reverse)]
+        _finishedWorkouts = Query(filter: finishedFilter, sort: finishedSort)
+
+        let routineFilter = #Predicate<Routine> { $0.deletedAt == nil && !$0.isArchived }
+        _routines = Query(filter: routineFilter, sort: [SortDescriptor(\Routine.orderIndex)])
+
+        let insightFilter = #Predicate<AIInsight> { $0.deletedAt == nil }
+        _insights = Query(filter: insightFilter, sort: [SortDescriptor(\AIInsight.createdAt, order: .reverse)])
+
+        let goalFilter = #Predicate<Goal> { $0.kindRaw == "frequency" && $0.isActive && $0.deletedAt == nil }
+        _frequencyGoals = Query(filter: goalFilter)
+    }
 
     /// Streaks and weekly goals use ISO weeks (Monday start), matching the engines.
     private static let isoCalendar: Calendar = {
