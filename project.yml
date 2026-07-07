@@ -1,0 +1,42 @@
+name: Sett
+options:
+  bundleIdPrefix: com.borjainglefernandez
+  deploymentTarget:
+    iOS: "26.0"
+  createIntermediateGroups: true
+packages:
+  SettCore:
+    path: SettCore
+targets:
+  Sett:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sett
+    dependencies:
+      - package: SettCore
+    entitlements:
+      path: Sett/Sett.entitlements
+      properties:
+        com.apple.developer.applesignin: [Default]
+    info:
+      path: Sett/Info.plist
+      properties:
+        CFBundleDisplayName: sett
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        NSLocationWhenInUseUsageDescription: "sett tags workouts with the gym you're at and finds Time Chambers nearby."
+        BGTaskSchedulerPermittedIdentifiers:
+          - com.borjainglefernandez.sett.refresh
+        NSSupportsLiveActivities: true
+        CFBundleURLTypes:
+          - CFBundleURLSchemes: [sett]
+    settings:
+      base:
+        SWIFT_VERSION: "6.0"
+        TARGETED_DEVICE_FAMILY: "1"
+        SWIFT_STRICT_CONCURRENCY: minimal
+        CODE_SIGN_STYLE: Automatic
+        CURRENT_PROJECT_VERSION: 1
+        MARKETING_VERSION: 0.1.0
+        GENERATE_INFOPLIST_FILE: false

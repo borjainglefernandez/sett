@@ -1,0 +1,404 @@
+[
+  {
+    "id": "10F5CCD9-606A-5B6B-8A4D-38C0EE9D694E",
+    "name": "Flat Bench Press",
+    "muscle": "chest",
+    "equipment": "dumbbell"
+  },
+  {
+    "id": "26186646-AC85-588C-9707-CD632CF04DF8",
+    "name": "Flat Bench Press",
+    "muscle": "chest",
+    "equipment": "barbell"
+  },
+  {
+    "id": "09BB2C04-C640-5AAC-8F91-8ED9052A11A2",
+    "name": "Incline Bench Press",
+    "muscle": "chest",
+    "equipment": "dumbbell"
+  },
+  {
+    "id": "D9FB13D7-2C8C-5E0D-B415-307BEF5AF343",
+    "name": "Incline Bench Press",
+    "muscle": "chest",
+    "equipment": "barbell"
+  },
+  {
+    "id": "D3EC5DE4-12F7-52C3-8D0A-D20BBC3F8EC1",
+    "name": "Decline Bench Press",
+    "muscle": "chest",
+    "equipment": "dumbbell"
+  },
+  {
+    "id": "B24D86A3-0FCF-5870-86C9-543F1F9A122A",
+    "name": "Decline Bench Press",
+    "muscle": "chest",
+    "equipment": "barbell"
+  },
+  {
+    "id": "3249F564-6582-5A26-8282-E96F8476BCEE",
+    "name": "Chest Fly",
+    "muscle": "chest",
+    "equipment": "machine"
+  },
+  {
+    "id": "A138652B-22AC-5FDD-AB2D-690087219976",
+    "name": "Chest Fly",
+    "muscle": "chest",
+    "equipment": "cable"
+  },
+  {
+    "id": "6760CC2A-109D-5683-868E-73F537512B7E",
+    "name": "Chest Fly",
+    "muscle": "chest",
+    "equipment": "dumbbell"
+  },
+  {
+    "id": "2B88DD22-3D32-5210-B1B6-C216F993866D",
+    "name": "Hex Press",
+    "muscle": "chest",
+    "equipment": "dumbbell"
+  },
+  {
+    "id": "E1126FD6-F26B-5E97-8F36-88C12C177F1C",
+    "name": "Chest Press",
+    "muscle": "chest",
+    "equipment": "machine"
+  },
+  {
+    "id": "06308E79-00F1-508F-992F-C681E4D49A06",
+    "name": "Pull Around",
+    "muscle": "chest",
+    "equipment": "cable"
+  },
+  {
+    "id": "D602200A-D380-5F8E-9C40-B7B232E912A9",
+    "name": "Push Ups",
+    "muscle": "chest",
+    "equipment": "bodyweight"
+  },
+  {
+    "id": "16861977-FD6B-530D-8065-3368D5467BFC",
+    "name": "Dips",
+    "muscle": "triceps",
+    "equipment": "bodyweight"
+  },
+  {
+    "id": "7701638C-63A3-5581-8911-51F6CABA671A",
+    "name": "Tricep Pushdown",
+    "muscle": "triceps",
+    "equipment": "cable"
+  },
+  {
+    "id": "7AC913A8-02CF-5C46-AC0B-F4B29124E331",
+    "name": "Tricep Pushdown",
+    "muscle": "triceps",
+    "equipment": "machine"
+  },
+  {
+    "id": "CF456D0B-05DE-55B0-BF02-6B44A3E34A05",
+    "name": "Skull Crusher",
+    "muscle": "triceps",
+    "equipment": "dumbbell"
+  },
+  {
+    "id": "0F57A951-9A78-500C-BA11-28B5EE1E220D",
+    "name": "Skull Crusher",
+    "muscle": "triceps",
+    "equipment": "barbell"
+  },
+  {
+    "id": "CF828E35-66E6-5191-82C6-DEF18BA9E874",
+    "name": "Tricep Extension",
+    "muscle": "triceps",
+    "equipment": "cable"
+  },
+  {
+    "id": "7E48B095-79C0-50E8-8BEE-E6AE64B32D92",
+    "name": "Tricep Extension",
+    "muscle": "triceps",
+    "equipment": "machine"
+  },
+  {
+    "id": "0AB60260-B4DE-5DF7-9BD1-54D304A77E05",
+    "name": "French Press",
+    "muscle": "triceps",
+    "equipment": "dumbbell"
+  },
+  {
+    "id": "4ECA846C-5954-5D03-872E-820B50AA98A0",
+    "name": "Bicep Curl",
+    "muscle": "biceps",
+    "equipment": "dumbbell"
+  },
+  {
+    "id": "177F85EE-3098-54D8-B8C8-894F2A3164E7",
+    "name": "Bicep Curl",
+    "muscle": "biceps",
+    "equipment": "barbell"
+  },
+  {
+    "id": "C655C34B-284B-51E3-9A94-BD7F04CFBCD3",
+    "name": "Bicep Curl",
+    "muscle": "biceps",
+    "equipment": "cable"
+  },
+  {
+    "id": "0D006D06-5288-5D54-BCCC-2E634EBC4F0D",
+    "name": "Incline Bicep Curl",
+    "muscle": "biceps",
+    "equipment": "dumbbell"
+  },
+  {
+    "id": "69FA63CF-48A9-5C01-9A72-A6D1A591516F",
+    "name": "Hammer Bicep Curl",
+    "muscle": "biceps",
+    "equipment": "dumbbell"
+  },
+  {
+    "id": "78E45180-EA15-5411-A038-4034B9885C31",
+    "name": "Hammer Bicep Curl",
+    "muscle": "biceps",
+    "equipment": "cable"
+  },
+  {
+    "id": "96793EB3-ABC4-5D7B-8C89-7A058316F9AC",
+    "name": "Preacher Curl",
+    "muscle": "biceps",
+    "equipment": "barbell"
+  },
+  {
+    "id": "791778E5-53EE-581D-9B50-FE6A5EE40739",
+    "name": "Preacher Curl",
+    "muscle": "biceps",
+    "equipment": "dumbbell"
+  },
+  {
+    "id": "A1E2B5B6-48E1-50DA-A37B-2DD7068FE8A8",
+    "name": "Preacher Curl",
+    "muscle": "biceps",
+    "equipment": "machine"
+  },
+  {
+    "id": "F2B45B5E-91A2-5416-A052-664A098ED805",
+    "name": "Concentration Curl",
+    "muscle": "biceps",
+    "equipment": "dumbbell"
+  },
+  {
+    "id": "7B62DB98-CF67-5BD2-BE86-35D22CFBE500",
+    "name": "Lateral Raise",
+    "muscle": "shoulders",
+    "equipment": "dumbbell"
+  },
+  {
+    "id": "3E785621-226C-5994-A3CA-EFA700CC98B5",
+    "name": "Lateral Raise",
+    "muscle": "shoulders",
+    "equipment": "cable"
+  },
+  {
+    "id": "B123C159-73BA-505E-B200-ACCCDFC00034",
+    "name": "Lateral Raise",
+    "muscle": "shoulders",
+    "equipment": "machine"
+  },
+  {
+    "id": "0B8274FB-D704-529B-943B-9272EF80E5E0",
+    "name": "Shoulder Press",
+    "muscle": "shoulders",
+    "equipment": "dumbbell"
+  },
+  {
+    "id": "94A83730-06F1-5514-91C6-3B452D2181EA",
+    "name": "Shoulder Press",
+    "muscle": "shoulders",
+    "equipment": "barbell"
+  },
+  {
+    "id": "8EF36700-C31D-564E-B0BF-D09E1E193B47",
+    "name": "Shoulder Press",
+    "muscle": "shoulders",
+    "equipment": "machine"
+  },
+  {
+    "id": "A0A34D39-2824-5EDB-9D0C-31F644ECACE8",
+    "name": "Face Pulls",
+    "muscle": "shoulders",
+    "equipment": "cable"
+  },
+  {
+    "id": "26193B29-739A-54B1-B7EA-F93D6214CD4E",
+    "name": "Rear Delt Fly",
+    "muscle": "shoulders",
+    "equipment": "machine"
+  },
+  {
+    "id": "B80B7941-8AE7-55C3-97DE-30DA8F79B532",
+    "name": "Rear Delt Fly",
+    "muscle": "shoulders",
+    "equipment": "dumbbell"
+  },
+  {
+    "id": "42C8862D-09FA-5AE2-A52E-8BAE6D8366CB",
+    "name": "Rear Delt Fly",
+    "muscle": "shoulders",
+    "equipment": "cable"
+  },
+  {
+    "id": "43AA6D00-62F0-5820-BA8A-A9E27BE8BEF3",
+    "name": "Lat Pulldown",
+    "muscle": "back",
+    "equipment": "cable"
+  },
+  {
+    "id": "93FEFEA0-E4A6-5DBF-B535-4DC23FDC347F",
+    "name": "Lat Pullover",
+    "muscle": "back",
+    "equipment": "cable"
+  },
+  {
+    "id": "0B868141-5E30-5F75-8960-FB9EE77624E5",
+    "name": "Bent Over Row",
+    "muscle": "back",
+    "equipment": "barbell"
+  },
+  {
+    "id": "CC16911E-AA33-5E72-90CB-7B40149580E8",
+    "name": "Pull Up",
+    "muscle": "back",
+    "equipment": "bodyweight"
+  },
+  {
+    "id": "B66747B3-467E-53A3-A7DE-678E3B2A96D8",
+    "name": "Row",
+    "muscle": "back",
+    "equipment": "machine"
+  },
+  {
+    "id": "7C2DCD45-0587-5CFD-BB25-1ADCE47BC94A",
+    "name": "Row",
+    "muscle": "back",
+    "equipment": "cable"
+  },
+  {
+    "id": "C7E0915F-031E-59A0-90ED-F5DDA13D0DD9",
+    "name": "Row",
+    "muscle": "back",
+    "equipment": "dumbbell"
+  },
+  {
+    "id": "E0986C52-3431-56AF-B6FD-83A926CDB35C",
+    "name": "Deadlift",
+    "muscle": "back",
+    "equipment": "barbell"
+  },
+  {
+    "id": "FE7D6731-8669-54ED-85F8-E5E1EF6D09B2",
+    "name": "Squat",
+    "muscle": "legs",
+    "equipment": "barbell"
+  },
+  {
+    "id": "C69FB036-5B98-5484-AC8F-FC4B86022E2B",
+    "name": "Hack Squat",
+    "muscle": "legs",
+    "equipment": "machine"
+  },
+  {
+    "id": "F9FB2DDD-24F6-5E76-9FD4-07784E06D375",
+    "name": "Bulgarian Split Squat",
+    "muscle": "legs",
+    "equipment": "dumbbell"
+  },
+  {
+    "id": "6164B819-D4E3-55D9-8EA5-75BFE755D399",
+    "name": "Bulgarian Split Squat",
+    "muscle": "legs",
+    "equipment": "barbell"
+  },
+  {
+    "id": "779CD684-F278-59BB-852A-7C72E0DF0DF0",
+    "name": "Leg Extension",
+    "muscle": "legs",
+    "equipment": "machine"
+  },
+  {
+    "id": "876B4D0A-3703-5D89-9624-9F3BC3BDD869",
+    "name": "Leg Curl",
+    "muscle": "legs",
+    "equipment": "machine"
+  },
+  {
+    "id": "408B769B-2B56-58B5-9A7C-D90A49ED16C2",
+    "name": "Hip Thrust",
+    "muscle": "legs",
+    "equipment": "barbell"
+  },
+  {
+    "id": "C0479CEA-1A7E-5BE5-BC7E-0A14D40973E9",
+    "name": "Hip Thrust",
+    "muscle": "legs",
+    "equipment": "machine"
+  },
+  {
+    "id": "CDE2203F-3ACC-566E-B553-E76CAE5D4D84",
+    "name": "Sumo Deadlift",
+    "muscle": "legs",
+    "equipment": "barbell"
+  },
+  {
+    "id": "2A68D069-2D51-51AA-9AA4-C5567D03B6B7",
+    "name": "Romanian Deadlift",
+    "muscle": "legs",
+    "equipment": "barbell"
+  },
+  {
+    "id": "968948AD-8F04-5337-ACDE-1D1E5B76ED8E",
+    "name": "Romanian Deadlift",
+    "muscle": "legs",
+    "equipment": "dumbbell"
+  },
+  {
+    "id": "398203A4-9E6B-53C8-B9B6-202CBF365926",
+    "name": "Romanian Deadlift",
+    "muscle": "legs",
+    "equipment": "machine"
+  },
+  {
+    "id": "983BA571-6A66-5AF8-8D25-039BE8C4E7A9",
+    "name": "Standing Calf Raises",
+    "muscle": "legs",
+    "equipment": "barbell"
+  },
+  {
+    "id": "BF0D0261-D02B-5CA6-8D17-6C462A804E41",
+    "name": "Standing Calf Raises",
+    "muscle": "legs",
+    "equipment": "machine"
+  },
+  {
+    "id": "FF98838F-E380-5A8E-B2E7-8E293CA88638",
+    "name": "Standing Calf Raises",
+    "muscle": "legs",
+    "equipment": "dumbbell"
+  },
+  {
+    "id": "1C41568B-983E-5D82-B6FD-521D2747B6FE",
+    "name": "Seated Calf Raises",
+    "muscle": "legs",
+    "equipment": "machine"
+  },
+  {
+    "id": "B6C546D9-88DE-583F-B62E-782CD4DCD84A",
+    "name": "Kickbacks",
+    "muscle": "legs",
+    "equipment": "machine"
+  },
+  {
+    "id": "90959E00-A318-5318-80B0-C947A5D40BAF",
+    "name": "Kickbacks",
+    "muscle": "legs",
+    "equipment": "cable"
+  }
+]

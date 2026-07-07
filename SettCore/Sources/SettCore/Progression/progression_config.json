@@ -1,0 +1,109 @@
+{
+  "version": 1,
+  "effectiveSet": {
+    "minReps": 1,
+    "maxReps": 30,
+    "minFractionOfBestE1RM": 0.4,
+    "maxSetsPerExercisePerWorkout": 6,
+    "maxSetsPerWorkout": 30
+  },
+  "qualifyingWorkout": {
+    "minEffectiveSets": 3,
+    "minDurationMinutes": 10
+  },
+  "e1rm": {
+    "repCap": 12,
+    "divisor": 30
+  },
+  "prVerification": {
+    "provisionalAboveFraction": 0.15,
+    "verifyWithinFraction": 0.10
+  },
+  "powerLevel": {
+    "strengthWindowDays": 90,
+    "volumeWindowDays": 28,
+    "strengthWeight": 4.0,
+    "volumeWeight": 8.0,
+    "consistencyPerWeek": 0.05,
+    "consistencyMaxWeeks": 10,
+    "streakMinDaysPerWeek": 2
+  },
+  "xp": {
+    "workoutBase": 50,
+    "perEffectiveSet": 2,
+    "perEffectiveSetCap": 60,
+    "positiveNetBonus": 25,
+    "perVerifiedPR": 10,
+    "verifiedPRCapPerWorkout": 3,
+    "secondWorkoutSameDayFraction": 0.25,
+    "thirdWorkoutSameDayFraction": 0.0,
+    "maxXPDaysPerRolling7": 6,
+    "dailyWorkoutXPCap": 300,
+    "levelCurveBase": 100.0,
+    "levelCurveExponent": 1.8,
+    "maxLevel": 40,
+    "badgeXP": { "bronze": 100, "silver": 250, "gold": 600, "legendary": 1500 },
+    "goalCompletionXP": { "frequency_week": 40, "frequency_finish": 100, "pr_target": 150, "volume_target": 100 },
+    "goalTorrenEcho": 25,
+    "drip": {
+      "nyraPerStreakWeek": 30,
+      "barokPer1000LbTonnage": 1,
+      "barokPerWorkoutCap": 30,
+      "torrenPerOnPlanWorkout": 15,
+      "ziaPerSleepNight": 2,
+      "ziaSleepWeeklyCap": 14,
+      "gosiPerNewExercise": 10,
+      "zynPerOffHoursWorkout": 10,
+      "zynPerComeback": 50
+    }
+  },
+  "tiers": {
+    "vego":   { "kindled": { "level": 5, "keystone": "new_ceiling" },  "ascendant": { "level": 12, "keystone": "limit_break" },   "radiant": { "level": 20, "keystone": "triple_threat" },   "zenith": { "level": 30, "keystone": "scanner_breaker" } },
+    "gosi":   { "kindled": { "level": 3 }, "ascendant": { "level": 5, "keystone": "full_arsenal" },    "radiant": { "level": 15, "keystone": "explorer" },        "zenith": { "level": 25, "keystone": "dawn_patrol" } },
+    "barok":  { "kindled": { "level": 3 }, "ascendant": { "level": 5, "keystone": "twenty_ton_day" },  "radiant": { "level": 15, "keystone": "million_pound_club" }, "zenith": { "level": 25, "keystone": "ten_million" } },
+    "nyra":   { "kindled": { "level": 3 }, "ascendant": { "level": 5, "keystone": "chamber_regular" }, "radiant": { "level": 15, "keystone": "chamber_resident" }, "zenith": { "level": 25, "keystone": "unbroken_year" } },
+    "torren": { "kindled": { "level": 3 }, "ascendant": { "level": 5, "keystone": "by_the_book" },     "radiant": { "level": 15, "keystone": "planners_pride" },  "zenith": { "level": 25, "keystone": "serial_achiever" } },
+    "zia":    { "kindled": { "level": 3 }, "ascendant": { "level": 5, "keystone": "well_rested" },     "radiant": { "level": 15, "keystone": "recovery_protocol" }, "zenith": { "level": 25, "keystone": "lab_partner" } },
+    "zyn":    { "kindled": { "level": 3 }, "ascendant": { "level": 5, "domainBadgeCount": 1 },         "radiant": { "level": 15, "domainBadgeCount": 3 },         "zenith": { "level": 25, "domainBadgeCount": 5 } }
+  },
+  "badges": {
+    "new_ceiling":        { "name": "New Ceiling",        "rarity": "bronze",    "character": "vego",   "threshold": 1 },
+    "limit_break":        { "name": "Limit Break",        "rarity": "silver",    "character": "vego",   "threshold": 10 },
+    "walking_legend":     { "name": "Walking Legend",     "rarity": "gold",      "character": "vego",   "threshold": 50 },
+    "triple_threat":      { "name": "Triple Threat",      "rarity": "silver",    "character": "vego",   "threshold": 3 },
+    "perfect_form":       { "name": "Perfect Form",       "rarity": "gold",      "character": "vego",   "threshold": 4 },
+    "scanner_breaker":    { "name": "Scanner-Breaker",    "rarity": "legendary", "character": "vego",   "threshold": 9000 },
+    "twenty_ton_day":     { "name": "Twenty-Ton Day",     "rarity": "silver",    "character": "barok",  "thresholdLb": 20000 },
+    "hundred_grand":      { "name": "Hundred Grand",      "rarity": "bronze",    "character": "barok",  "thresholdLb": 100000 },
+    "million_pound_club": { "name": "Million-Pound Club", "rarity": "gold",      "character": "barok",  "thresholdLb": 1000000 },
+    "ten_million":        { "name": "Ten-Million Club",   "rarity": "legendary", "character": "barok",  "thresholdLb": 10000000 },
+    "ignition":           { "name": "Ignition",           "rarity": "bronze",    "character": "nyra",   "threshold": 1 },
+    "steady_flame":       { "name": "Steady Flame",       "rarity": "bronze",    "character": "nyra",   "weeks": 4, "daysPerWeek": 2 },
+    "chamber_regular":    { "name": "Chamber Regular",    "rarity": "silver",    "character": "nyra",   "weeks": 4, "daysPerWeek": 3 },
+    "chamber_resident":   { "name": "Chamber Resident",   "rarity": "gold",      "character": "nyra",   "weeks": 12, "daysPerWeek": 3 },
+    "unbroken_year":      { "name": "Unbroken Year",      "rarity": "legendary", "character": "nyra",   "weeks": 52, "daysPerWeek": 1 },
+    "goal_getter":        { "name": "Goal Getter",        "rarity": "bronze",    "character": "torren", "threshold": 1 },
+    "marksman":           { "name": "Marksman",           "rarity": "silver",    "character": "torren", "threshold": 1 },
+    "serial_achiever":    { "name": "Serial Achiever",    "rarity": "gold",      "character": "torren", "threshold": 10 },
+    "by_the_book":        { "name": "By the Book",        "rarity": "bronze",    "character": "torren", "threshold": 12 },
+    "planners_pride":     { "name": "Planner's Pride",    "rarity": "gold",      "character": "torren", "weeks": 4 },
+    "lab_partner":        { "name": "Lab Partner",        "rarity": "bronze",    "character": "zia",    "threshold": 7 },
+    "well_rested":        { "name": "Well Rested",        "rarity": "silver",    "character": "zia",    "threshold": 5, "sleepScore": 80, "windowDays": 30 },
+    "recovery_protocol":  { "name": "Recovery Protocol",  "rarity": "gold",      "character": "zia",    "sleepHours": 7, "daysPerWeek": 3 },
+    "explorer":           { "name": "Explorer",           "rarity": "bronze",    "character": "gosi",   "threshold": 20 },
+    "full_arsenal":       { "name": "Full Arsenal",       "rarity": "silver",    "character": "gosi",   "windowDays": 7 },
+    "momentum":           { "name": "Momentum",           "rarity": "silver",    "character": "zyn",    "threshold": 5 },
+    "dawn_patrol":        { "name": "Dawn Patrol",        "rarity": "silver",    "character": "gosi",   "threshold": 10, "beforeHour": 7 },
+    "midnight_oil":       { "name": "Midnight Oil",       "rarity": "silver",    "character": "zyn",    "threshold": 10, "afterHour": 21 },
+    "return_to_form":     { "name": "Return to Form",     "rarity": "silver",    "character": "zyn",    "gapDays": 21, "workouts": 3, "windowDays": 14 },
+    "reforged":           { "name": "Reforged",           "rarity": "gold",      "character": "zyn",    "gapDays": 21, "windowDays": 60 }
+  },
+  "rival": {
+    "key": "vexeth",
+    "name": "Emperor Vexeth, the Crimson Star",
+    "forms": 3,
+    "startPL": 3000,
+    "weeklyGrowth": 350,
+    "formRevealLeadPL": 500
+  }
+}
