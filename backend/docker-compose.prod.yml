@@ -1,0 +1,46 @@
+# sett production stack — prebuilt images only, mirrors the Nett pattern.
+# Nett's nginx (on the shared external `edge` network) owns 80/443 and
+# proxies sett.<domain> -> sett-api:8000.
+services:
+  sett-api:
+    image: ghcr.io/borjainglefernandez/sett-api:latest
+    env_file: .env
+    depends_on: [sett-db]
+    networks: [default, edge]
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  sett-worker: # same image, scheduler entrypoint
+    image: ghcr.io/borjainglefernandez/sett-api:latest
+    command: python -m app.worker
+    env_file: .env
+    depends_on: [sett-db]
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  sett-db:
+    image: postgres:16-alpine
+    env_file: .env
+    volumes:
+      - sett_pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  sett_pgdata:
+
+networks:
+  edge:
+    external: true # shared with Nett's nginx

@@ -308,5 +308,7 @@ class GymLog(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("users.id"), nullable=False, index=True)
     workout_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
     logged_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
+    rating: Mapped[float | None] = mapped_column(Float)  # 0.0–5.0 half stars
+    day_pass_price: Mapped[float | None] = mapped_column(Float)  # user-currency day-pass paid
     note: Mapped[str | None] = mapped_column(String)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
