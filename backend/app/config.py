@@ -48,7 +48,7 @@ def get_settings() -> Settings:
 
     return Settings(
         database_url=env("DATABASE_URL", "sqlite+aiosqlite:///./sett_dev.db"),
-        jwt_secret=env("JWT_SECRET", "dev-secret-do-not-use-in-prod"),
+        jwt_secret=env("JWT_SECRET", "dev-secret-do-not-use-in-prod-padding"),
         apple_bundle_id=env("APPLE_BUNDLE_ID", "com.borja.sett"),
         apple_issuer="https://appleid.apple.com",
         apple_jwks_url="https://appleid.apple.com/auth/keys",
