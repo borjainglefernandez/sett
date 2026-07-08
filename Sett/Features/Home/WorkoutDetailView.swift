@@ -43,14 +43,16 @@ struct WorkoutDetailView: View {
                 stat(WorkoutFormat.duration(workout.durationSeconds), caption: "duration")
                 if let rating = workout.ratingHalfStars, rating > 0 {
                     VStack(alignment: .leading, spacing: 4) {
-                        StarRatingRow(halfStars: rating, starSize: 13)
+                        ratingStars(halfStars: rating)
                         Text("rating")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
                 }
                 if let bodyweight = workout.bodyweightGrams {
-                    stat(services.settings.displayWeight(bodyweight), caption: "bodyweight")
+                    stat(WeightFormat.compactWithUnit(grams: bodyweight,
+                                                      unit: services.settings.unit),
+                         caption: "bodyweight")
                 }
             }
             if let gym = workout.gymNameSnapshot {
@@ -74,6 +76,30 @@ struct WorkoutDetailView: View {
         }
     }
 
+    /// Cyan, not gold: the rating is user-entered metadata (an input), matching
+    /// the summary screen's cyan star control — gold stays reserved for rewards.
+    private func ratingStars(halfStars: Int) -> some View {
+        HStack(spacing: 1) {
+            ForEach(1...5, id: \.self) { star in
+                Image(systemName: starSymbol(halfStars: halfStars, star: star))
+            }
+        }
+        .font(.system(size: 13))
+        .foregroundStyle(SettColor.heroCyan)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Rated \(String(format: "%.1f", Double(halfStars) / 2)) stars")
+    }
+
+    private func starSymbol(halfStars: Int, star: Int) -> String {
+        if halfStars >= star * 2 {
+            "star.fill"
+        } else if halfStars == star * 2 - 1 {
+            "star.leadinghalf.filled"
+        } else {
+            "star"
+        }
+    }
+
     // MARK: Exercises
 
     private func exerciseCard(_ workoutExercise: WorkoutExercise) -> some View {
@@ -88,7 +114,7 @@ struct WorkoutDetailView: View {
                             .monospacedDigit()
                             .foregroundStyle(.tertiary)
                             .frame(width: 20, alignment: .leading)
-                        Text("\(services.settings.displayWeight(set.weightGrams)) × \(set.reps)")
+                        Text("\(WeightFormat.compactWithUnit(grams: set.weightGrams, unit: services.settings.unit)) × \(set.reps)")
                             .font(.subheadline)
                             .monospacedDigit()
                         if set.isWarmup {

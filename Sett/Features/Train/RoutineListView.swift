@@ -23,6 +23,9 @@ struct RoutineListView: View {
                 List {
                     ForEach(routines) { routine in
                         row(routine)
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
+                            .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
                             .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                                 Button(role: .destructive) {
                                     softDelete(routine)
@@ -32,7 +35,8 @@ struct RoutineListView: View {
                             }
                     }
                 }
-                .listStyle(.insetGrouped)
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
             }
         }
         .toolbar {
@@ -47,25 +51,37 @@ struct RoutineListView: View {
         }
     }
 
-    // MARK: Row
+    // MARK: Row (an etched slab; hidden NavigationLink keeps the stock chevron
+    // off the card while swipe actions and push navigation keep working)
 
     private func row(_ routine: Routine) -> some View {
-        NavigationLink {
-            RoutineEditorView(routine: routine)
-        } label: {
+        ZStack {
+            NavigationLink {
+                RoutineEditorView(routine: routine)
+            } label: {
+                EmptyView()
+            }
+            .opacity(0)
+            .accessibilityLabel(routine.name)
+            .accessibilityHint("Edits the routine")
+
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(routine.name)
                         .font(.headline)
+                        .foregroundStyle(SettColor.bone)
                     dayChips(mask: routine.daysOfWeekMask)
                     Text(exerciseCountText(routine))
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(SettColor.ash)
                 }
                 Spacer()
                 playButton(routine)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(SettColor.iron)
             }
-            .padding(.vertical, 4)
+            .settCard()
         }
     }
 

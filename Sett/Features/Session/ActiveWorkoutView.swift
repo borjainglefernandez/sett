@@ -103,6 +103,19 @@ struct ActiveWorkoutView: View {
                 }
                 .buttonStyle(.bordered)
                 .buttonBorderShape(.capsule)
+                if workout.orderedExercises.isEmpty {
+                    // Quiet hint for the stark empty chamber — ash, not cyan:
+                    // it's ambience, not a call to action.
+                    VStack(spacing: 8) {
+                        SettSigil(size: 28, color: SettColor.ash)
+                        Text("The Scanner is waiting.")
+                            .font(.footnote.monospaced())
+                            .foregroundStyle(SettColor.ash)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 40)
+                    .accessibilityElement(children: .combine)
+                }
             }
             .padding(16)
         }

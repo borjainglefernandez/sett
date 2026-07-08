@@ -79,12 +79,17 @@ struct ExercisePickerSheet: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
+                // Visual affordance only — the entire row is the button.
                 Image(systemName: "plus.circle.fill")
                     .foregroundStyle(SettColor.heroCyan)
+                    .accessibilityHidden(true)
             }
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .frame(minHeight: 44)
+        // .borderless (not .plain): in a List, borderless buttons get the full-row
+        // tap target; .plain restricted hit-testing to the label and left most of
+        // the row dead — only the trailing + reliably registered.
+        .buttonStyle(.borderless)
     }
 }

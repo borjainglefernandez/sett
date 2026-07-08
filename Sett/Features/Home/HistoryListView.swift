@@ -127,7 +127,8 @@ struct HistoryListView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     if let rating = workout.ratingHalfStars, rating > 0 {
-                        StarRatingRow(halfStars: rating)
+                        // Gold audit: a rating is effort, not power/reward — ki cyan.
+                        CyanStarRatingRow(halfStars: rating)
                     }
                 }
                 Spacer()
@@ -206,5 +207,36 @@ struct HistoryListView: View {
         try? modelContext.save()
         refreshSamples()
         Haptics.rigid()
+    }
+}
+
+// MARK: - Ki-cyan half-star display (gold audit: gold stays the power level's)
+
+/// Same geometry as `StarRatingRow` (WorkoutFormat.swift) but in hero cyan —
+/// history ratings are energy spent, not a reward, so they don't wear gold.
+private struct CyanStarRatingRow: View {
+    let halfStars: Int
+    var starSize: CGFloat = 9
+
+    var body: some View {
+        HStack(spacing: 1) {
+            ForEach(1...5, id: \.self) { star in
+                Image(systemName: symbol(star))
+            }
+        }
+        .font(.system(size: starSize))
+        .foregroundStyle(SettColor.heroCyan)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Rated \(String(format: "%.1f", Double(halfStars) / 2)) stars")
+    }
+
+    private func symbol(_ star: Int) -> String {
+        if halfStars >= star * 2 {
+            "star.fill"
+        } else if halfStars == star * 2 - 1 {
+            "star.leadinghalf.filled"
+        } else {
+            "star"
+        }
     }
 }

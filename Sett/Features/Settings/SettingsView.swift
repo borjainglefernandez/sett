@@ -4,6 +4,8 @@ import SettCore
 
 /// Sheet from the Home gear (design-ux §2): units, weight increment, default
 /// rest, integrations, invite a friend, about. Account rows arrive with sync.
+/// Native controls (segmented, steppers, share) re-housed in the Dark Chamber:
+/// dungeon backdrop, mono ash section headers, rows on the card slab.
 struct SettingsView: View {
     @Environment(AppServices.self) private var services
     @Environment(\.modelContext) private var modelContext
@@ -16,7 +18,7 @@ struct SettingsView: View {
         @Bindable var settings = services.settings
         NavigationStack {
             Form {
-                Section("Units") {
+                Section {
                     Picker("Weight unit", selection: $settings.unit) {
                         Text("lb").tag(WeightUnit.lb)
                         Text("kg").tag(WeightUnit.kg)
@@ -30,38 +32,62 @@ struct SettingsView: View {
                     Stepper(value: $settings.defaultRestSeconds, in: 30...300, step: 15) {
                         LabeledContent("Default rest", value: restText)
                     }
+                } header: {
+                    sectionHeader("UNITS")
                 }
+                .listRowBackground(SettColor.card)
+                .listRowSeparatorTint(SettColor.cardBorder)
 
-                Section("Integrations") {
+                Section {
                     LabeledContent {
                         Text("coming with sync")
                             .font(.footnote)
                     } label: {
                         Label("Connect Oura", systemImage: "bed.double.fill")
                     }
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(SettColor.ash)
+                } header: {
+                    sectionHeader("INTEGRATIONS")
                 }
+                .listRowBackground(SettColor.card)
+                .listRowSeparatorTint(SettColor.cardBorder)
 
-                Section("Friends") {
+                Section {
                     ShareLink(item: inviteMessage) {
                         Label("Invite a Friend", systemImage: "person.badge.plus")
                     }
+                } header: {
+                    sectionHeader("FRIENDS")
                 }
+                .listRowBackground(SettColor.card)
+                .listRowSeparatorTint(SettColor.cardBorder)
 
                 #if DEBUG
-                Section("Debug") {
+                Section {
                     Button("Seed demo data") {
                         DemoData.seedIfRequested(context: modelContext)
                         services.progression.recompute(context: modelContext)
                         Haptics.success()
                     }
+                } header: {
+                    sectionHeader("DEBUG")
                 }
+                .listRowBackground(SettColor.card)
+                .listRowSeparatorTint(SettColor.cardBorder)
                 #endif
 
-                Section("About") {
+                Section {
                     LabeledContent("Version", value: versionText)
+                        .foregroundStyle(SettColor.bone)
+                } header: {
+                    sectionHeader("ABOUT")
                 }
+                .listRowBackground(SettColor.card)
+                .listRowSeparatorTint(SettColor.cardBorder)
             }
+            .scrollContentBackground(.hidden)
+            .dungeonBackground()
+            .tint(SettColor.heroCyan)
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -75,6 +101,14 @@ struct SettingsView: View {
                 Haptics.selection()
             }
         }
+    }
+
+    /// The mono small-caps ash convention (NET THIS WEEK, THIS WEEK, …).
+    private func sectionHeader(_ title: String) -> some View {
+        Text(title)
+            .font(.system(size: 11, weight: .bold, design: .monospaced))
+            .kerning(1.5)
+            .foregroundStyle(SettColor.ash)
     }
 
     /// The standard steps, plus the current value if it isn't one of them

@@ -67,7 +67,7 @@ struct HomeTabView: View {
                     recentSection
                 }
                 .padding(.horizontal, 16)
-                .padding(.bottom, 24)
+                .padding(.bottom, 72) // last Recent row must clear the floating tab bar
             }
             .dungeonBackground()
             .navigationTitle("Home")

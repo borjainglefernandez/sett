@@ -9,9 +9,16 @@ struct InsightDetailView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                Label(kindTitle, systemImage: "sparkles")
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(SettColor.saiyanGold)
+                // Gold audit: insights are ki, not the power level — bone title,
+                // cyan sparkles (matches Home's teaser card).
+                Label {
+                    Text(kindTitle)
+                        .foregroundStyle(SettColor.bone)
+                } icon: {
+                    Image(systemName: "sparkles")
+                        .foregroundStyle(SettColor.heroCyan)
+                }
+                .font(.title3.weight(.semibold))
                 Text(dateText)
                     .font(.footnote)
                     .foregroundStyle(.secondary)

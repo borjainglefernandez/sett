@@ -151,7 +151,7 @@ struct ExerciseCard: View {
                     .font(.footnote)
                     .monospacedDigit()
                     .foregroundStyle(.secondary)
-                Text("\(services.settings.displayWeight(set.weightGrams)) × \(set.reps)")
+                Text("\(WeightFormat.compactWithUnit(grams: set.weightGrams, unit: services.settings.unit)) × \(set.reps)")
                     .font(.subheadline.weight(.medium))
                     .monospacedDigit()
                     .foregroundStyle(chipNumeralColor(set: set, reference: reference))
@@ -209,12 +209,8 @@ struct ExerciseCard: View {
         let unit = services.settings.unit
         let weightDelta = set.weightGrams - reference.weightGrams
         if weightDelta != 0 {
-            let value = Units.displayValue(grams: abs(weightDelta), unit: unit)
-            let formatted = value.truncatingRemainder(dividingBy: 1) == 0
-                ? String(format: "%.0f", value)
-                : String(format: "%.2f", value)
             let sign = weightDelta > 0 ? "+" : "−"
-            return NetChip(text: "\(sign)\(formatted) \(unit.symbol)",
+            return NetChip(text: "\(sign)\(WeightFormat.compactWithUnit(grams: abs(weightDelta), unit: unit))",
                            color: weightDelta > 0 ? SettColor.positive : SettColor.negative)
         }
         let repsDelta = set.reps - reference.reps

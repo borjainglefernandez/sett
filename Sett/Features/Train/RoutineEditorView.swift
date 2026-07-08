@@ -401,6 +401,10 @@ private struct PlannedSetEditorRow: View {
 
     @Environment(AppServices.self) private var services
 
+    /// Weight the stepper held before "Auto weight" was switched on, so toggling
+    /// auto on and back off round-trips to the same value.
+    @State private var lastExplicitWeightGrams: Int?
+
     var body: some View {
         VStack(spacing: 8) {
             HStack {
@@ -434,9 +438,11 @@ private struct PlannedSetEditorRow: View {
                     .font(.subheadline)
             }
             .tint(SettColor.heroCyan)
+            // Auto on ⇒ no weight stepper at all: the weight comes from last
+            // time's set at session autofill, so showing a stepper would lie.
             if let grams = set.targetWeightGrams {
                 Stepper {
-                    Text(services.settings.displayWeight(grams))
+                    Text(WeightFormat.compactWithUnit(grams: grams, unit: services.settings.unit))
                         .font(.subheadline)
                         .monospacedDigit()
                 } onIncrement: {
@@ -453,11 +459,21 @@ private struct PlannedSetEditorRow: View {
     }
 
     /// On ⇒ targetWeightGrams == nil ("use last time's weight" at session autofill).
+    /// Off ⇒ restore the value from before auto was switched on, else the nearest
+    /// explicit weight in this exercise, else a 82.5 lb starting point — never 0.
     private var autoWeightBinding: Binding<Bool> {
         Binding(
             get: { set.targetWeightGrams == nil },
             set: { isAuto in
-                set.targetWeightGrams = isAuto ? nil : suggestedWeightGrams
+                if isAuto {
+                    lastExplicitWeightGrams = set.targetWeightGrams
+                    set.targetWeightGrams = nil
+                } else {
+                    let restored = lastExplicitWeightGrams ?? suggestedWeightGrams
+                    set.targetWeightGrams = restored > 0
+                        ? restored
+                        : Units.grams(fromDisplay: 82.5, unit: .lb)
+                }
                 Haptics.selection()
             }
         )

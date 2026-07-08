@@ -46,7 +46,9 @@ struct ExerciseDetailView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                machineSetupCard
+                if showsMachineSetupCard {
+                    machineSetupCard
+                }
                 if samples.isEmpty {
                     neverTrainedCard
                 } else {
@@ -64,6 +66,9 @@ struct ExerciseDetailView: View {
         .dungeonBackground()
         .navigationTitle(exercise.name)
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $isEditingSetup) {
+            MachineSetupSheet(exercise: exercise)
+        }
         .onAppear(perform: loadIfNeeded)
     }
 
@@ -116,13 +121,17 @@ struct ExerciseDetailView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .settCard()
-        .sheet(isPresented: $isEditingSetup) {
-            MachineSetupSheet(exercise: exercise)
-        }
     }
 
     private var hasSetup: Bool {
         exercise.instructions?.isEmpty == false
+    }
+
+    /// Free weights and bodyweight have nothing to dial in, so the empty card
+    /// hides for them (mirrors the session ExerciseCard rule). A saved setup
+    /// always shows, whatever the equipment.
+    private var showsMachineSetupCard: Bool {
+        hasSetup || exercise.equipment == .machine || exercise.equipment == .cable
     }
 
     // MARK: PR card (gold — earned)

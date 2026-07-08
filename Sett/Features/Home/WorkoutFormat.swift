@@ -20,11 +20,13 @@ extension Workout {
     }
 }
 
-// MARK: - Compact gold half-star display (0…10 half stars over 5 stars)
+// MARK: - Compact half-star display (0…10 half stars over 5 stars)
+// Rating is input/metadata, not a reward — cyan by default (gold is PL-only).
 
 struct StarRatingRow: View {
     let halfStars: Int
     var starSize: CGFloat = 9
+    var color: Color = SettColor.heroCyan
 
     var body: some View {
         HStack(spacing: 1) {
@@ -33,7 +35,7 @@ struct StarRatingRow: View {
             }
         }
         .font(.system(size: starSize))
-        .foregroundStyle(SettColor.saiyanGold)
+        .foregroundStyle(color)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Rated \(String(format: "%.1f", Double(halfStars) / 2)) stars")
     }

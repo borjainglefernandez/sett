@@ -2,7 +2,8 @@ import SwiftUI
 import SwiftData
 import SettCore
 
-/// The exercise catalog: search, muscle filter chips, equipment filter menu.
+/// The exercise catalog: search, muscle filter chips, and an equipment filter
+/// menu in the nav bar (kept off the chip scroller so the two never collide).
 /// Rows show the equipment icon and, when the exercise has history, its latest
 /// session-best e1RM as a gold power numeral. Tap → ExerciseDetailView.
 struct ExerciseLibraryView: View {
@@ -34,11 +35,15 @@ struct ExerciseLibraryView: View {
                 .padding(.vertical, 8)
             List {
                 ForEach(orderedMuscles, id: \.self) { muscle in
-                    Section(muscle.rawValue.capitalized) {
+                    Section {
                         ForEach(grouped[muscle] ?? []) { exercise in
                             row(exercise)
                         }
+                    } header: {
+                        sectionHeader(muscle.rawValue.uppercased())
                     }
+                    .listRowBackground(SettColor.card)
+                    .listRowSeparatorTint(SettColor.cardBorder)
                 }
                 Section {
                     Button {
@@ -49,8 +54,11 @@ struct ExerciseLibraryView: View {
                             .foregroundStyle(SettColor.heroCyan)
                     }
                 }
+                .listRowBackground(SettColor.card)
+                .listRowSeparatorTint(SettColor.cardBorder)
             }
             .listStyle(.insetGrouped)
+            .scrollContentBackground(.hidden)
             .overlay {
                 if filtered.isEmpty {
                     if searchText.isEmpty {
@@ -64,28 +72,37 @@ struct ExerciseLibraryView: View {
             }
         }
         .searchable(text: $searchText, prompt: "Search exercises")
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                equipmentMenu
+            }
+        }
         .sheet(isPresented: $isShowingCreateForm) {
             CreateExerciseSheet(initialName: prefillName)
         }
         .onAppear(perform: loadSamplesIfNeeded)
     }
 
-    // MARK: Filter bar (muscle chips + equipment menu)
+    // MARK: Filter bar (muscle chips; the equipment menu lives in the nav bar)
 
     private var filterBar: some View {
-        HStack(spacing: 8) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    muscleChip(nil, label: "All")
-                    ForEach(Muscle.allCases, id: \.self) { muscle in
-                        muscleChip(muscle, label: muscle.rawValue.capitalized)
-                    }
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                muscleChip(nil, label: "All")
+                ForEach(Muscle.allCases, id: \.self) { muscle in
+                    muscleChip(muscle, label: muscle.rawValue.capitalized)
                 }
-                .padding(.horizontal, 16)
             }
-            equipmentMenu
-                .padding(.trailing, 16)
+            .padding(.horizontal, 16)
         }
+    }
+
+    /// The mono small-caps ash convention (NET THIS WEEK, THIS WEEK, …).
+    private func sectionHeader(_ title: String) -> some View {
+        Text(title)
+            .font(.system(size: 11, weight: .bold, design: .monospaced))
+            .kerning(1.5)
+            .foregroundStyle(SettColor.ash)
     }
 
     private func muscleChip(_ muscle: Muscle?, label: String) -> some View {

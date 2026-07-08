@@ -53,11 +53,7 @@ public final class UserSettingsStore {
     }
 
     public func displayWeight(_ grams: Int) -> String {
-        let value = Units.displayValue(grams: grams, unit: unit)
-        let text = value.truncatingRemainder(dividingBy: 1) == 0
-            ? String(format: "%.0f", value)
-            : String(format: "%.2f", value)
-        return "\(text) \(unit.symbol)"
+        WeightFormat.compactWithUnit(grams: grams, unit: unit)
     }
 }
 

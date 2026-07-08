@@ -94,6 +94,12 @@ struct WorkoutSummaryView: View {
         }
         .contentShape(Rectangle())
         .onTapGesture { skipToEnd() }
+        // The ritual owns the screen from frame one: full-height sheet, no grabber,
+        // chamber-dark background (configured here, inside the presented content —
+        // these propagate up to the enclosing sheet in RootView).
+        .presentationDetents([.large])
+        .presentationDragIndicator(.hidden)
+        .presentationBackground(SettColor.screen)
         .task { await runStages() }
         .sheet(isPresented: $showingHowXPWorks) {
             HowPowerWorksView()
