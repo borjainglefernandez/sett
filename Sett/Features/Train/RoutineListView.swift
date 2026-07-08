@@ -93,7 +93,7 @@ struct RoutineListView: View {
                 .foregroundStyle(.tertiary)
         } else {
             HStack(spacing: 4) {
-                ForEach(0..<7, id: \.self) { day in
+                ForEach(TrainDays.sundayFirstOrder, id: \.self) { day in
                     if TrainDays.isSet(mask, day: day) {
                         Text(TrainDays.shortNames[day])
                             .font(.caption2.weight(.semibold))

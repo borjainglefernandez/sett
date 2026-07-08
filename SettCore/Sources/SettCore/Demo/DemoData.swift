@@ -101,19 +101,12 @@ public enum DemoData {
             context.insert(routine)
             for (liftIndex, lift) in spec.lifts.enumerated() {
                 guard let ex = resolved[routineIndex][liftIndex] else { continue }
-                let routineExercise = RoutineExercise(orderIndex: liftIndex, exercise: ex)
+                // Routines carry only a set count — no per-set reps/weight targets.
+                let routineExercise = RoutineExercise(orderIndex: liftIndex, exercise: ex, setCount: 3)
                 routineExercise.restSeconds = lift.equipment == .barbell ? 150 : 90
                 routineExercise.needsPush = false
                 routineExercise.routine = routine
                 context.insert(routineExercise)
-                let target = weightGrams(routineIndex: routineIndex, liftIndex: liftIndex, dayOffset: totalDays - 1)
-                for setIndex in 0..<3 {
-                    let planned = PlannedSet(orderIndex: setIndex, targetReps: 10 - setIndex,
-                                             targetWeightGrams: target)
-                    planned.needsPush = false
-                    planned.routineExercise = routineExercise
-                    context.insert(planned)
-                }
             }
             routines.append(routine)
         }

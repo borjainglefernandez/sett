@@ -49,6 +49,10 @@ enum TrainDays {
     static let names = ["Monday", "Tuesday", "Wednesday", "Thursday",
                         "Friday", "Saturday", "Sunday"]
 
+    /// Weekday indices (0 = Mon … 6 = Sun) in Sunday-first DISPLAY order.
+    /// Bit semantics of `daysOfWeekMask` are unchanged — only rendering order is.
+    static let sundayFirstOrder = [6, 0, 1, 2, 3, 4, 5]
+
     static func isSet(_ mask: Int, day: Int) -> Bool {
         (mask >> day) & 1 == 1
     }

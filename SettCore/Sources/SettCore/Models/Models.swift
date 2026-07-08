@@ -244,6 +244,11 @@ public final class RoutineExercise {
     public var exerciseNameSnapshot: String
     public var muscleRaw: String
     public var restSeconds: Int?
+    /// The number of sets this routine plans for the exercise — the ONLY target a
+    /// routine carries. Reps/weight are never prescribed: the session ghost-fills
+    /// from last time's actual performance so the user's job is simply to improve.
+    /// Stored default backfills legacy rows via SwiftData lightweight migration.
+    public var plannedSetCount: Int = 3
     public var createdAt: Date
     public var updatedAt: Date
     public var deletedAt: Date?
@@ -251,6 +256,8 @@ public final class RoutineExercise {
 
     public var routine: Routine?
 
+    /// Retained for schema stability and any lingering rows; the routine flow no
+    /// longer reads or writes PlannedSet targets — `plannedSetCount` is authoritative.
     @Relationship(deleteRule: .cascade, inverse: \PlannedSet.routineExercise)
     public var plannedSets: [PlannedSet]
 
@@ -258,13 +265,15 @@ public final class RoutineExercise {
         plannedSets.filter { $0.deletedAt == nil }.sorted { $0.orderIndex < $1.orderIndex }
     }
 
-    public init(id: UUID = UUID(), orderIndex: Int, exercise: Exercise, now: Date = .now) {
+    public init(id: UUID = UUID(), orderIndex: Int, exercise: Exercise,
+                setCount: Int = 3, now: Date = .now) {
         self.id = id
         self.orderIndex = orderIndex
         self.exerciseID = exercise.id
         self.exerciseNameSnapshot = exercise.name
         self.muscleRaw = exercise.muscleRaw
         self.restSeconds = nil
+        self.plannedSetCount = setCount
         self.createdAt = now
         self.updatedAt = now
         self.deletedAt = nil

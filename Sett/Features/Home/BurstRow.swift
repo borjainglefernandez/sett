@@ -65,7 +65,8 @@ struct SevenSlotBurstRow: View {
             .accessibilityLabel("This week: \(trainedDays.count) of \(goalTarget) workouts")
 
             HStack(spacing: 0) {
-                ForEach(0 ..< 7, id: \.self) { day in
+                // Sunday-first display; day indices keep 0 = Monday … 6 = Sunday.
+                ForEach(TrainDays.sundayFirstOrder, id: \.self) { day in
                     VStack(spacing: 6) {
                         BurstSlot(isFilled: trainedDays.contains(day), isToday: day == todayIndex)
                         Text(Self.dayLetters[day])
