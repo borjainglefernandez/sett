@@ -8,15 +8,18 @@ public struct CommentaryFacts: Sendable {
     public let netIsNew: Bool
     public let newBadgeCount: Int
     public let powerLevelDelta: Int
+    /// "Off the record" workout — no numbers to celebrate, just the training itself.
+    public let isCasual: Bool
 
     public init(title: String, netReps: Int, netVolumeGrams: Int, netIsNew: Bool,
-                newBadgeCount: Int, powerLevelDelta: Int) {
+                newBadgeCount: Int, powerLevelDelta: Int, isCasual: Bool = false) {
         self.title = title
         self.netReps = netReps
         self.netVolumeGrams = netVolumeGrams
         self.netIsNew = netIsNew
         self.newBadgeCount = newBadgeCount
         self.powerLevelDelta = powerLevelDelta
+        self.isCasual = isCasual
     }
 }
 
@@ -24,7 +27,21 @@ public struct CommentaryFacts: Sendable {
 /// On-device Foundation Models upgrades this when available; the screen looks
 /// identical either way, only `InsightSource` differs.
 public enum CommentaryFallback {
+    /// Terse Vego lines for an "off the record" workout — celebrate training for its
+    /// own sake, zero numbers. Chosen deterministically so recompute is idempotent.
+    static let casualLines = [
+        "Off the record. Even a prince trains for the joy of it. Occasionally.",
+        "The Scanner looked away. The work still happened.",
+        "No numbers today. Just iron, and the quiet. Don't make a habit of it."
+    ]
+
     public static func generate(facts: CommentaryFacts) -> (String, InsightSource) {
+        if facts.isCasual {
+            let raw = facts.netReps &+ facts.powerLevelDelta
+            let index = ((raw % casualLines.count) + casualLines.count) % casualLines.count
+            return (casualLines[index], .fallbackTemplate)
+        }
+
         var lines: [String] = []
 
         if facts.netIsNew {

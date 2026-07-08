@@ -61,8 +61,14 @@ struct WorkoutSummaryView: View {
                         .transition(.opacity.combined(with: .move(edge: .bottom)))
                 }
                 if stage >= .net {
-                    netCard
-                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                    if summary.isCasual {
+                        SystemMessageView(title: "OFF THE RECORD",
+                                          body: "This session won't count toward net progress. Everything else still counts.")
+                            .transition(.opacity.combined(with: .move(edge: .bottom)))
+                    } else {
+                        netCard
+                            .transition(.opacity.combined(with: .move(edge: .bottom)))
+                    }
                 }
                 if stage >= .badges && !summary.newBadgeKeys.isEmpty {
                     badgesCard

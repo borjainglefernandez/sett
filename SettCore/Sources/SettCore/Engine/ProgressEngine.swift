@@ -60,7 +60,9 @@ public enum ProgressEngine {
     /// Strict previous-calendar-bucket net for one exercise (nil = all exercises).
     public static func netSummary(samples: [SetSample], exerciseID: UUID?, period: Period,
                                   containing date: Date, calendar: Calendar) -> NetSummary {
-        let working = samples.filter { !$0.isWarmup && (exerciseID == nil || $0.exerciseID == exerciseID) }
+        // Casual ("off the record") sets never participate in net comparisons —
+        // on either side of the bucket delta.
+        let working = samples.filter { !$0.isWarmup && !$0.isCasual && (exerciseID == nil || $0.exerciseID == exerciseID) }
         return netBetweenBuckets(working, period: period, containing: date, calendar: calendar)
     }
 
@@ -73,14 +75,14 @@ public enum ProgressEngine {
         let previousKey = bucketKey(for: previousDate, period: period, calendar: calendar)
 
         var involved: Set<UUID> = []
-        for sample in samples where !sample.isWarmup {
+        for sample in samples where !sample.isWarmup && !sample.isCasual {
             let key = bucketKey(for: sample.completedAt, period: period, calendar: calendar)
             if key == currentKey || key == previousKey { involved.insert(sample.exerciseID) }
         }
 
         var nets: [UUID: NetSummary] = [:]
         for id in involved {
-            let working = samples.filter { !$0.isWarmup && $0.exerciseID == id }
+            let working = samples.filter { !$0.isWarmup && !$0.isCasual && $0.exerciseID == id }
             nets[id] = netBetweenBuckets(working, period: period, containing: date, calendar: calendar)
         }
         return nets
@@ -117,8 +119,12 @@ public enum ProgressEngine {
     /// exercise's most recent prior workout containing it (design-client §3.6).
     /// Exercises with no prior session contribute their full volume as bonus;
     /// `isNew` is true only when every exercise in the workout is new.
+    /// A casual ("off the record") workout has no nets of its own and is never a
+    /// reference for another workout, so casual sets are dropped entirely here.
+    /// Called ON a casual workout's ID this returns NetSummary(0, 0, false) via the
+    /// empty guard below — callers should not display it.
     public static func workoutNet(samples: [SetSample], workoutID: UUID) -> NetSummary {
-        let working = samples.filter { !$0.isWarmup }
+        let working = samples.filter { !$0.isWarmup && !$0.isCasual }
         let thisWorkout = working.filter { $0.workoutID == workoutID }
         guard let workoutStart = thisWorkout.map(\.completedAt).min() else {
             return NetSummary(reps: 0, volumeGrams: 0, isNew: false)

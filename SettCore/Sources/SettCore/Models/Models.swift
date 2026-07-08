@@ -62,6 +62,12 @@ public final class Workout {
     /// 0…10 half stars (nil = unrated).
     public var ratingHalfStars: Int?
     public var notes: String?
+    /// "Off the record" / casual: still counts for streaks, XP, PL, volume charts,
+    /// e1RM & PRs — excluded ONLY from net-progress comparisons (no nets of its own,
+    /// never a reference/baseline for another workout). The STORED default is what
+    /// lets SwiftData lightweight migration backfill existing rows — an init-only
+    /// default is not enough and crashes old stores at container creation.
+    public var isCasual: Bool = false
     /// Loose reference — never a relationship, so deleting a routine can't touch history.
     public var routineID: UUID?
     public var routineNameSnapshot: String?
@@ -82,7 +88,8 @@ public final class Workout {
         exercises.filter { $0.deletedAt == nil }.sorted { $0.orderIndex < $1.orderIndex }
     }
 
-    public init(id: UUID = UUID(), title: String, startedAt: Date = .now, now: Date = .now) {
+    public init(id: UUID = UUID(), title: String, startedAt: Date = .now,
+                isCasual: Bool = false, now: Date = .now) {
         self.id = id
         self.title = title
         self.startedAt = startedAt
@@ -91,6 +98,7 @@ public final class Workout {
         self.bodyweightGrams = nil
         self.ratingHalfStars = nil
         self.notes = nil
+        self.isCasual = isCasual
         self.routineID = nil
         self.routineNameSnapshot = nil
         self.gymID = nil

@@ -15,6 +15,7 @@ struct RestOverlayView: View {
     let onAdvance: () -> Void
 
     @Environment(WorkoutSessionStore.self) private var session
+    @Environment(AppServices.self) private var services
 
     @State private var firedCompletion = false
     @State private var lastTickSecond = Int.max
@@ -65,12 +66,25 @@ struct RestOverlayView: View {
     // MARK: Content
 
     private func content(remaining: Int, fraction: Double) -> some View {
-        VStack(spacing: 36) {
+        VStack(spacing: 0) {
+            if let readback = session.lastReadback {
+                ReadbackBlock(payload: readback, unit: services.settings.unit)
+                    .padding(.top, 16)
+            }
             Spacer()
-            ring(remaining: remaining, fraction: fraction)
-            VStack(spacing: 24) {
-                nextPreview
-                quietRow
+            VStack(spacing: 36) {
+                VStack(spacing: 12) {
+                    Text("RECALIBRATING")
+                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                        .kerning(3)
+                        .foregroundStyle(SettColor.iron)
+                        .accessibilityHidden(true)
+                    ring(remaining: remaining, fraction: fraction)
+                }
+                VStack(spacing: 24) {
+                    nextPreview
+                    quietRow
+                }
             }
             Spacer()
         }

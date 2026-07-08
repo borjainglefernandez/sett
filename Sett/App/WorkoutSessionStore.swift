@@ -11,6 +11,10 @@ public final class WorkoutSessionStore {
     public private(set) var activeWorkout: Workout?
     public var isPresentingWorkout: Bool = false
     public var completedSummary: WorkoutSummaryData?
+    /// The most recent log's readback payload, staged at LOG time for the REST
+    /// overlay (or the zero-rest in-place overlay) to render. Internal — its type
+    /// lives in the app module, not SettCore.
+    var lastReadback: LoggedReadback?
 
     // Rest timer (tenet 1: rest runs itself)
     public private(set) var restEndsAt: Date?
@@ -171,13 +175,43 @@ public final class WorkoutSessionStore {
     public func previousSets(exerciseID: UUID, excluding workoutID: UUID?) -> [SetEntry] {
         let descriptor = FetchDescriptor<Workout>(sortBy: [SortDescriptor(\.startedAt, order: .reverse)])
         let workouts = (try? context.fetch(descriptor)) ?? []
-        for workout in workouts where workout.deletedAt == nil && workout.endedAt != nil && workout.id != workoutID {
+        for workout in workouts where workout.deletedAt == nil && workout.endedAt != nil
+            && !workout.isCasual && workout.id != workoutID {
             if let match = workout.orderedExercises.first(where: { $0.exerciseID == exerciseID }) {
                 let sets = match.orderedSets.filter { !$0.isWarmup }
                 if !sets.isEmpty { return sets }
             }
         }
         return []
+    }
+
+    // MARK: Set readback (item 4 — delta vs the reference set at the same slot)
+
+    /// A just-logged set's delta against the reference (previous same-exercise
+    /// session) set at the same slot — the mirror of the crit reference rule.
+    /// `isBaseline` when there is no reference at that slot. Compute BEFORE logging.
+    func readback(for workoutExercise: WorkoutExercise, slot: Int,
+                  weightGrams: Int, reps: Int) -> SetReadback {
+        let references = previousSets(exerciseID: workoutExercise.exerciseID,
+                                      excluding: workoutExercise.workout?.id)
+        guard slot >= 0 && slot < references.count else {
+            return SetReadback(weightDeltaGrams: nil, repsDelta: nil, isBaseline: true)
+        }
+        let reference = references[slot]
+        return SetReadback(weightDeltaGrams: weightGrams - reference.weightGrams,
+                           repsDelta: reps - reference.reps,
+                           isBaseline: false)
+    }
+
+    // MARK: Off the record (item 6 — casual toggle)
+
+    /// Flip the active workout's casual flag under the standard sync rules. Turning
+    /// on is confirmed by the caller; turning off is silent.
+    func setCasual(_ isCasual: Bool) {
+        guard let workout = activeWorkout, workout.isCasual != isCasual else { return }
+        workout.isCasual = isCasual
+        touchAndSave(workout)
+        Haptics.selection()
     }
 
     public func finishWorkout() {
@@ -207,17 +241,33 @@ public final class WorkoutSessionStore {
             if delta > 0 { xpEarned[character] = delta }
         }
 
-        // Net vs previous same-exercise sessions (workout-level rollup).
-        let samples = SampleExtractor.setSamples(context: context)
-        let net = ProgressEngine.workoutNet(samples: samples, workoutID: workout.id)
+        // Net vs previous same-exercise sessions (workout-level rollup). Casual
+        // ("off the record") workouts skip net computation entirely — no nets of
+        // their own, never a baseline for another workout.
+        let isCasual = workout.isCasual
+        let netReps: Int
+        let netVolumeGrams: Int
+        let netIsNew: Bool
+        if isCasual {
+            netReps = 0
+            netVolumeGrams = 0
+            netIsNew = false
+        } else {
+            let samples = SampleExtractor.setSamples(context: context)
+            let net = ProgressEngine.workoutNet(samples: samples, workoutID: workout.id)
+            netReps = net.reps
+            netVolumeGrams = net.volumeGrams
+            netIsNew = net.isNew
+        }
 
         let facts = CommentaryFacts(
             title: workout.title,
-            netReps: net.reps,
-            netVolumeGrams: net.volumeGrams,
-            netIsNew: net.isNew,
+            netReps: netReps,
+            netVolumeGrams: netVolumeGrams,
+            netIsNew: netIsNew,
             newBadgeCount: newBadges.count,
-            powerLevelDelta: progression.snapshotPowerLevel - plBefore
+            powerLevelDelta: progression.snapshotPowerLevel - plBefore,
+            isCasual: isCasual
         )
         let (commentary, source) = CommentaryFallback.generate(facts: facts)
 
@@ -237,13 +287,14 @@ public final class WorkoutSessionStore {
             powerLevelAfter: progression.snapshotPowerLevel,
             tierBefore: tierBefore.rawValue,
             tierAfter: tierAfter.rawValue,
-            netReps: net.reps,
-            netVolumeGrams: net.volumeGrams,
-            netIsNew: net.isNew,
+            netReps: netReps,
+            netVolumeGrams: netVolumeGrams,
+            netIsNew: netIsNew,
             newBadgeKeys: newBadges,
             xpEarned: xpEarned,
             commentary: commentary,
-            commentarySource: source
+            commentarySource: source,
+            isCasual: isCasual
         )
         activeWorkout = nil
         isPresentingWorkout = false
@@ -280,4 +331,14 @@ public final class WorkoutSessionStore {
         workout.needsPush = true
         try? context.save()
     }
+}
+
+// MARK: - Set readback payload
+
+/// A logged set's delta against the reference set at the same slot. `nil` deltas
+/// with `isBaseline == true` mean there was no reference to compare against.
+struct SetReadback: Equatable {
+    let weightDeltaGrams: Int?
+    let repsDelta: Int?
+    let isBaseline: Bool
 }

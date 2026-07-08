@@ -77,13 +77,17 @@ public struct WorkoutSummaryData: Identifiable, Sendable {
     public let xpEarned: [CharacterKey: Int]
     public let commentary: String
     public let commentarySource: InsightSource
+    /// "Off the record" — the summary swaps the Net Progress card for a quiet
+    /// OFF THE RECORD system message; PL/XP/badge stages are unchanged.
+    public let isCasual: Bool
 
     public init(id: UUID, title: String, durationSeconds: Int,
                 powerLevelBefore: Int, powerLevelAfter: Int,
                 tierBefore: Int, tierAfter: Int,
                 netReps: Int, netVolumeGrams: Int, netIsNew: Bool,
                 newBadgeKeys: [String], xpEarned: [CharacterKey: Int],
-                commentary: String, commentarySource: InsightSource) {
+                commentary: String, commentarySource: InsightSource,
+                isCasual: Bool = false) {
         self.id = id
         self.title = title
         self.durationSeconds = durationSeconds
@@ -98,5 +102,6 @@ public struct WorkoutSummaryData: Identifiable, Sendable {
         self.xpEarned = xpEarned
         self.commentary = commentary
         self.commentarySource = commentarySource
+        self.isCasual = isCasual
     }
 }

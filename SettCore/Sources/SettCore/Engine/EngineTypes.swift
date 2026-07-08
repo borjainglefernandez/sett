@@ -32,9 +32,11 @@ public struct SetSample: Sendable, Hashable {
     public let isWarmup: Bool
     public let completedAt: Date
     public let workoutID: UUID
+    /// Set belongs to an "off the record" workout — excluded from net-progress only.
+    public let isCasual: Bool
 
     public init(exerciseID: UUID, muscle: Muscle, weightGrams: Int, reps: Int,
-                isWarmup: Bool, completedAt: Date, workoutID: UUID) {
+                isWarmup: Bool, completedAt: Date, workoutID: UUID, isCasual: Bool = false) {
         self.exerciseID = exerciseID
         self.muscle = muscle
         self.weightGrams = weightGrams
@@ -42,6 +44,7 @@ public struct SetSample: Sendable, Hashable {
         self.isWarmup = isWarmup
         self.completedAt = completedAt
         self.workoutID = workoutID
+        self.isCasual = isCasual
     }
 }
 
@@ -52,15 +55,18 @@ public struct WorkoutSample: Sendable, Hashable {
     public let endedAt: Date?
     public let bodyweightGrams: Int?
     public let routineID: UUID?
+    /// "Off the record" / casual workout — excluded from net-progress only.
+    public let isCasual: Bool
 
     public init(id: UUID, title: String, startedAt: Date, endedAt: Date?,
-                bodyweightGrams: Int?, routineID: UUID?) {
+                bodyweightGrams: Int?, routineID: UUID?, isCasual: Bool = false) {
         self.id = id
         self.title = title
         self.startedAt = startedAt
         self.endedAt = endedAt
         self.bodyweightGrams = bodyweightGrams
         self.routineID = routineID
+        self.isCasual = isCasual
     }
 }
 
@@ -152,7 +158,8 @@ public enum SampleExtractor {
                         reps: set.reps,
                         isWarmup: set.isWarmup,
                         completedAt: set.completedAt,
-                        workoutID: workout.id
+                        workoutID: workout.id,
+                        isCasual: workout.isCasual
                     ))
                 }
             }
@@ -166,7 +173,7 @@ public enum SampleExtractor {
             .filter { $0.deletedAt == nil && $0.endedAt != nil }
             .map { WorkoutSample(id: $0.id, title: $0.title, startedAt: $0.startedAt,
                                  endedAt: $0.endedAt, bodyweightGrams: $0.bodyweightGrams,
-                                 routineID: $0.routineID) }
+                                 routineID: $0.routineID, isCasual: $0.isCasual) }
             .sorted { $0.startedAt < $1.startedAt }
     }
 

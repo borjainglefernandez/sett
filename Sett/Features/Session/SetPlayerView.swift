@@ -15,10 +15,12 @@ struct SetPlayerView: View {
     let slotIndex: Int
     let slotCount: Int
     /// Called after a successful commit; the shell owns the REST/advance transition.
-    let onLogged: (_ beatReference: Bool) -> Void
+    /// Carries the classified outcome so the shell can tint the transition.
+    let onLogged: (_ outcome: LogOutcome) -> Void
 
     @Environment(WorkoutSessionStore.self) private var session
     @Environment(AppServices.self) private var services
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Injected by ActiveWorkoutView (`.environment(combatText)`); optional so the
     /// pane still renders outside an active-session context (previews).
     @Environment(CombatTextEmitter.self) private var combatText: CombatTextEmitter?
@@ -38,6 +40,15 @@ struct SetPlayerView: View {
     @State private var goldFlash = false
     /// Exercise row behind the loose `exerciseID` — carries the machine setup.
     @State private var exercise: Exercise?
+    @State private var isEditingSetup = false
+
+    // Scanner acquisition (item 3b): a ~350 ms scanline sweep + digit scramble on
+    // every new slot. `acquiring` gates the scramble; `scanProgress` drives the
+    // sweep (0 → 1). Reduce Motion direct-sets both to the settled state.
+    @State private var acquiring = false
+    @State private var acquireFrame = 0
+    @State private var scanProgress: CGFloat = 1
+    @State private var acquireTask: Task<Void, Never>?
 
     /// The app's largest numeral — the one fixed-size exception granted to the player.
     @ScaledMetric(relativeTo: .largeTitle) private var numeralSize: CGFloat = 64
@@ -56,14 +67,65 @@ struct SetPlayerView: View {
                 .padding(.bottom, 12)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onAppear { load() }
-        .onDisappear { stepperHideTask?.cancel() }
+        .onAppear { load(); startAcquisition() }
+        .onDisappear { stepperHideTask?.cancel(); acquireTask?.cancel() }
         .sheet(item: $padField) { field in
             numericPad(for: field)
         }
         .sheet(isPresented: $isEditingNote) {
             SetNoteSheet(initialText: pendingNote ?? "") { pendingNote = $0 }
         }
+        .sheet(isPresented: $isEditingSetup) {
+            if let exercise { MachineSetupSheet(exercise: exercise) }
+        }
+    }
+
+    // MARK: Acquisition (item 3b — scanline sweep + deterministic digit scramble)
+
+    /// Seed derived from exercise + slot so the scramble is deterministic per slot.
+    private var acquireSeed: UInt64 {
+        let base = UInt64(bitPattern: Int64(workoutExercise.exerciseID.hashValue))
+        return base &* 0x9E37_79B9_7F4A_7C15 &+ UInt64(bitPattern: Int64(slotIndex + 1))
+    }
+
+    private func startAcquisition() {
+        acquireTask?.cancel()
+        guard !reduceMotion else {
+            acquiring = false
+            scanProgress = 1
+            return
+        }
+        acquiring = true
+        acquireFrame = 0
+        scanProgress = 0
+        withAnimation(.linear(duration: 0.35)) { scanProgress = 1 }
+        acquireTask = Task { @MainActor in
+            // ~7 scramble frames across 350 ms (50 ms cadence), then settle.
+            for step in 1 ... 7 {
+                try? await Task.sleep(for: .milliseconds(50))
+                guard !Task.isCancelled else { return }
+                acquireFrame = step
+            }
+            guard !Task.isCancelled else { return }
+            acquiring = false
+        }
+    }
+
+    /// During acquisition, replace each digit of `text` with a seeded pseudo-random
+    /// digit (Knuth LCG, re-seeded per frame + position); non-digits pass through.
+    private func scanned(_ text: String, salt: UInt64) -> String {
+        guard acquiring else { return text }
+        var state = acquireSeed &+ salt &+ UInt64(acquireFrame + 1) &* 0x9E37_79B9_7F4A_7C15
+        var out = ""
+        for character in text {
+            if character.isNumber {
+                state = state &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
+                out += String((state >> 33) % 10)
+            } else {
+                out += String(character)
+            }
+        }
+        return out
     }
 
     // MARK: Slot state
@@ -93,6 +155,11 @@ struct SetPlayerView: View {
 
     private var header: some View {
         VStack(spacing: 10) {
+            Text("TARGET ACQUIRED")
+                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                .kerning(3)
+                .foregroundStyle(SettColor.iron)
+                .accessibilityHidden(true)
             Text(workoutExercise.exerciseNameSnapshot.uppercased())
                 .font(.system(.subheadline, design: .monospaced).weight(.semibold))
                 .kerning(2)
@@ -104,19 +171,50 @@ struct SetPlayerView: View {
                 .font(.system(.caption, design: .monospaced))
                 .kerning(2)
                 .foregroundStyle(SettColor.iron)
-            if let setup = exercise?.instructions, !setup.isEmpty {
+            machineSetup
+        }
+        .padding(.horizontal, 24)
+    }
+
+    // MARK: Machine setup (item 2 — in-session access to the setup line)
+
+    @ViewBuilder
+    private var machineSetup: some View {
+        if let setup = exercise?.instructions, !setup.isEmpty {
+            Button {
+                isEditingSetup = true
+            } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "gearshape.fill")
                         .font(.caption2)
                     Text(setup)
                         .font(.system(.caption, design: .monospaced))
                         .lineLimit(1)
+                        .minimumScaleFactor(0.7)
                 }
                 .foregroundStyle(SettColor.ash)
-                .accessibilityLabel("Machine setup: \(setup)")
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Machine setup: \(setup)")
+            .accessibilityHint("Tap to edit")
+        } else if let equipment = exercise?.equipment, equipment == .machine || equipment == .cable {
+            Button {
+                isEditingSetup = true
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "gearshape")
+                        .font(.caption2)
+                    Text("SETUP")
+                        .font(.system(.caption, design: .monospaced))
+                        .kerning(2)
+                }
+                .foregroundStyle(SettColor.iron)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Add machine setup")
         }
-        .padding(.horizontal, 24)
     }
 
     // MARK: The numbers, huge
@@ -133,6 +231,7 @@ struct SetPlayerView: View {
                                                      unit: services.settings.unit),
                           caption: services.settings.unit.symbol,
                           field: .weight,
+                          salt: 0x11,
                           accessibility: "Weight")
             Text("×")
                 .font(.system(size: numeralSize * 0.45, weight: .heavy, design: .monospaced))
@@ -142,15 +241,39 @@ struct SetPlayerView: View {
             numeralColumn(text: "\(displayedReps)",
                           caption: "reps",
                           field: .reps,
+                          salt: 0x77,
                           accessibility: "Reps")
         }
         .padding(.horizontal, 20)
+        .padding(.vertical, 16)
+        .overlay {
+            // (3a) targeting reticle framing the numeral block.
+            CornerReticle(arm: 18)
+                .stroke(SettColor.iron, lineWidth: 1.5)
+                .padding(4)
+                .accessibilityHidden(true)
+        }
+        .overlay {
+            // (3b) a 1 pt bone scanline sweeping the block during acquisition.
+            if acquiring {
+                GeometryReader { proxy in
+                    Rectangle()
+                        .fill(SettColor.bone)
+                        .frame(height: 1)
+                        .offset(y: scanProgress * proxy.size.height)
+                        .opacity(0.8)
+                }
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+            }
+        }
     }
 
     private func numeralColumn(text: String, caption: String,
-                               field: NumericField, accessibility: String) -> some View {
+                               field: NumericField, salt: UInt64,
+                               accessibility: String) -> some View {
         VStack(spacing: 8) {
-            Text(text)
+            Text(scanned(text, salt: salt))
                 .font(.system(size: numeralSize, weight: .heavy, design: .monospaced))
                 .monospacedDigit()
                 .foregroundStyle(numeralColor)
@@ -278,20 +401,22 @@ struct SetPlayerView: View {
                     isWarmup.toggle()
                     Haptics.selection()
                 } label: {
-                    Text("W")
-                        .font(.system(size: 13, weight: .bold, design: .monospaced))
-                        .foregroundStyle(isWarmup ? SettColor.heroCyan.opacity(0.6) : SettColor.iron)
-                        .frame(width: 40, height: 40)
+                    Text("WARM-UP")
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        .kerning(2)
+                        .foregroundStyle(isWarmup ? SettColor.heroCyan.opacity(0.7) : SettColor.ash)
+                        .padding(.horizontal, 12)
+                        .frame(height: 32)
                         .background {
-                            Circle().strokeBorder(
-                                isWarmup ? SettColor.heroCyan.opacity(0.4) : SettColor.cardBorder,
+                            Capsule().strokeBorder(
+                                isWarmup ? SettColor.heroCyan.opacity(0.45) : SettColor.cardBorder,
                                 lineWidth: 1
                             )
                         }
-                        .contentShape(Circle())
+                        .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(isWarmup ? "Warmup set, on" : "Warmup set, off")
+                .accessibilityLabel(isWarmup ? "Warm-up set, on" : "Warm-up set, off")
 
                 Button {
                     isEditingNote = true
@@ -338,10 +463,14 @@ struct SetPlayerView: View {
     /// at the index it lands on — the same rule as the overview's chips. Celebration
     /// plays AFTER the write; the shell holds the REST transition for the gold flash.
     private func log() {
+        // Reference deltas + outcome, resolved BEFORE logging so the slot index
+        // still points at this set. Casual workouts never crit and suppress deltas.
         let index = workoutExercise.orderedSets.count
-        let references = session.previousSets(exerciseID: workoutExercise.exerciseID,
-                                              excluding: workoutExercise.workout?.id)
-        let beatReference = index < references.count && weightGrams > references[index].weightGrams
+        let isCasual = session.activeWorkout?.isCasual ?? false
+        let readback = session.readback(for: workoutExercise, slot: index,
+                                        weightGrams: weightGrams, reps: reps)
+        let outcome = LogOutcome.classify(readback: readback,
+                                          isWarmup: isWarmup, isCasual: isCasual)
 
         session.logSet(on: workoutExercise, weightGrams: weightGrams, reps: reps,
                        isWarmup: isWarmup, notes: pendingNote)
@@ -349,10 +478,20 @@ struct SetPlayerView: View {
         stepperHideTask?.cancel()
         activeStepper = nil
 
+        // Scanner message (item 5): deterministic pick keyed by the running logged
+        // set count (this set now included) — no randomness APIs.
+        let loggedSetCount = session.activeWorkout?.orderedExercises
+            .reduce(0) { $0 + $1.orderedSets.count } ?? 0
+        let message = ScannerMessages.line(for: outcome, loggedSetCount: loggedSetCount)
+        session.lastReadback = LoggedReadback(weightGrams: weightGrams, reps: reps,
+                                              readback: readback, outcome: outcome,
+                                              message: message)
+
         // Floating combat text: +N PWR, N = this set's volume load in whole pounds.
+        // Crit only when the weight beat the reference and the set isn't off the record.
         let volumeLb = Int(Units.pounds(fromGrams: weightGrams * reps).rounded())
-        combatText?.emit("+\(volumeLb.formatted()) PWR", crit: beatReference)
-        if beatReference {
+        combatText?.emit("+\(volumeLb.formatted()) PWR", crit: outcome.isCrit)
+        if outcome.isCrit {
             Haptics.prSignature()
             goldFlash = true
             Task { @MainActor in
@@ -360,7 +499,7 @@ struct SetPlayerView: View {
                 withAnimation(.easeOut(duration: 0.2)) { goldFlash = false }
             }
         }
-        onLogged(beatReference)
+        onLogged(outcome)
     }
 }
 

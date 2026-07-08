@@ -28,10 +28,14 @@ struct ActiveWorkoutView: View {
     /// Holds the REST overlay ~0.45 s after a beat-reference log so the gold
     /// numeral flash reads before the countdown takes the screen.
     @State private var isHoldingRestOverlay = false
+    /// Zero-rest logs have no REST overlay to carry the readback, so it shows as a
+    /// 1.2 s in-place overlay on the SET state before the cursor advances (item 4).
+    @State private var isShowingInPlaceReadback = false
 
     @State private var isShowingOverview = false
     @State private var isConfirmingFinish = false
     @State private var isConfirmingCancel = false
+    @State private var isConfirmingCasual = false
 
     /// Floating combat text feed, attached once at the player root; the emitter
     /// travels DOWN via `.environment` so `SetPlayerView` can emit on every commit.
@@ -71,6 +75,14 @@ struct ActiveWorkoutView: View {
         } message: {
             Text("All sets logged in this session will be deleted.")
         }
+        .confirmationDialog("Go off the record?",
+                            isPresented: $isConfirmingCasual,
+                            titleVisibility: .visible) {
+            Button("Go off the record") { session.setCasual(true) }
+            Button("Keep recording", role: .cancel) {}
+        } message: {
+            Text("This session won't count toward net progress. Everything else still counts.")
+        }
     }
 
     // MARK: Shell
@@ -88,9 +100,18 @@ struct ActiveWorkoutView: View {
             Rectangle()
                 .fill(SettColor.cardBorder)
                 .frame(height: 0.5)
+            if workout.isCasual {
+                offTheRecordPill
+                    .opacity(isRestOverlayVisible ? 0.55 : 1)
+            }
             ZStack {
                 pane(workout, exercises: exercises, position: position)
                     .transition(paneTransition)
+                if isShowingInPlaceReadback, let readback = session.lastReadback {
+                    ReadbackBlock(payload: readback, unit: services.settings.unit)
+                        .padding(.horizontal, 24)
+                        .transition(.opacity)
+                }
                 if isRestOverlayVisible {
                     RestOverlayView(nextLabel: nextPreviewLabel(exercises, from: position),
                                     onAdvance: { advanceCursor() })
@@ -98,7 +119,12 @@ struct ActiveWorkoutView: View {
                 }
             }
             .animation(.easeInOut(duration: 0.25), value: isRestOverlayVisible)
-            .simultaneousGesture(swipeGesture(exercises))
+            .animation(.easeInOut(duration: 0.2), value: isShowingInPlaceReadback)
+            // `.gesture` (not `.simultaneousGesture`): descendant button taps take
+            // priority, so LOG SET / numerals / chips receive taps; only a clearly
+            // horizontal drag (gated in swipeGesture) falls through to page the queue.
+            // simultaneousGesture here let the DragGesture swallow every tap.
+            .gesture(swipeGesture(exercises))
         }
         .onAppear { initializeCursorIfNeeded(exercises) }
     }
@@ -120,7 +146,7 @@ struct ActiveWorkoutView: View {
             SetPlayerView(workoutExercise: exercise,
                           slotIndex: position.slotIndex,
                           slotCount: slotCount(for: exercise),
-                          onLogged: { beat in handleLogged(on: exercise, beatReference: beat) })
+                          onLogged: { outcome in handleLogged(on: exercise, outcome: outcome) })
                 .id("\(exercise.id)-\(position.slotIndex)")
         }
     }
@@ -135,6 +161,7 @@ struct ActiveWorkoutView: View {
             Spacer()
             elapsedTimer(workout)
             Spacer()
+            recordToggle(workout)
             barButton("list.bullet", label: "Session overview") {
                 isShowingOverview = true
             }
@@ -144,6 +171,40 @@ struct ActiveWorkoutView: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 2)
+    }
+
+    /// Off-the-record toggle (item 6a): turning ON confirms; OFF is silent.
+    private func recordToggle(_ workout: Workout) -> some View {
+        Button {
+            if workout.isCasual {
+                session.setCasual(false)
+            } else {
+                isConfirmingCasual = true
+            }
+        } label: {
+            Image(systemName: workout.isCasual ? "record.circle.fill" : "record.circle")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(workout.isCasual ? SettColor.bone : SettColor.ash)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(workout.isCasual ? "Off the record, on" : "Go off the record")
+    }
+
+    /// Persistent tiny pill under the top bar while the session is off the record.
+    private var offTheRecordPill: some View {
+        Text("OFF THE RECORD")
+            .font(.system(size: 10, weight: .semibold, design: .monospaced))
+            .kerning(2)
+            .foregroundStyle(SettColor.ash)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 4)
+            .background {
+                Capsule().strokeBorder(SettColor.cardBorder, lineWidth: 1)
+            }
+            .padding(.top, 8)
+            .accessibilityLabel("This session is off the record")
     }
 
     private func barButton(_ symbol: String, label: String,
@@ -188,6 +249,11 @@ struct ActiveWorkoutView: View {
         return VStack(spacing: 0) {
             Spacer()
             VStack(spacing: 16) {
+                Text("READING SEALED")
+                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .kerning(3)
+                    .foregroundStyle(SettColor.iron)
+                    .accessibilityHidden(true)
                 TimelineView(.periodic(from: .now, by: 1)) { context in
                     Text(elapsedText(from: workout.startedAt, at: context.date))
                         .font(.system(size: endNumeralSize, weight: .heavy, design: .monospaced))
@@ -330,24 +396,30 @@ struct ActiveWorkoutView: View {
 
     // MARK: Log → REST / advance
 
-    /// The LOG slab committed a set. `logSet` already auto-started the rest timer;
-    /// if this exercise rests, the overlay takes the screen (held ~0.45 s after a
-    /// beat-reference log so the gold flash reads), else the cursor advances.
-    private func handleLogged(on exercise: WorkoutExercise, beatReference: Bool) {
+    /// The LOG slab committed a set. `logSet` already auto-started the rest timer.
+    /// If this exercise rests, the REST overlay takes the screen and carries the
+    /// readback at its top (held ~0.45 s after a beat/crit log so the gold numeral
+    /// flash reads). When rest is zero, the readback shows as a 1.2 s in-place
+    /// overlay on the SET state before the cursor advances (item 4).
+    private func handleLogged(on exercise: WorkoutExercise, outcome: LogOutcome) {
         let restSeconds = exercise.restSeconds ?? services.settings.defaultRestSeconds
         if restSeconds <= 0 {
-            // Clear the zero-length timer logSet started so the overlay never blinks.
+            // No REST overlay: clear the zero-length timer logSet started, then run
+            // the in-place readback before advancing.
             session.skipRest()
-        }
-        if beatReference {
+            isShowingInPlaceReadback = true
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(1200))
+                isShowingInPlaceReadback = false
+                advanceCursor()
+            }
+        } else if outcome.isGold {
+            // Beat/crit: hold the REST overlay so the SET-state gold flash reads.
             isHoldingRestOverlay = true
             Task { @MainActor in
                 try? await Task.sleep(for: .milliseconds(450))
                 isHoldingRestOverlay = false
-                if restSeconds <= 0 { advanceCursor() }
             }
-        } else if restSeconds <= 0 {
-            advanceCursor()
         }
     }
 
