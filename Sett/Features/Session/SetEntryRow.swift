@@ -33,6 +33,7 @@ struct SetEntryRow: View {
                            decrement: { stepWeight(-1) },
                            increment: { stepWeight(1) },
                            tapValue: { editingField = .weight })
+                .layoutPriority(1)
             stepperCluster(valueText: "\(reps)",
                            caption: "reps",
                            decrement: { stepReps(-1) },
@@ -63,7 +64,8 @@ struct SetEntryRow: View {
                         .monospacedDigit()
                         .foregroundStyle(isGhost ? Color(uiColor: .tertiaryLabel) : Color.primary)
                         .lineLimit(1)
-                        .minimumScaleFactor(0.6)
+                        .minimumScaleFactor(0.5)
+                        .allowsTightening(true)
                     Text(caption)
                         .font(.caption2)
                         .foregroundStyle(.secondary)
@@ -83,7 +85,7 @@ struct SetEntryRow: View {
             Image(systemName: symbol)
                 .font(.body.weight(.semibold))
                 .foregroundStyle(SettColor.heroCyan)
-                .frame(width: 44, height: 44)
+                .frame(width: 38, height: 44)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -225,9 +227,11 @@ struct SetEntryRow: View {
 
     private var weightValueText: String {
         let value = Units.displayValue(grams: weightGrams, unit: services.settings.unit)
-        return value.truncatingRemainder(dividingBy: 1) == 0
-            ? String(format: "%.0f", value)
-            : String(format: "%.2f", value)
+        // Compact: "62.5" / "140", never "62.50" — the stepper column is narrow.
+        var text = String(format: "%.2f", value)
+        while text.hasSuffix("0") { text.removeLast() }
+        if text.hasSuffix(".") { text.removeLast() }
+        return text
     }
 
     private func numericPad(for field: NumericField) -> some View {
