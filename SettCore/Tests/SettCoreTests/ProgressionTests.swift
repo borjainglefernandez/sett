@@ -95,8 +95,10 @@ struct PowerLevelTests {
         #expect(snapshot.badges.contains { $0.key == "ignition" })
         #expect(!snapshot.badges.contains { $0.key == "new_ceiling" })
 
-        // XP: day 1 = 50 + 4×2 + 25 = 83; day 2 = 50 + 6×2 + 25 = 87 -> vego 170.
-        #expect(snapshot.characterXP[.vego] == 170)
+        // XP: day 1 = 50 + 4×2 + 25 = 83; day 2 = 50 + 6×2 + 25 = 87, and Wednesday
+        // follows a true rest day (Tuesday) inside an active period, so the rested
+        // bonus applies: round(87 × 1.25) = 109 -> vego 192.
+        #expect(snapshot.characterXP[.vego] == 192)
         // Nyra: ignition badge (bronze 100), no completed streak weeks yet.
         #expect(snapshot.characterXP[.nyra] == 100)
         // Barok tonnage drip: 4,500 lb -> 4 XP, 6,429 lb -> 6 XP.
@@ -356,5 +358,84 @@ struct ReconcilerTests {
         let state = context.saiyanState()
         #expect(state.powerLevel == revokedSnapshot.powerLevel)
         #expect(state.characterXPJSON.contains("\"vego\""))
+    }
+}
+
+// MARK: - Rested bonus
+
+@Suite("ProgressionEngine — rested bonus")
+struct RestedBonusTests {
+
+    /// Two identical 3-set workouts. First workout: 50 + 3×2 + 25 (net) = 81 XP.
+    /// Second (identical volume, no net bonus): 50 + 3×2 = 56 XP raw.
+    private func twoWorkoutVegoXP(secondDay: Int, asOfDay: Int) throws -> Int {
+        let config = try loadConfig()
+        let w1 = workout(UUID(), start: date(2025, 6, 2, 18))          // Monday
+        let w2 = workout(UUID(), start: date(2025, 6, secondDay, 18))
+        let allSets = sets(benchID, muscle: .chest, grams: 100_000, reps: 5, count: 3, workout: w1)
+            + sets(benchID, muscle: .chest, grams: 100_000, reps: 5, count: 3, workout: w2)
+        let snapshot = ProgressionEngine.compute(
+            input: input(workouts: [w1, w2], sets: allSets),
+            config: config, calendar: madridCalendar(), asOf: date(2025, 6, asOfDay, 20))
+        return snapshot.characterXP[.vego] ?? 0
+    }
+
+    @Test("A single rest day before an identical workout multiplies its XP by 1.25")
+    func singleRestDayBoost() throws {
+        // Rested: Mon + Wed (Tue is a true rest day inside an active period).
+        // Second workout: round(56 × 1.25) = 70 -> vego 81 + 70 = 151.
+        let rested = try twoWorkoutVegoXP(secondDay: 4, asOfDay: 4)
+        #expect(rested == 151)
+        // Consecutive: Mon + Tue -> 81 + 56 = 137. Delta = 14 = 0.25 × 56.
+        let consecutive = try twoWorkoutVegoXP(secondDay: 3, asOfDay: 3)
+        #expect(rested - consecutive == 14)
+    }
+
+    @Test("First workout after a 21-day gap earns no rested bonus")
+    func longGapIsNotRested() throws {
+        // Jun 2 -> Jun 23: Jun 22 was rest, but the trailing 14 days before it
+        // (Jun 8–21) held zero qualifying workouts -> comeback, no bonus.
+        #expect(try twoWorkoutVegoXP(secondDay: 23, asOfDay: 23) == 137)
+        // Boundary: a 15-day gap (previous workout exactly 14 days before the
+        // rest day) is still inside the active period -> bonus applies.
+        #expect(try twoWorkoutVegoXP(secondDay: 17, asOfDay: 17) == 151)
+        // A 16-day gap falls just outside -> no bonus.
+        #expect(try twoWorkoutVegoXP(secondDay: 18, asOfDay: 18) == 137)
+    }
+
+    @Test("Consecutive training days earn no rested bonus")
+    func consecutiveDaysNoBonus() throws {
+        #expect(try twoWorkoutVegoXP(secondDay: 3, asOfDay: 3) == 137)
+        // The very first workout ever has no preceding training -> no bonus:
+        // 81, not round(81 × 1.25).
+        let config = try loadConfig()
+        let w1 = workout(UUID(), start: date(2025, 6, 2, 18))
+        let allSets = sets(benchID, muscle: .chest, grams: 100_000, reps: 5, count: 3, workout: w1)
+        let snapshot = ProgressionEngine.compute(
+            input: input(workouts: [w1], sets: allSets),
+            config: config, calendar: madridCalendar(), asOf: date(2025, 6, 2, 20))
+        #expect(snapshot.characterXP[.vego] == 81)
+    }
+
+    @Test("restedBonusActive mirrors the predicate for the day containing asOf")
+    func restedBonusActiveFlag() throws {
+        let config = try loadConfig()
+        let cal = madridCalendar()
+        let w1 = workout(UUID(), start: date(2025, 6, 2, 18))
+        let allSets = sets(benchID, muscle: .chest, grams: 100_000, reps: 5, count: 3, workout: w1)
+        let payload = input(workouts: [w1], sets: allSets)
+
+        // Next day: no rest day in between -> inactive.
+        let dayAfter = ProgressionEngine.compute(input: payload, config: config,
+                                                 calendar: cal, asOf: date(2025, 6, 3, 10))
+        #expect(!dayAfter.restedBonusActive)
+        // Two days later: Jun 3 was a true rest day inside an active period -> active.
+        let afterRest = ProgressionEngine.compute(input: payload, config: config,
+                                                  calendar: cal, asOf: date(2025, 6, 4, 10))
+        #expect(afterRest.restedBonusActive)
+        // 21 days later: comeback, not rested.
+        let afterGap = ProgressionEngine.compute(input: payload, config: config,
+                                                 calendar: cal, asOf: date(2025, 6, 23, 10))
+        #expect(!afterGap.restedBonusActive)
     }
 }

@@ -2,15 +2,21 @@ import SwiftUI
 import SwiftData
 import SettCore
 
-/// The Power Scan (Flow 2). One screen, staged reveal:
-/// 1. dark scan card — a horizontal cyan scanline sweeps, then the power level rolls
-///    up from its previous value (`contentTransition(.numericText)`) with a gold "+N ⚡" chip;
-/// 2. net progress vs previous same-exercise sessions;
-/// 3. badges earned (gold medallions, only when non-empty);
-/// 4. XP earned per character (only when non-empty), with a "How XP works" link;
-/// 5. AI commentary + star rating + Done.
-/// Tap anywhere skips straight to the final stage. Reduce Motion skips the scanline
-/// and snaps numbers.
+/// The Scan Ritual v3 (Flow 2). One screen, staged reveal:
+/// 1. dark scan card — a horizontal cyan scanline sweeps; then `READING COMPLETE`
+///    materializes, a 500 ms seeded digit-scramble prelude runs where the numeral
+///    will land, and the SacredNumberView swaps in and odometer-rolls
+///    powerLevelBefore → powerLevelAfter (hit-stop, ember burst). On completion:
+///    scale punch + a 3-oscillation 2 pt horizontal shake + `Haptics.levelUp`;
+/// 2. CEILING BREAK — only when the active character's tier rose (or a
+///    ceiling-class badge landed): full-screen CrackOverlay reveals 0 → 1 over
+///    0.8 s with `CEILING BROKEN` beneath the scan card;
+/// 3. net progress vs previous same-exercise sessions;
+/// 4. badges earned (gold medallions, only when non-empty);
+/// 5. XP earned per character (only when non-empty), with a "How XP works" link;
+/// 6. AI commentary + star rating + Done.
+/// Tap anywhere skips straight to the final stage. Reduce Motion direct-sets the
+/// final state: no scanline, no scramble, no roll, no cracks.
 struct WorkoutSummaryView: View {
     let summary: WorkoutSummaryData
 
@@ -20,19 +26,40 @@ struct WorkoutSummaryView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private enum Stage: Int, Comparable {
-        case scanning, power, net, badges, xp, commentary
+        case scanning, power, ceiling, net, badges, xp, commentary
         static func < (lhs: Self, rhs: Self) -> Bool { lhs.rawValue < rhs.rawValue }
     }
+
+    /// Badge keys that count as breaking a ceiling even without a tier change.
+    private static let ceilingBadgeKeys: Set<String> = [
+        "new_ceiling", "limit_break", "walking_legend", "scanner_breaker",
+    ]
 
     @State private var stage: Stage = .scanning
     @State private var displayedPowerLevel = 0
     @State private var ratingHalfStars = 0
     @State private var showingHowXPWorks = false
 
+    // Scan Ritual v3 choreography.
+    @State private var scrambling = false
+    @State private var ceremonyPunch: CGFloat = 1
+    @State private var shakeX: CGFloat = 0
+    @State private var showCrack = false
+    @State private var crackProgress: Double = 0
+    @State private var crackOpacity: Double = 1
+
     var body: some View {
         ScrollView {
             VStack(spacing: 12) {
+                if stage >= .power {
+                    SystemMessageView(title: "READING COMPLETE")
+                        .transition(.opacity)
+                }
                 scanCard
+                if stage >= .ceiling && ceilingBroken {
+                    SystemMessageView(title: "CEILING BROKEN")
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                }
                 if stage >= .net {
                     netCard
                         .transition(.opacity.combined(with: .move(edge: .bottom)))
@@ -55,6 +82,16 @@ struct WorkoutSummaryView: View {
             .padding(16)
         }
         .dungeonBackground()
+        .overlay {
+            // The ceiling break: UI fractures over the whole screen, gold light
+            // leaking through. Non-interactive (CrackOverlay ignores hits), so
+            // tap-to-skip keeps working underneath.
+            if showCrack {
+                CrackOverlay(progress: crackProgress)
+                    .opacity(crackOpacity)
+                    .ignoresSafeArea()
+            }
+        }
         .contentShape(Rectangle())
         .onTapGesture { skipToEnd() }
         .task { await runStages() }
@@ -67,20 +104,76 @@ struct WorkoutSummaryView: View {
 
     private var powerDelta: Int { summary.powerLevelAfter - summary.powerLevelBefore }
 
+    /// Tier of the active character rose, or a ceiling-class badge landed.
+    private var ceilingBroken: Bool {
+        summary.tierAfter > summary.tierBefore
+            || summary.newBadgeKeys.contains(where: Self.ceilingBadgeKeys.contains)
+    }
+
     private func runStages() async {
         displayedPowerLevel = summary.powerLevelBefore
         loadExistingRating()
         if reduceMotion {
-            stage = .commentary
+            // Direct-set: final values, all cards, no choreography.
             displayedPowerLevel = summary.powerLevelAfter
+            stage = .commentary
             return
         }
-        try? await Task.sleep(for: .seconds(1.4))
+        try? await Task.sleep(for: .seconds(1.2))
         guard stage < .power else { return }
         withAnimation(.snappy) { stage = .power }
-        withAnimation(.spring(duration: 0.9)) { displayedPowerLevel = summary.powerLevelAfter }
 
-        try? await Task.sleep(for: .seconds(1.0))
+        // (c) 500 ms digit-scramble prelude where the numeral will land.
+        scrambling = true
+        try? await Task.sleep(for: .milliseconds(500))
+        guard stage == .power else { return }
+        scrambling = false
+
+        // (b) the real SacredNumberView is now showing powerLevelBefore; after a
+        // beat, flip the value and let its odometer (slot roll, hit-stop at every
+        // crossed hundred, ember burst) do the count-up.
+        try? await Task.sleep(for: .milliseconds(250))
+        guard stage == .power else { return }
+        displayedPowerLevel = summary.powerLevelAfter
+        try? await Task.sleep(for: .seconds(1.1))
+        guard stage == .power else { return }
+
+        // (d) completion ceremony: scale punch + 3-oscillation 2 pt shake.
+        if powerDelta != 0 {
+            Haptics.levelUp()
+            ceremonyPunch = 1.06
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.5)) { ceremonyPunch = 1 }
+            for oscillation in 0 ..< 6 { // 6 half-cycles = 3 oscillations
+                withAnimation(.linear(duration: 0.05)) {
+                    shakeX = oscillation.isMultiple(of: 2) ? 2 : -2
+                }
+                try? await Task.sleep(for: .milliseconds(50))
+            }
+            withAnimation(.linear(duration: 0.05)) { shakeX = 0 }
+            try? await Task.sleep(for: .milliseconds(350))
+        }
+        guard stage < .ceiling else { return }
+
+        // (e) CEILING BREAK — staged before net/badges/XP.
+        if ceilingBroken {
+            withAnimation(.snappy) { stage = .ceiling }
+            showCrack = true
+            crackProgress = 0
+            // Timer-driven reveal (CrackOverlay's progress is not animatable):
+            // 16 steps × 50 ms = 0.8 s; landing exactly on 1 fires its flash.
+            let steps = 16
+            for step in 1 ... steps {
+                try? await Task.sleep(for: .milliseconds(50))
+                guard showCrack else { break }
+                crackProgress = Double(step) / Double(steps)
+            }
+            try? await Task.sleep(for: .milliseconds(600))
+            withAnimation(.easeOut(duration: 0.4)) { crackOpacity = 0 }
+            try? await Task.sleep(for: .milliseconds(400))
+            showCrack = false
+            crackOpacity = 1
+        }
+
         guard stage < .net else { return }
         withAnimation(.snappy) { stage = .net }
 
@@ -100,12 +193,17 @@ struct WorkoutSummaryView: View {
 
     private func skipToEnd() {
         guard stage < .commentary else { return }
+        // Land everything: the running task's stage guards all fail after this.
+        scrambling = false
+        showCrack = false
+        crackOpacity = 1
+        shakeX = 0
+        ceremonyPunch = 1
+        displayedPowerLevel = summary.powerLevelAfter
         if reduceMotion {
             stage = .commentary
-            displayedPowerLevel = summary.powerLevelAfter
         } else {
             withAnimation(.snappy) { stage = .commentary }
-            withAnimation(.spring(duration: 0.5)) { displayedPowerLevel = summary.powerLevelAfter }
         }
     }
 
@@ -115,18 +213,18 @@ struct WorkoutSummaryView: View {
         VStack(spacing: 12) {
             Text(summary.title)
                 .font(.headline)
-                .foregroundStyle(.white.opacity(0.75))
+                .foregroundStyle(SettColor.bone)
             Text(durationText)
                 .font(.footnote)
                 .monospacedDigit()
-                .foregroundStyle(.white.opacity(0.5))
+                .foregroundStyle(SettColor.ash)
             if stage >= .power {
                 VStack(spacing: 8) {
                     Text("POWER LEVEL")
                         .font(.caption2.weight(.semibold))
                         .kerning(1.5)
-                        .foregroundStyle(.white.opacity(0.5))
-                    PowerNumeral(displayedPowerLevel, size: .xl)
+                        .foregroundStyle(SettColor.ash)
+                    powerReadout
                     if powerDelta != 0 {
                         deltaChip
                     }
@@ -140,13 +238,44 @@ struct WorkoutSummaryView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(24)
-        .background(Color(white: 0.07), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(SettColor.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(SettColor.etch, lineWidth: 1)
+        }
+        .overlay {
+            // Clip only the scanline, so the numeral's ember halo can spill.
             if stage == .scanning && !reduceMotion {
                 scanline
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
         }
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .scaleEffect(ceremonyPunch)
+        .offset(x: shakeX)
+    }
+
+    /// (b) + (c): during the 500 ms prelude a seeded digit-scramble runs where
+    /// the numeral will land — cyan, because the reading is still ki, not yet
+    /// the sacred number. Then the real SacredNumberView swaps in showing
+    /// `powerLevelBefore`; `runStages` flips `displayedPowerLevel` a beat later
+    /// and the view's own odometer physics carry the count-up.
+    @ViewBuilder
+    private var powerReadout: some View {
+        if scrambling {
+            HStack(spacing: 10) {
+                SettSigil(size: 34, color: SettColor.heroCyan)
+                ScrambleNumeral(
+                    digitCount: String(max(summary.powerLevelAfter, 1)).count,
+                    seed: UInt64(bitPattern: Int64(summary.powerLevelAfter))
+                        &* 0x9E37_79B9_7F4A_7C15
+                        &+ UInt64(bitPattern: Int64(summary.powerLevelBefore))
+                )
+            }
+            .frame(height: 68)
+        } else {
+            SacredNumberView(value: displayedPowerLevel, size: .xl)
+                .frame(height: 68)
+        }
     }
 
     private var deltaChip: some View {
@@ -236,7 +365,7 @@ struct WorkoutSummaryView: View {
         VStack(alignment: .leading, spacing: 12) {
             Label("Badges Earned", systemImage: "medal.fill")
                 .font(.title3.weight(.semibold))
-                .foregroundStyle(SettColor.saiyanGold)
+                .foregroundStyle(SettColor.bone)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .top, spacing: 16) {
                     ForEach(summary.newBadgeKeys, id: \.self) { key in
@@ -280,7 +409,7 @@ struct WorkoutSummaryView: View {
         VStack(alignment: .leading, spacing: 12) {
             Label("XP Earned", systemImage: "bolt.fill")
                 .font(.title3.weight(.semibold))
-                .foregroundStyle(SettColor.saiyanGold)
+                .foregroundStyle(SettColor.bone)
             VStack(alignment: .leading, spacing: 8) {
                 ForEach(xpEntries, id: \.character) { entry in
                     xpRow(entry)
@@ -362,9 +491,10 @@ struct WorkoutSummaryView: View {
     }
 
     private func starButton(_ star: Int) -> some View {
+        // Cyan, not gold: rating is an input control (ki/action), not a reward.
         Image(systemName: starSymbol(star))
             .font(.title)
-            .foregroundStyle(SettColor.saiyanGold)
+            .foregroundStyle(SettColor.heroCyan)
             .frame(width: 44, height: 44)
             .overlay {
                 HStack(spacing: 0) {
@@ -413,5 +543,46 @@ struct WorkoutSummaryView: View {
         var descriptor = FetchDescriptor<Workout>(predicate: #Predicate { $0.id == workoutID })
         descriptor.fetchLimit = 1
         return (try? modelContext.fetch(descriptor))?.first
+    }
+}
+
+// MARK: - Digit-scramble prelude (Scan Ritual v3, step c)
+
+/// Mono digits cycling seeded pseudo-random values, one per numeral position:
+/// ~9 frames over ~500 ms (55 ms cadence), each frame a PURE function of
+/// (seed, frame, position) through an LCG — deterministic chrome, never
+/// SystemRandom, never Date. The parent swaps this out for the real
+/// SacredNumberView when the prelude ends; this view never appears under
+/// Reduce Motion (the ritual direct-sets instead).
+private struct ScrambleNumeral: View {
+    let digitCount: Int
+    let seed: UInt64
+
+    @State private var frame = 0
+
+    var body: some View {
+        Text(scrambledText)
+            .font(.system(size: 56, weight: .heavy, design: .monospaced).italic())
+            .foregroundStyle(SettColor.heroCyan.opacity(0.85))
+            .lineLimit(1)
+            .minimumScaleFactor(0.5)
+            .accessibilityHidden(true)
+            .task {
+                for step in 1 ..< 9 {
+                    try? await Task.sleep(for: .milliseconds(55))
+                    frame = step
+                }
+            }
+    }
+
+    private var scrambledText: String {
+        // Knuth MMIX LCG, re-seeded per frame so every position cycles.
+        var state = seed &+ UInt64(frame + 1) &* 0x9E37_79B9_7F4A_7C15
+        var digits = ""
+        for _ in 0 ..< max(digitCount, 1) {
+            state = state &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
+            digits += String((state >> 33) % 10)
+        }
+        return digits
     }
 }

@@ -86,6 +86,7 @@ struct ExerciseCard: View {
             Text("\(services.settings.displayWeight(set.weightGrams)) × \(set.reps)")
                 .font(.subheadline.weight(.medium))
                 .monospacedDigit()
+                .foregroundStyle(chipNumeralColor(set: set, reference: reference))
             Spacer()
             if let chip = netChip(set: set, reference: reference) {
                 Text(chip.text)
@@ -97,6 +98,17 @@ struct ExerciseCard: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(SettColor.cardNested, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    /// Numeral color as data (the FighterZ combo-counter rule): bone on pace,
+    /// GOLD when this set beat its reference set's weight (a reward pulse —
+    /// one of the few sanctioned gold uses), dim blue for warmups. No extra chips.
+    private func chipNumeralColor(set: SetEntry, reference: SetEntry?) -> Color {
+        if set.isWarmup { return SettColor.heroCyan.opacity(0.6) }
+        if let reference, set.weightGrams > reference.weightGrams {
+            return SettColor.saiyanGold
+        }
+        return SettColor.bone
     }
 
     private struct NetChip {

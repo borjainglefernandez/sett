@@ -15,6 +15,11 @@ struct ActiveWorkoutView: View {
     @State private var isConfirmingFinish = false
     @State private var isConfirmingCancel = false
 
+    /// Floating combat text feed (Dark Chamber v3): the overlay is attached once
+    /// at ScrollView level, and the emitter travels DOWN via `.environment` so
+    /// `SetEntryRow` can emit "+N PWR" on every checkmark commit.
+    @State private var combatText = CombatTextEmitter()
+
     var body: some View {
         NavigationStack {
             Group {
@@ -101,6 +106,8 @@ struct ActiveWorkoutView: View {
             }
             .padding(16)
         }
+        .combatTextEmitter(combatText)
+        .environment(combatText)
     }
 
     // MARK: Elapsed timer (wall-clock derived — survives backgrounding)

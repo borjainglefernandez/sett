@@ -110,14 +110,19 @@ struct HowPowerWorksView: View {
     }
 
     private var restDayCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        let restedPercent = Int((((config?.xp["restedBonusMultiplier"] as? Double ?? 1.25) - 1.0) * 100).rounded())
+        return VStack(alignment: .leading, spacing: 10) {
             Label("Rest-Day Respect", systemImage: "moon.zzz.fill")
                 .font(.headline)
             valueRow("2nd workout in a day", "\(xpPercent("secondWorkoutSameDayFraction", 0.25))% XP")
             valueRow("3rd+ workout in a day", "\(xpPercent("thirdWorkoutSameDayFraction", 0.0))% XP")
             valueRow("XP days per rolling 7", "max \(xpInt("maxXPDaysPerRolling7", 6))")
             valueRow("Daily workout XP cap", "\(xpInt("dailyWorkoutXPCap", 300)) XP")
-            footnote("Grinding all seven days doesn't out-earn training smart. Rest is part of the program.")
+            valueRow("Rested bonus", "+\(restedPercent)% workout XP")
+            footnote("""
+                +\(restedPercent)% workout XP the day after a true rest day — recovery is a resource. \
+                Grinding all seven days doesn't out-earn training smart. Rest is part of the program.
+                """)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .settCard()

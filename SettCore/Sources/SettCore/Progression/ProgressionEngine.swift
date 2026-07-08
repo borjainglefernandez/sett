@@ -34,12 +34,16 @@ public struct ProgressionSnapshot: Sendable {
     public let badges: [BadgeGrant]        // ALL currently-earned badges (derived, idempotent)
     public let rivalPL: Int                // Vexeth's scripted PL as of now
     public let rivalForm: Int              // 1...3
+    /// True when a qualifying workout started now would earn the rested bonus
+    /// (see ProgressionEngine.isRested for the exact predicate). Defaulted so
+    /// existing call sites keep compiling.
+    public let restedBonusActive: Bool
 
     public init(powerLevel: Int, allTimePeakPL: Int, strengthScore: Int, weeklyVolumeLb: Int,
                 consistencyMultiplier: Double, streakWeeks: Int,
                 characterXP: [CharacterKey: Int], characterLevels: [CharacterKey: Int],
                 tiers: [CharacterKey: TransformationTier], badges: [BadgeGrant],
-                rivalPL: Int, rivalForm: Int) {
+                rivalPL: Int, rivalForm: Int, restedBonusActive: Bool = false) {
         self.powerLevel = powerLevel
         self.allTimePeakPL = allTimePeakPL
         self.strengthScore = strengthScore
@@ -52,6 +56,7 @@ public struct ProgressionSnapshot: Sendable {
         self.badges = badges
         self.rivalPL = rivalPL
         self.rivalForm = rivalForm
+        self.restedBonusActive = restedBonusActive
     }
 }
 
@@ -156,6 +161,15 @@ public enum ProgressionEngine {
                             + (current.pl > rivalPL ? 1 : 0)
                             + (peak > rivalPL + leadPL ? 1 : 0))
 
+        // Would a qualifying workout started right now earn the rested bonus?
+        // Same predicate as the XP economy, evaluated for the day containing asOf.
+        let todayStart = calendar.startOfDay(for: asOf)
+        let priorTrainedDay = distinctQualifyingDayStarts(qualifying: qualifying)
+            .last { $0 < todayStart }
+        let restedActive = isRested(dayStart: todayStart,
+                                    previousQualifyingDayStart: priorTrainedDay,
+                                    calendar: calendar)
+
         return ProgressionSnapshot(
             powerLevel: current.pl,
             allTimePeakPL: peak,
@@ -168,8 +182,30 @@ public enum ProgressionEngine {
             tiers: tiers,
             badges: badges,
             rivalPL: rivalPL,
-            rivalForm: rivalForm
+            rivalForm: rivalForm,
+            restedBonusActive: restedActive
         )
+    }
+
+    // MARK: - Rested bonus
+
+    /// RESTED BONUS predicate — exact rule. Let X be the most recent local
+    /// calendar day strictly before day D that had at least one qualifying
+    /// workout. Day D's workout XP earns the rested bonus iff:
+    ///   (1) X exists and D − X ≥ 2 days — i.e. the day immediately preceding D
+    ///       (D − 1) had ZERO qualifying workouts (a true rest day), AND
+    ///   (2) X falls within the trailing 14 days before that rest day —
+    ///       (D − 1) − X ≤ 14, equivalently D − X ≤ 15 — an intentional rest
+    ///       inside an active training period. A comeback after a longer gap
+    ///       (D − X ≥ 16) earns NO bonus.
+    /// The multiplier applies to the workout-XP components (base + sets + net
+    /// + PR) BEFORE same-day decay and the daily cap; the cap still caps the
+    /// boosted result.
+    static func isRested(dayStart: Date, previousQualifyingDayStart: Date?,
+                         calendar: Calendar) -> Bool {
+        guard let previous = previousQualifyingDayStart else { return false }
+        let gap = daysBetween(previous, dayStart, calendar: calendar)
+        return gap >= 2 && gap <= 15
     }
 
     // MARK: - Chronological analysis (effective sets, qualifying sessions, PR pipeline)
@@ -460,13 +496,21 @@ public enum ProgressionEngine {
         let thirdFraction = config.xpDouble("thirdWorkoutSameDayFraction", 0.0)
         let maxDaysPer7 = config.xpInt("maxXPDaysPerRolling7", 6)
         let dailyCap = config.xpInt("dailyWorkoutXPCap", 300)
+        let restedMultiplier = config.xpDouble("restedBonusMultiplier", 1.25)
 
         var earningDayStarts: [Date] = []
+        var previousQualifyingDayStart: Date?
         var vegoXP = 0
         var index = 0
         let sessions = analysis.sessions
         while index < sessions.count {
             let dayKey = sessions[index].dayKey
+            let dayStart = sessions[index].dayStart
+            // Rested bonus (exact predicate documented on isRested): boosts the
+            // workout-XP components before same-day decay; dailyCap still caps.
+            let rested = isRested(dayStart: dayStart,
+                                  previousQualifyingDayStart: previousQualifyingDayStart,
+                                  calendar: calendar)
             var dayXP = 0
             var rank = 0
             var next = index
@@ -479,7 +523,8 @@ public enum ProgressionEngine {
                     raw += min(perSet * session.candidateSetCount, perSetCap)
                     if netPositive[session.workout.id] == true { raw += netBonus }
                     raw += perPR * min(prCountByWorkout[session.workout.id] ?? 0, prCap)
-                    dayXP += Int((Double(raw) * fraction).rounded())
+                    let boosted = Double(raw) * (rested ? restedMultiplier : 1.0)
+                    dayXP += Int((boosted * fraction).rounded())
                 }
                 next += 1
             }
@@ -488,7 +533,6 @@ public enum ProgressionEngine {
                 // Rolling 7-day window: this day plus the previous 6 may hold at
                 // most `maxXPDaysPerRolling7` earning days.
                 let rollingWindowDays = 7
-                let dayStart = sessions[index].dayStart
                 let recent = earningDayStarts.count {
                     daysBetween($0, dayStart, calendar: calendar) <= rollingWindowDays - 1
                 }
@@ -497,6 +541,7 @@ public enum ProgressionEngine {
                     earningDayStarts.append(dayStart)
                 }
             }
+            previousQualifyingDayStart = dayStart
             index = next
         }
         xp[.vego, default: 0] += vegoXP

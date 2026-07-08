@@ -3,7 +3,8 @@ import SwiftData
 import SettCore
 
 /// Tab 1 — the dashboard. Answers "what do I do right now?":
-/// greeting + streak, weekly goal ring, start button, latest insight, recent workouts.
+/// greeting + streak, 7-Slot Burst Row, start button, bodyweight chip,
+/// Directive Panel, latest insight, recent workouts.
 struct HomeTabView: View {
     @Environment(AppServices.self) private var services
     @Environment(WorkoutSessionStore.self) private var session
@@ -54,10 +55,11 @@ struct HomeTabView: View {
                     if finishedWorkouts.isEmpty {
                         firstRunCard
                     } else {
-                        weeklyGoalCard
+                        SevenSlotBurstRow(trainedDays: trainedDaysThisWeek, goalTarget: weeklyGoalTarget)
                         startCard
                     }
                     BodyweightChipCard(latest: latestBodyweight.first)
+                    DirectivePanel()
                     if let insight = insights.first {
                         insightTeaser(insight)
                     }
@@ -99,7 +101,7 @@ struct HomeTabView: View {
                 Label("\(streakWeeks) wk", systemImage: "flame.fill")
                     .font(.subheadline.weight(.semibold))
                     .monospacedDigit()
-                    .foregroundStyle(SettColor.saiyanGold)
+                    .foregroundStyle(SettColor.heroCyan) // gold audit: gold is the PL's, streak is ki
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
                     .background(SettColor.card, in: Capsule())
@@ -126,55 +128,20 @@ struct HomeTabView: View {
         )
     }
 
-    // MARK: Weekly goal ring
+    // MARK: 7-Slot Burst Row inputs
 
     private var weeklyGoalTarget: Int {
         frequencyGoals.first?.targetValue ?? 3
     }
 
-    private var daysThisWeek: Int {
+    /// Trained days of the current ISO week as 0 = Monday … 6 = Sunday.
+    private var trainedDaysThisWeek: Set<Int> {
         let calendar = Self.isoCalendar
-        guard let week = calendar.dateInterval(of: .weekOfYear, for: .now) else { return 0 }
-        let days = Set(
-            finishedWorkouts
-                .filter { week.contains($0.startedAt) }
-                .map { calendar.startOfDay(for: $0.startedAt) }
-        )
-        return days.count
-    }
-
-    private var ringFraction: CGFloat {
-        guard weeklyGoalTarget > 0 else { return 0 }
-        return min(1, CGFloat(daysThisWeek) / CGFloat(weeklyGoalTarget))
-    }
-
-    private var weeklyGoalCard: some View {
-        HStack(spacing: 16) {
-            ZStack {
-                Circle()
-                    .stroke(SettColor.cardNested, lineWidth: 10)
-                Circle()
-                    .trim(from: 0, to: ringFraction)
-                    .stroke(Aura.cyan, style: StrokeStyle(lineWidth: 10, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
-                    .animation(.snappy, value: ringFraction)
-                Text("\(daysThisWeek)")
-                    .font(.title3.bold())
-                    .monospacedDigit()
-            }
-            .frame(width: 72, height: 72)
-            VStack(alignment: .leading, spacing: 4) {
-                Text("This week")
-                    .font(.headline)
-                Text("\(daysThisWeek) of \(weeklyGoalTarget) workouts")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-        }
-        .settCard()
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Weekly goal: \(daysThisWeek) of \(weeklyGoalTarget) workouts")
+        guard let week = calendar.dateInterval(of: .weekOfYear, for: .now) else { return [] }
+        let indices = finishedWorkouts
+            .filter { week.contains($0.startedAt) }
+            .map { (calendar.component(.weekday, from: $0.startedAt) + 5) % 7 }
+        return Set(indices)
     }
 
     // MARK: Start card
@@ -242,7 +209,7 @@ struct HomeTabView: View {
         } label: {
             HStack(spacing: 12) {
                 Image(systemName: "sparkles")
-                    .foregroundStyle(SettColor.saiyanGold)
+                    .foregroundStyle(SettColor.heroCyan) // gold audit: insights are ki, not PL
                 Text(firstLine(of: insight.body))
                     .font(.subheadline)
                     .foregroundStyle(.primary)

@@ -69,6 +69,10 @@ public struct WorkoutSummaryData: Identifiable, Sendable {
     public let durationSeconds: Int
     public let powerLevelBefore: Int
     public let powerLevelAfter: Int
+    /// Active character's `TransformationTier.rawValue` before/after this workout's
+    /// recompute — the summary's ceiling-break stage fires when `tierAfter > tierBefore`.
+    public let tierBefore: Int
+    public let tierAfter: Int
     public let netReps: Int
     public let netVolumeGrams: Int
     public let netIsNew: Bool
@@ -80,6 +84,7 @@ public struct WorkoutSummaryData: Identifiable, Sendable {
 
     public init(id: UUID, title: String, durationSeconds: Int,
                 powerLevelBefore: Int, powerLevelAfter: Int,
+                tierBefore: Int, tierAfter: Int,
                 netReps: Int, netVolumeGrams: Int, netIsNew: Bool,
                 newBadgeKeys: [String], xpEarned: [CharacterKey: Int],
                 commentary: String, commentarySource: InsightSource) {
@@ -88,6 +93,8 @@ public struct WorkoutSummaryData: Identifiable, Sendable {
         self.durationSeconds = durationSeconds
         self.powerLevelBefore = powerLevelBefore
         self.powerLevelAfter = powerLevelAfter
+        self.tierBefore = tierBefore
+        self.tierAfter = tierAfter
         self.netReps = netReps
         self.netVolumeGrams = netVolumeGrams
         self.netIsNew = netIsNew

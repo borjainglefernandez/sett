@@ -126,11 +126,17 @@ public final class WorkoutSessionStore {
         workout.endedAt = .now
         touchAndSave(workout)
 
+        // Transformation tier of the ACTIVE character: same before/after diff as
+        // badges/XP — the summary's ceiling-break stage keys off this delta.
+        let activeCharacter = context.saiyanState().characterKey
+        let tierBefore = progression.tier(for: activeCharacter)
+
         let badgesBefore = earnedBadgeKeys()
         let xpBefore = progression.snapshot?.characterXP ?? [:]
         progression.recompute(context: context)
         let badgesAfter = earnedBadgeKeys()
         let newBadges = badgesAfter.subtracting(badgesBefore).sorted()
+        let tierAfter = progression.tier(for: activeCharacter)
 
         // XP transparency: same before/after diff as badges, per character.
         let xpAfter = progression.snapshot?.characterXP ?? [:]
@@ -168,6 +174,8 @@ public final class WorkoutSessionStore {
             durationSeconds: max(0, duration),
             powerLevelBefore: plBefore,
             powerLevelAfter: progression.snapshotPowerLevel,
+            tierBefore: tierBefore.rawValue,
+            tierAfter: tierAfter.rawValue,
             netReps: net.reps,
             netVolumeGrams: net.volumeGrams,
             netIsNew: net.isNew,

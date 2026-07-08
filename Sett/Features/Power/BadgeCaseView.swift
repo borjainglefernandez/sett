@@ -3,8 +3,9 @@ import SwiftData
 import SettCore
 
 /// The full trophy room: every badge in progression_config.json in a 3-column
-/// grid, rarest first. Earned = gold medallion; unearned = grayscale outline
-/// with its criteria visible — the locked grid IS the empty state.
+/// grid, rarest first. Rank reads from the frame material (v3 rarity ladder):
+/// earned = engraved gold, earned legendary = prismatic, locked = matte iron
+/// in grayscale with its criteria visible — the locked grid IS the empty state.
 struct BadgeCaseView: View {
     @Environment(ProgressionStore.self) private var progression
 
@@ -70,6 +71,8 @@ struct BadgeCaseView: View {
         }
     }
 
+    /// Earned slot: bone medal on a slab circle; the GOLD lives in the frame
+    /// material only — prismatic for legendary.
     private func earnedCell(_ definition: ProgressionConfig.BadgeDef, award: BadgeAward) -> some View {
         Button {
             selectedAward = award
@@ -78,24 +81,28 @@ struct BadgeCaseView: View {
             VStack(spacing: 8) {
                 ZStack {
                     Circle()
-                        .fill(Aura.gold)
+                        .fill(SettColor.card)
                     Image(systemName: "medal.fill")
                         .font(.title2)
-                        .foregroundStyle(.white)
+                        .foregroundStyle(SettColor.bone)
                 }
                 .frame(width: 64, height: 64)
                 Text(definition.name)
                     .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(SettColor.bone)
                     .multilineTextAlignment(.center)
                     .lineLimit(2)
             }
+            .padding(12)
             .frame(maxWidth: .infinity, alignment: .top)
+            .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(SettColor.cardNested))
+            .frameMaterial(definition.rarity == .legendary ? .prismatic : .gold)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("\(definition.name), \(definition.rarity.rawValue) badge, earned")
     }
 
+    /// Locked slot: matte iron frame, grayscale, criteria visible.
     private func unearnedCell(_ definition: ProgressionConfig.BadgeDef) -> some View {
         VStack(spacing: 8) {
             ZStack {
@@ -108,16 +115,19 @@ struct BadgeCaseView: View {
             .frame(width: 64, height: 64)
             Text(definition.name)
                 .font(.caption2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(SettColor.ash)
                 .multilineTextAlignment(.center)
                 .lineLimit(2)
             Text(criteriaText(for: definition.key))
                 .font(.caption2)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(SettColor.iron)
                 .multilineTextAlignment(.center)
                 .lineLimit(3)
         }
+        .padding(12)
         .frame(maxWidth: .infinity, alignment: .top)
+        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(SettColor.cardNested))
+        .frameMaterial(.iron)
         .grayscale(1)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(definition.name), locked. \(criteriaText(for: definition.key))")
@@ -135,17 +145,25 @@ private struct BadgeDetailSheet: View {
         progression.config?.badge(award.badgeKey)
     }
 
+    private var isLegendary: Bool {
+        definition?.rarity == .legendary
+    }
+
     var body: some View {
         VStack(spacing: 16) {
+            // The reward pulse: gold breathing aura + one-shot gold burst.
             ZStack {
                 BreathingAura(gradient: Aura.gold)
                     .frame(width: 120, height: 120)
                 Circle()
-                    .fill(Aura.gold)
+                    .fill(SettColor.card)
+                    .frame(width: 96, height: 96)
+                Circle()
+                    .strokeBorder(medallionRing, lineWidth: 2)
                     .frame(width: 96, height: 96)
                 Image(systemName: "medal.fill")
                     .font(.system(size: 40))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(SettColor.bone)
                 AuraBurstView(gold: true)
                     .frame(width: 220, height: 220)
             }
@@ -156,17 +174,17 @@ private struct BadgeDetailSheet: View {
             rarityCapsule
             Text(criteriaText(for: award.badgeKey))
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(SettColor.ash)
                 .multilineTextAlignment(.center)
             VStack(spacing: 4) {
                 Text("Earned \(award.earnedAt.formatted(date: .long, time: .shortened))")
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(SettColor.ash)
                 if award.valueSnapshot > 0 {
                     Text("Recorded value: \(award.valueSnapshot.formatted())")
                         .font(.footnote)
                         .monospacedDigit()
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(SettColor.ash)
                 }
             }
             Spacer(minLength: 0)
@@ -176,21 +194,31 @@ private struct BadgeDetailSheet: View {
         .presentationDragIndicator(.visible)
     }
 
+    /// Gold-material ring — the earned frame; legendary gets the prismatic
+    /// blend (static: the shine-sweep stays exclusive to card frames).
+    private var medallionRing: AnyShapeStyle {
+        if isLegendary {
+            return AnyShapeStyle(AngularGradient(
+                gradient: Gradient(colors: [
+                    SettColor.heroCyan,
+                    SettColor.saiyanGold,
+                    SettColor.heroCyan,
+                ]),
+                center: .center
+            ))
+        }
+        return AnyShapeStyle(Aura.gold)
+    }
+
+    /// Rarity as a plain word — rank already reads from the frame material,
+    /// so no colored label (the v3 rarity-ladder rule).
     private var rarityCapsule: some View {
         Text((definition?.rarity.rawValue ?? BadgeRarity.bronze.rawValue).capitalized)
             .font(.caption.weight(.semibold))
-            .foregroundStyle(rarityColor)
+            .foregroundStyle(SettColor.bone)
             .padding(.horizontal, 12)
             .padding(.vertical, 5)
-            .background(rarityColor.opacity(0.15), in: Capsule())
-    }
-
-    private var rarityColor: Color {
-        switch definition?.rarity ?? .bronze {
-        case .bronze: .brown
-        case .silver: .gray
-        case .gold, .legendary: SettColor.saiyanGold
-        }
+            .background(SettColor.cardNested, in: Capsule())
     }
 }
 

@@ -39,6 +39,7 @@
     "thirdWorkoutSameDayFraction": 0.0,
     "maxXPDaysPerRolling7": 6,
     "dailyWorkoutXPCap": 300,
+    "restedBonusMultiplier": 1.25,
     "levelCurveBase": 100.0,
     "levelCurveExponent": 1.8,
     "maxLevel": 40,

@@ -14,6 +14,9 @@ struct SetEntryRow: View {
     @Environment(WorkoutSessionStore.self) private var session
     @Environment(AppServices.self) private var services
     @Environment(\.modelContext) private var modelContext
+    /// Injected by ActiveWorkoutView (`.environment(combatText)`); optional so the
+    /// row still works if presented outside an active-session context.
+    @Environment(CombatTextEmitter.self) private var combatText: CombatTextEmitter?
 
     @State private var weightGrams = 0
     @State private var reps = 0
@@ -112,7 +115,22 @@ struct SetEntryRow: View {
     }
 
     private func commit() {
+        // Crit when this set's weight beats the reference (ghost) set at the same
+        // index — resolved BEFORE logging so the index still points at this set.
+        let index = workoutExercise.orderedSets.count
+        let references = session.previousSets(exerciseID: workoutExercise.exerciseID,
+                                              excluding: workoutExercise.workout?.id)
+        let beatReference = index < references.count && weightGrams > references[index].weightGrams
+
         session.logSet(on: workoutExercise, weightGrams: weightGrams, reps: reps)
+
+        // Floating combat text: +N PWR, N = this set's volume load in whole pounds.
+        // weightGrams * reps is gram-reps volume; pounds(fromGrams:) converts it
+        // to pound-reps. Celebration plays AFTER the write — latency is sacred.
+        let volumeLb = Int(Units.pounds(fromGrams: weightGrams * reps).rounded())
+        combatText?.emit("+\(volumeLb.formatted()) PWR", crit: beatReference)
+        if beatReference { Haptics.prSignature() } // crit haptic is the caller's job
+
         autofill()
     }
 
