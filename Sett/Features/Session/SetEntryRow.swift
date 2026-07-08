@@ -1,20 +1,18 @@
 import SwiftUI
-import SwiftData
 import SettCore
 
 /// The critical control (Flow 1 step 3): a ≥60 pt row `[− weight +] [− reps +] [✓]`.
+/// Lives in the overview sheet since v3.1 — the Set Player is the primary logger.
 ///
-/// Ghost autofill: values pre-populate from the reference set at the next index
-/// (most recent finished workout with this exercise), else the last set logged this
-/// session, else the routine's planned target, and render tertiary until the user
-/// edits. Tapping ✓ commits the ghost values as-is — a repeat set is one tap.
+/// Ghost autofill: values pre-populate via `WorkoutSessionStore.ghostValues` (the ONE
+/// resolution shared with the Set Player) and render tertiary until the user edits.
+/// Tapping ✓ commits the ghost values as-is — a repeat set is one tap.
 struct SetEntryRow: View {
     let workoutExercise: WorkoutExercise
 
     @Environment(WorkoutSessionStore.self) private var session
     @Environment(AppServices.self) private var services
-    @Environment(\.modelContext) private var modelContext
-    /// Injected by ActiveWorkoutView (`.environment(combatText)`); optional so the
+    /// Injected by the presenting view (`.environment(combatText)`); optional so the
     /// row still works if presented outside an active-session context.
     @Environment(CombatTextEmitter.self) private var combatText: CombatTextEmitter?
 
@@ -173,54 +171,14 @@ struct SetEntryRow: View {
         autofill()
     }
 
-    // MARK: Ghost autofill
+    // MARK: Ghost autofill (shared resolution — WorkoutSessionStore.ghostValues)
 
     private func autofill() {
-        let nextIndex = workoutExercise.orderedSets.count
-        let references = session.previousSets(exerciseID: workoutExercise.exerciseID,
-                                              excluding: workoutExercise.workout?.id)
-        if nextIndex < references.count {
-            weightGrams = references[nextIndex].weightGrams
-            reps = references[nextIndex].reps
-        } else if let last = workoutExercise.orderedSets.last {
-            weightGrams = last.weightGrams
-            reps = last.reps
-        } else if let reference = references.last {
-            weightGrams = reference.weightGrams
-            reps = reference.reps
-        } else if let planned = plannedTarget(at: nextIndex) {
-            weightGrams = planned.weightGrams
-            reps = planned.reps
-        } else {
-            weightGrams = 0
-            reps = 10
-        }
+        let ghost = session.ghostValues(for: workoutExercise,
+                                        slot: workoutExercise.orderedSets.count)
+        weightGrams = ghost.weightGrams
+        reps = ghost.reps
         isGhost = true
-    }
-
-    /// When the workout came from a routine and there is no history, fall back to the
-    /// routine's PlannedSet target: fetch the Routine by `workout.routineID`, match the
-    /// RoutineExercise by exerciseID (orderIndex as fallback), take the planned set at
-    /// this index (or its last one).
-    private func plannedTarget(at index: Int) -> (weightGrams: Int, reps: Int)? {
-        guard let workout = workoutExercise.workout,
-              let routineID = workout.routineID else { return nil }
-        var descriptor = FetchDescriptor<Routine>(
-            predicate: #Predicate { $0.id == routineID && $0.deletedAt == nil }
-        )
-        descriptor.fetchLimit = 1
-        guard let routine = (try? modelContext.fetch(descriptor))?.first else { return nil }
-
-        let exerciseID = workoutExercise.exerciseID
-        let orderIndex = workoutExercise.orderIndex
-        let routineExercise = routine.orderedExercises.first { $0.exerciseID == exerciseID }
-            ?? routine.orderedExercises.first { $0.orderIndex == orderIndex }
-        guard let routineExercise else { return nil }
-
-        let planned = routineExercise.orderedPlannedSets
-        guard !planned.isEmpty else { return nil }
-        let target = index < planned.count ? planned[index] : planned[planned.count - 1]
-        return (target.targetWeightGrams ?? 0, target.targetReps)
     }
 
     // MARK: Numeric pad sheet
@@ -335,9 +293,9 @@ enum NumericField: String, Identifiable {
     var id: String { rawValue }
 }
 
-// MARK: - Numeric pad sheet
+// MARK: - Numeric pad sheet (shared: SetEntryRow taps + Set Player long-press)
 
-private struct NumericPadSheet: View {
+struct NumericPadSheet: View {
     let title: String
     let initialText: String
     let keyboard: UIKeyboardType

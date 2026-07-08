@@ -109,6 +109,64 @@ public final class WorkoutSessionStore {
         restEndsAt = nil
     }
 
+    // MARK: Set Player queue support (v3.1 — all derived, nothing stored)
+
+    /// Ghost values for `slot` of `workoutExercise` — the ONE resolution order shared
+    /// by the Set Player and the legacy `SetEntryRow`: reference set at the same index
+    /// (most recent finished workout with this exercise), else the last set logged this
+    /// session, else the last reference set, else the routine's planned target, else a
+    /// bare 0 g × 10 default.
+    public func ghostValues(for workoutExercise: WorkoutExercise, slot: Int) -> (weightGrams: Int, reps: Int) {
+        let references = previousSets(exerciseID: workoutExercise.exerciseID,
+                                      excluding: workoutExercise.workout?.id)
+        if slot >= 0 && slot < references.count {
+            return (references[slot].weightGrams, references[slot].reps)
+        }
+        if let last = workoutExercise.orderedSets.last {
+            return (last.weightGrams, last.reps)
+        }
+        if let reference = references.last {
+            return (reference.weightGrams, reference.reps)
+        }
+        if let planned = plannedTarget(for: workoutExercise, at: slot) {
+            return planned
+        }
+        return (0, 10)
+    }
+
+    /// Planned-set count from the source routine — 0 for quick-start workouts or
+    /// exercises added mid-session that the routine never planned.
+    public func plannedSetCount(for workoutExercise: WorkoutExercise) -> Int {
+        routineExercise(for: workoutExercise)?.orderedPlannedSets.count ?? 0
+    }
+
+    /// The routine's PlannedSet target for `slot` (its last one when past the plan).
+    /// nil when the workout is plan-less or the exercise isn't in the routine.
+    public func plannedTarget(for workoutExercise: WorkoutExercise, at slot: Int) -> (weightGrams: Int, reps: Int)? {
+        guard let routineExercise = routineExercise(for: workoutExercise) else { return nil }
+        let planned = routineExercise.orderedPlannedSets
+        guard !planned.isEmpty else { return nil }
+        let target = slot >= 0 && slot < planned.count ? planned[slot] : planned[planned.count - 1]
+        return (target.targetWeightGrams ?? 0, target.targetReps)
+    }
+
+    /// Resolve the RoutineExercise behind a WorkoutExercise: fetch the Routine by the
+    /// workout's loose `routineID`, match by exerciseID (orderIndex as fallback).
+    private func routineExercise(for workoutExercise: WorkoutExercise) -> RoutineExercise? {
+        guard let workout = workoutExercise.workout,
+              let routineID = workout.routineID else { return nil }
+        var descriptor = FetchDescriptor<Routine>(
+            predicate: #Predicate { $0.id == routineID && $0.deletedAt == nil }
+        )
+        descriptor.fetchLimit = 1
+        guard let routine = (try? context.fetch(descriptor))?.first else { return nil }
+
+        let exerciseID = workoutExercise.exerciseID
+        let orderIndex = workoutExercise.orderIndex
+        return routine.orderedExercises.first { $0.exerciseID == exerciseID }
+            ?? routine.orderedExercises.first { $0.orderIndex == orderIndex }
+    }
+
     /// The reference workout for ghost autofill: most recent finished workout containing this exercise.
     public func previousSets(exerciseID: UUID, excluding workoutID: UUID?) -> [SetEntry] {
         let descriptor = FetchDescriptor<Workout>(sortBy: [SortDescriptor(\.startedAt, order: .reverse)])
