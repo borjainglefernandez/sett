@@ -181,35 +181,34 @@ struct RoutineEditorView: View {
     // MARK: Default rest (applies to every exercise)
 
     private var restControl: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "timer").foregroundStyle(SettColor.heroCyan).font(.footnote)
+        HStack(spacing: 8) {
+            Image(systemName: "timer").foregroundStyle(SettColor.heroCyan).font(.caption)
             Text("Default rest")
-                .font(.system(.subheadline, design: .rounded))
-                .foregroundStyle(SettColor.bone)
-            Spacer()
-            Text("\(defaultRestSeconds)s")
-                .font(.system(size: 15, weight: .semibold, design: .monospaced))
+                .font(.system(size: 13, weight: .medium, design: .rounded))
                 .foregroundStyle(SettColor.ash)
-                .monospacedDigit()
+            Spacer(minLength: 8)
             stepButton("minus") {
                 defaultRestSeconds = max(15, defaultRestSeconds - 15); Haptics.selection()
             }
+            Text("\(defaultRestSeconds)s")
+                .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                .foregroundStyle(SettColor.bone)
+                .monospacedDigit()
+                .frame(minWidth: 42)
             stepButton("plus") {
                 defaultRestSeconds = min(600, defaultRestSeconds + 15); Haptics.selection()
             }
         }
-        .padding(.horizontal, 14)
-        .frame(minHeight: 48)
-        .settCard()
+        .padding(.vertical, 2)
     }
 
     private func stepButton(_ symbol: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.footnote.weight(.bold))
+                .font(.caption.weight(.bold))
                 .foregroundStyle(SettColor.heroCyan)
-                .frame(width: 34, height: 30)
-                .background(SettColor.cardNested, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                .frame(width: 30, height: 28)
+                .background(SettColor.cardNested, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
         }
         .buttonStyle(.plain)
     }
@@ -224,14 +223,16 @@ struct RoutineEditorView: View {
                 .frame(width: 26)
             VStack(alignment: .leading, spacing: 2) {
                 Text(draft.wrappedValue.name)
-                    .font(.system(.headline, design: .rounded))
+                    .font(.system(.subheadline, design: .rounded).weight(.semibold))
                     .foregroundStyle(SettColor.bone)
-                    .lineLimit(1)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.85)
+                    .fixedSize(horizontal: false, vertical: true)
                 Text(draft.wrappedValue.equipment.rawValue.capitalized)
                     .font(.system(size: 11, weight: .medium, design: .monospaced))
                     .foregroundStyle(SettColor.iron)
             }
-            Spacer(minLength: 8)
+            Spacer(minLength: 6)
             setCountControl(draft)
             Menu {
                 Button {
@@ -245,7 +246,7 @@ struct RoutineEditorView: View {
                 Image(systemName: "ellipsis")
                     .font(.body.weight(.semibold))
                     .foregroundStyle(SettColor.ash)
-                    .frame(width: 32, height: 40)
+                    .frame(width: 26, height: 40)
                     .contentShape(Rectangle())
             }
             .accessibilityLabel("Exercise options")
@@ -255,25 +256,26 @@ struct RoutineEditorView: View {
     }
 
     private func setCountControl(_ draft: Binding<RoutineDraftExercise>) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 6) {
             stepButton("minus") {
                 if draft.wrappedValue.setCount > 1 { draft.wrappedValue.setCount -= 1; Haptics.selection() }
             }
             VStack(spacing: 0) {
                 Text("\(draft.wrappedValue.setCount)")
-                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                    .font(.system(size: 17, weight: .bold, design: .rounded))
                     .monospacedDigit()
                     .foregroundStyle(SettColor.bone)
                 Text(draft.wrappedValue.setCount == 1 ? "SET" : "SETS")
-                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                    .font(.system(size: 8, weight: .semibold, design: .monospaced))
                     .kerning(1)
                     .foregroundStyle(SettColor.iron)
             }
-            .frame(minWidth: 34)
+            .frame(minWidth: 26)
             stepButton("plus") {
                 if draft.wrappedValue.setCount < 10 { draft.wrappedValue.setCount += 1; Haptics.selection() }
             }
         }
+        .fixedSize()
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(draft.wrappedValue.setCount) sets")
     }
