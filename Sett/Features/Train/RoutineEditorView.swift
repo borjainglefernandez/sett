@@ -45,47 +45,18 @@ struct RoutineEditorView: View {
     @State private var hasLoadedDraft = false
 
     var body: some View {
-        List {
-            Section {
-                TextField("Routine name", text: $name)
-                    .font(.headline)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                nameField
+                daysSection
+                exercisesSection
             }
-            Section("Scheduled days") {
-                dayChips
-            }
-            Section {
-                ForEach($drafts) { $draft in
-                    DraftExerciseEditor(draft: $draft)
-                }
-                .onMove { indices, newOffset in
-                    drafts.move(fromOffsets: indices, toOffset: newOffset)
-                }
-                .onDelete { offsets in
-                    drafts.remove(atOffsets: offsets)
-                }
-                Button {
-                    isShowingExercisePicker = true
-                } label: {
-                    Label("Add Exercise", systemImage: "plus")
-                        .font(.headline)
-                        .foregroundStyle(SettColor.heroCyan)
-                }
-                .buttonStyle(.borderless)
-            } header: {
-                HStack {
-                    Text("Exercises")
-                    Spacer()
-                    if drafts.count > 1 {
-                        EditButton()
-                            .font(.subheadline)
-                    }
-                }
-            } footer: {
-                if drafts.isEmpty {
-                    Text("Add your first exercise.")
-                }
-            }
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+            .padding(.bottom, 40)
         }
+        .dungeonBackground()
+        .scrollDismissesKeyboard(.interactively)
         .navigationTitle(routine == nil ? "New Routine" : "Edit Routine")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -103,10 +74,38 @@ struct RoutineEditorView: View {
         .onAppear(perform: loadDraftIfNeeded)
     }
 
+    // MARK: Name
+
+    private var nameField: some View {
+        TextField("", text: $name, prompt: Text("Routine name").foregroundStyle(SettColor.iron))
+            .font(.system(.title3, design: .rounded, weight: .bold))
+            .foregroundStyle(SettColor.bone)
+            .textInputAutocapitalization(.words)
+            .padding(.horizontal, 16)
+            .frame(minHeight: 52)
+            .settCard()
+    }
+
+    // MARK: Scheduled days
+
+    private var daysSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            sectionLabel("SCHEDULED DAYS")
+            dayChips
+        }
+    }
+
+    private func sectionLabel(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 12, weight: .semibold, design: .monospaced))
+            .kerning(2)
+            .foregroundStyle(SettColor.ash)
+    }
+
     // MARK: Day chips (bit 0 = Monday … bit 6 = Sunday)
 
     private var dayChips: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 6) {
             ForEach(0..<7, id: \.self) { day in
                 let isOn = TrainDays.isSet(daysOfWeekMask, day: day)
                 Button {
@@ -114,18 +113,69 @@ struct RoutineEditorView: View {
                     Haptics.selection()
                 } label: {
                     Text(TrainDays.letters[day])
-                        .font(.subheadline.weight(.semibold))
-                        .frame(maxWidth: .infinity, minHeight: 36)
+                        .font(.system(size: 15, weight: .bold, design: .rounded))
+                        .frame(maxWidth: .infinity, minHeight: 44)
                         .background(isOn ? SettColor.heroCyan : SettColor.cardNested,
-                                    in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                        .foregroundStyle(isOn ? Color.white : Color.primary)
+                                    in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .overlay {
+                            if !isOn {
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .strokeBorder(SettColor.cardBorder, lineWidth: 1)
+                            }
+                        }
+                        .foregroundStyle(isOn ? Color.black : SettColor.ash)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(TrainDays.names[day])
                 .accessibilityAddTraits(isOn ? .isSelected : [])
             }
         }
-        .padding(.vertical, 4)
+    }
+
+    // MARK: Exercises
+
+    private var exercisesSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionLabel("EXERCISES")
+            if drafts.isEmpty {
+                Text("Add your first exercise.")
+                    .font(.system(.subheadline, design: .monospaced))
+                    .foregroundStyle(SettColor.iron)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, 24)
+            }
+            ForEach($drafts) { $draft in
+                let idx = drafts.firstIndex { $0.id == draft.id } ?? 0
+                DraftExerciseEditor(
+                    draft: $draft,
+                    canMoveUp: idx > 0,
+                    canMoveDown: idx < drafts.count - 1,
+                    onMoveUp: { move(from: idx, to: idx - 1) },
+                    onMoveDown: { move(from: idx, to: idx + 1) },
+                    onDelete: { drafts.removeAll { $0.id == draft.id }; Haptics.light() }
+                )
+            }
+            Button {
+                isShowingExercisePicker = true
+            } label: {
+                Label("Add Exercise", systemImage: "plus")
+                    .font(.headline)
+                    .foregroundStyle(SettColor.heroCyan)
+                    .frame(maxWidth: .infinity, minHeight: 52)
+                    .background {
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .strokeBorder(SettColor.heroCyan.opacity(0.4),
+                                          style: StrokeStyle(lineWidth: 1, dash: [5, 4]))
+                    }
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private func move(from: Int, to: Int) {
+        guard to >= 0, to < drafts.count else { return }
+        drafts.swapAt(from, to)
+        Haptics.selection()
     }
 
     // MARK: Draft lifecycle
@@ -299,64 +349,130 @@ struct RoutineEditorView: View {
 
 private struct DraftExerciseEditor: View {
     @Binding var draft: RoutineDraftExercise
+    let canMoveUp: Bool
+    let canMoveDown: Bool
+    let onMoveUp: () -> Void
+    let onMoveDown: () -> Void
+    let onDelete: () -> Void
 
     @Environment(AppServices.self) private var services
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(draft.name)
-                .font(.headline)
-            restStepper
-            ForEach($draft.sets) { $set in
-                PlannedSetEditorRow(set: $set,
-                                    number: number(of: set),
-                                    suggestedWeightGrams: suggestedWeight(for: set),
-                                    onRemove: { remove(set) })
+            header
+            restRow
+            // Compact set table: one tight row per set.
+            VStack(spacing: 6) {
+                columnHeader
+                ForEach($draft.sets) { $set in
+                    PlannedSetEditorRow(set: $set,
+                                        number: number(of: set),
+                                        suggestedWeightGrams: suggestedWeight(for: set),
+                                        canRemove: draft.sets.count > 1,
+                                        onRemove: { remove(set) })
+                }
             }
-            Button {
-                addSet()
-            } label: {
-                Label("Add Set", systemImage: "plus")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(SettColor.heroCyan)
+            HStack(spacing: 16) {
+                Button(action: addSet) {
+                    Label("Add Set", systemImage: "plus")
+                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(SettColor.heroCyan)
+                }
+                .buttonStyle(.plain)
+                if draft.sets.count > 1 {
+                    Button(action: applyFirstToAll) {
+                        Label("Match all", systemImage: "equal")
+                            .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(SettColor.ash)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHint("Set every set to the first set's reps and weight")
+                }
             }
-            .buttonStyle(.borderless)
+            .padding(.top, 2)
         }
-        .padding(.vertical, 4)
+        .settCard()
     }
 
-    // MARK: Rest seconds (nil = per-user default)
-
-    private var restStepper: some View {
-        Stepper {
-            HStack(spacing: 6) {
-                Image(systemName: "timer")
-                    .foregroundStyle(SettColor.heroCyan)
-                Text(restText)
-                    .font(.subheadline)
-                    .monospacedDigit()
+    private var header: some View {
+        HStack(spacing: 8) {
+            Text(draft.name)
+                .font(.system(.headline, design: .rounded))
+                .foregroundStyle(SettColor.bone)
+                .lineLimit(1)
+            Spacer(minLength: 8)
+            Menu {
+                Button { onMoveUp() } label: { Label("Move up", systemImage: "arrow.up") }
+                    .disabled(!canMoveUp)
+                Button { onMoveDown() } label: { Label("Move down", systemImage: "arrow.down") }
+                    .disabled(!canMoveDown)
+                Divider()
+                Button(role: .destructive, action: onDelete) {
+                    Label("Remove exercise", systemImage: "trash")
+                }
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(SettColor.ash)
+                    .frame(width: 40, height: 32)
+                    .contentShape(Rectangle())
             }
-        } onIncrement: {
-            if let current = draft.restSeconds {
-                draft.restSeconds = min(600, current + 15)
-            } else {
-                draft.restSeconds = services.settings.defaultRestSeconds
-            }
-            Haptics.selection()
-        } onDecrement: {
-            if let current = draft.restSeconds, current > 15 {
-                draft.restSeconds = current - 15
-            } else {
-                draft.restSeconds = nil
-            }
-            Haptics.selection()
+            .accessibilityLabel("Exercise options")
         }
+    }
 
+    // MARK: Rest (nil = per-user default) — compact −/+ capsule
+
+    private var restRow: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "timer").foregroundStyle(SettColor.heroCyan).font(.footnote)
+            Text(restText)
+                .font(.system(size: 13, weight: .medium, design: .monospaced))
+                .foregroundStyle(SettColor.ash)
+                .monospacedDigit()
+            Spacer(minLength: 8)
+            stepButton("minus") {
+                if let current = draft.restSeconds, current > 15 {
+                    draft.restSeconds = current - 15
+                } else { draft.restSeconds = nil }
+                Haptics.selection()
+            }
+            stepButton("plus") {
+                if let current = draft.restSeconds {
+                    draft.restSeconds = min(600, current + 15)
+                } else { draft.restSeconds = services.settings.defaultRestSeconds }
+                Haptics.selection()
+            }
+        }
+    }
+
+    private func stepButton(_ symbol: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.footnote.weight(.bold))
+                .foregroundStyle(SettColor.heroCyan)
+                .frame(width: 34, height: 30)
+                .background(SettColor.cardNested, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+        }
+        .buttonStyle(.plain)
     }
 
     private var restText: String {
-        draft.restSeconds.map { "\($0) s rest" }
-            ?? "Default rest (\(services.settings.defaultRestSeconds) s)"
+        draft.restSeconds.map { "\($0)s rest" }
+            ?? "Default rest · \(services.settings.defaultRestSeconds)s"
+    }
+
+    private var columnHeader: some View {
+        HStack(spacing: 0) {
+            Text("SET").frame(width: 40, alignment: .leading)
+            Text("REPS").frame(maxWidth: .infinity, alignment: .center)
+            Text("WEIGHT").frame(maxWidth: .infinity, alignment: .trailing)
+            Color.clear.frame(width: 28) // remove-button gutter
+        }
+        .font(.system(size: 10, weight: .semibold, design: .monospaced))
+        .kerning(1)
+        .foregroundStyle(SettColor.iron)
+        .padding(.horizontal, 4)
     }
 
     // MARK: Sets
@@ -366,6 +482,7 @@ private struct DraftExerciseEditor: View {
     }
 
     private func remove(_ set: RoutineDraftSet) {
+        guard draft.sets.count > 1 else { return }
         draft.sets.removeAll { $0.id == set.id }
         Haptics.light()
     }
@@ -377,8 +494,19 @@ private struct DraftExerciseEditor: View {
         Haptics.light()
     }
 
-    /// When "auto" is switched off, seed the stepper with the nearest explicit
-    /// weight in this exercise so the user isn't stepping up from zero.
+    /// Copy the first set's reps + weight (incl. auto) onto every set — the common
+    /// case where all working sets share one scheme.
+    private func applyFirstToAll() {
+        guard let first = draft.sets.first else { return }
+        for index in draft.sets.indices {
+            draft.sets[index].targetReps = first.targetReps
+            draft.sets[index].targetWeightGrams = first.targetWeightGrams
+        }
+        Haptics.success()
+    }
+
+    /// When "auto" is switched off, seed with the nearest explicit weight in this
+    /// exercise so the user isn't typing up from zero.
     private func suggestedWeight(for set: RoutineDraftSet) -> Int {
         guard let index = draft.sets.firstIndex(where: { $0.id == set.id }) else { return 0 }
         for candidate in draft.sets[..<index].reversed() {
@@ -391,91 +519,117 @@ private struct DraftExerciseEditor: View {
     }
 }
 
-// MARK: - One planned set: reps 1–30, weight stepper or "auto"
+// MARK: - One planned set: a single tight row — SET n · [reps] × [weight/AUTO]
 
 private struct PlannedSetEditorRow: View {
     @Binding var set: RoutineDraftSet
     let number: Int
     let suggestedWeightGrams: Int
+    let canRemove: Bool
     let onRemove: () -> Void
 
     @Environment(AppServices.self) private var services
 
-    /// Weight the stepper held before "Auto weight" was switched on, so toggling
-    /// auto on and back off round-trips to the same value.
+    @State private var editing: EditField?
+    /// Weight held before "auto" was switched on, so toggling round-trips.
     @State private var lastExplicitWeightGrams: Int?
 
+    private enum EditField: String, Identifiable { case reps, weight; var id: String { rawValue } }
+
     var body: some View {
-        VStack(spacing: 8) {
-            HStack {
-                Text("Set \(number)")
-                    .font(.subheadline.weight(.semibold))
-                Spacer()
-                Button(action: onRemove) {
-                    Image(systemName: "minus.circle.fill")
-                        .foregroundStyle(SettColor.negative)
-                }
-                .buttonStyle(.borderless)
-                .accessibilityLabel("Remove set \(number)")
-            }
-            Stepper {
-                Text("\(set.targetReps) reps")
-                    .font(.subheadline)
+        HStack(spacing: 0) {
+            Text("\(number)")
+                .font(.system(size: 13, weight: .bold, design: .monospaced))
+                .foregroundStyle(SettColor.iron)
+                .frame(width: 40, alignment: .leading)
+
+            // Reps — tap to type
+            Button { editing = .reps } label: {
+                Text("\(set.targetReps)")
+                    .font(.system(size: 17, weight: .semibold, design: .rounded))
                     .monospacedDigit()
-            } onIncrement: {
-                if set.targetReps < 30 {
-                    set.targetReps += 1
-                    Haptics.selection()
-                }
-            } onDecrement: {
-                if set.targetReps > 1 {
-                    set.targetReps -= 1
-                    Haptics.selection()
-                }
+                    .foregroundStyle(SettColor.bone)
+                    .frame(maxWidth: .infinity, minHeight: 40)
+                    .contentShape(Rectangle())
             }
-            Toggle(isOn: autoWeightBinding) {
-                Text("Auto weight")
-                    .font(.subheadline)
+            .buttonStyle(.plain)
+
+            // Weight — tap to type, or AUTO chip
+            Button { toggleAutoOrEdit() } label: {
+                Group {
+                    if let grams = set.targetWeightGrams {
+                        Text(WeightFormat.compact(grams: grams, unit: services.settings.unit))
+                            .font(.system(size: 17, weight: .semibold, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundStyle(SettColor.bone)
+                    } else {
+                        Text("AUTO")
+                            .font(.system(size: 12, weight: .bold, design: .monospaced))
+                            .kerning(1)
+                            .foregroundStyle(SettColor.heroCyan)
+                    }
+                }
+                .frame(maxWidth: .infinity, minHeight: 40, alignment: .trailing)
+                .contentShape(Rectangle())
             }
-            .tint(SettColor.heroCyan)
-            // Auto on ⇒ no weight stepper at all: the weight comes from last
-            // time's set at session autofill, so showing a stepper would lie.
-            if let grams = set.targetWeightGrams {
-                Stepper {
-                    Text(WeightFormat.compactWithUnit(grams: grams, unit: services.settings.unit))
-                        .font(.subheadline)
-                        .monospacedDigit()
-                } onIncrement: {
-                    set.targetWeightGrams = grams + services.settings.incrementGrams
-                    Haptics.selection()
-                } onDecrement: {
-                    set.targetWeightGrams = max(0, grams - services.settings.incrementGrams)
-                    Haptics.selection()
+            .buttonStyle(.plain)
+            .accessibilityLabel(set.targetWeightGrams == nil
+                ? "Weight auto, uses last time"
+                : "Weight \(WeightFormat.compactWithUnit(grams: set.targetWeightGrams ?? 0, unit: services.settings.unit))")
+
+            // Remove
+            Button(action: onRemove) {
+                Image(systemName: "xmark")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(canRemove ? SettColor.iron : .clear)
+                    .frame(width: 28, height: 40)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(!canRemove)
+            .accessibilityLabel("Remove set \(number)")
+        }
+        .padding(.horizontal, 4)
+        .background(SettColor.cardNested, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .contextMenu {
+            Button { setAuto() } label: { Label("Auto weight (use last time)", systemImage: "wand.and.stars") }
+        }
+        .sheet(item: $editing) { field in
+            switch field {
+            case .reps:
+                NumericPadSheet(title: "Reps", initialText: "\(set.targetReps)", keyboard: .numberPad) { text in
+                    if let v = Int(text.filter(\.isNumber)), v >= 1 { set.targetReps = min(v, 30) }
+                }
+            case .weight:
+                NumericPadSheet(title: "Weight (\(services.settings.unit.symbol))",
+                                initialText: weightFieldText, keyboard: .decimalPad) { text in
+                    if let value = Double(text), value >= 0 {
+                        set.targetWeightGrams = Units.grams(fromDisplay: value, unit: services.settings.unit)
+                    }
                 }
             }
         }
-        .padding(12)
-        .background(SettColor.cardNested, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
-    /// On ⇒ targetWeightGrams == nil ("use last time's weight" at session autofill).
-    /// Off ⇒ restore the value from before auto was switched on, else the nearest
-    /// explicit weight in this exercise, else a 82.5 lb starting point — never 0.
-    private var autoWeightBinding: Binding<Bool> {
-        Binding(
-            get: { set.targetWeightGrams == nil },
-            set: { isAuto in
-                if isAuto {
-                    lastExplicitWeightGrams = set.targetWeightGrams
-                    set.targetWeightGrams = nil
-                } else {
-                    let restored = lastExplicitWeightGrams ?? suggestedWeightGrams
-                    set.targetWeightGrams = restored > 0
-                        ? restored
-                        : Units.grams(fromDisplay: 82.5, unit: .lb)
-                }
-                Haptics.selection()
-            }
-        )
+    private var weightFieldText: String {
+        let grams = set.targetWeightGrams ?? (lastExplicitWeightGrams ?? suggestedWeightGrams)
+        return WeightFormat.compact(grams: grams, unit: services.settings.unit)
+    }
+
+    /// Tapping the weight cell: if AUTO, switch to an explicit value and open the pad;
+    /// otherwise just edit the value. (The context menu re-enables AUTO.)
+    private func toggleAutoOrEdit() {
+        if set.targetWeightGrams == nil {
+            let restored = lastExplicitWeightGrams ?? suggestedWeightGrams
+            set.targetWeightGrams = restored > 0 ? restored : Units.grams(fromDisplay: 82.5, unit: .lb)
+        }
+        editing = .weight
+    }
+
+    /// targetWeightGrams == nil ⇒ "use last time's weight" at session autofill.
+    private func setAuto() {
+        lastExplicitWeightGrams = set.targetWeightGrams
+        set.targetWeightGrams = nil
+        Haptics.selection()
     }
 }
