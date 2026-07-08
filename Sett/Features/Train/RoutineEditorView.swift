@@ -234,7 +234,17 @@ struct RoutineEditorView: View {
             }
             Spacer(minLength: 6)
             setCountControl(draft)
+            let index = drafts.firstIndex { $0.id == draft.wrappedValue.id } ?? 0
             Menu {
+                Button {
+                    move(fromIndex: index, by: -1)
+                } label: { Label("Move up", systemImage: "arrow.up") }
+                    .disabled(index == 0)
+                Button {
+                    move(fromIndex: index, by: 1)
+                } label: { Label("Move down", systemImage: "arrow.down") }
+                    .disabled(index >= drafts.count - 1)
+                Divider()
                 Button {
                     replacingDraftID = draft.wrappedValue.id
                     isShowingExercisePicker = true
@@ -253,6 +263,15 @@ struct RoutineEditorView: View {
         }
         .padding(.vertical, 8)
         .padding(.horizontal, 12)
+    }
+
+    /// Swap an exercise up or down the list (menu reorder — always available,
+    /// no edit mode needed). `by` is −1 (up) or +1 (down).
+    private func move(fromIndex index: Int, by offset: Int) {
+        let target = index + offset
+        guard index >= 0, index < drafts.count, target >= 0, target < drafts.count else { return }
+        withAnimation { drafts.swapAt(index, target) }
+        Haptics.selection()
     }
 
     private func setCountControl(_ draft: Binding<RoutineDraftExercise>) -> some View {
