@@ -3,33 +3,35 @@ import SettCore
 
 // MARK: - Log outcome classification (item 5)
 
-/// How a just-logged set compares to its reference at the same slot. Drives the
-/// scanner message pool, the readback chips, and the SET → REST transition color.
-/// `beatWeight` is the crit (gold numeral flash + PR haptic); `beatReps` is a
-/// gold-sweep "beat" without the crit ceremony. `casual` suppresses all of it.
+/// How a just-logged set scored against its reference at the same slot. The verdict
+/// is driven by the COMBINED e1RM delta (which prices the weight↔reps trade), not by
+/// weight or reps alone — so dropping load but adding enough reps still reads as a
+/// `.beat`. `.personalBest` is the crit (gold flash + PR haptic); `.beat` is a
+/// gold-sweep win without the ceremony. `.casual` suppresses all of it.
 enum LogOutcome {
-    case beatWeight   // crit — heavier than the reference set at this slot
-    case beatReps     // same weight, more reps
-    case held         // same weight, same reps
-    case dropped      // lighter, or same weight with fewer reps
+    case personalBest // crit — this set's e1RM beats the exercise's all-time best
+    case beat         // net e1RM up vs the reference set (not an all-time PR)
+    case held         // net e1RM unchanged
+    case dropped      // net e1RM down
     case baseline     // no reference set at this slot
     case warmup       // logged as a warm-up
     case casual       // workout is off the record
 
     /// crit: gold numeral flash + prSignature haptic + gold combat text.
-    var isCrit: Bool { self == .beatWeight }
+    var isCrit: Bool { self == .personalBest }
     /// beat/crit: gold sweep + longer hold into REST. Others transition bone.
-    var isGold: Bool { self == .beatWeight || self == .beatReps }
+    var isGold: Bool { self == .personalBest || self == .beat }
 
     static func classify(readback: SetReadback, isWarmup: Bool, isCasual: Bool) -> LogOutcome {
         if isCasual { return .casual }
         if isWarmup { return .warmup }
         if readback.isBaseline { return .baseline }
-        let w = readback.weightDeltaGrams ?? 0
-        let r = readback.repsDelta ?? 0
-        if w > 0 { return .beatWeight }
-        if w == 0 && r > 0 { return .beatReps }
-        if w == 0 && r == 0 { return .held }
+        // Score by the combined e1RM delta — the single number that trades weight
+        // against reps. A record beats everything; otherwise up/even/down.
+        if readback.isPersonalBest { return .personalBest }
+        let delta = readback.e1RMDeltaGrams ?? 0
+        if delta > 0 { return .beat }
+        if delta == 0 { return .held }
         return .dropped
     }
 }
@@ -40,25 +42,26 @@ enum LogOutcome {
 /// session state always yields the same line — recompute-safe, never `.random`.
 enum ScannerMessages {
     private static let pools: [LogOutcome: [String]] = [
-        .beatWeight: [
-            "CEILING RISING.",
-            "The bar got heavier. You didn't notice.",
-            "OUTPUT UP. Again.",
+        .personalBest: [
             "NEW CEILING. Hmph.",
+            "PEAK OUTPUT. The Scanner logs it.",
+            "A record. Don't gloat.",
+            "The highest reading yet. Adequate.",
         ],
-        .beatReps: [
-            "OUTPUT UP.",
-            "More reps, same iron. Acceptable.",
-            "The Scanner logged the extra work.",
+        .beat: [
+            "NET STRONGER.",
+            "More output than last time. Adequate.",
+            "The Scanner reads a bigger number.",
+            "Traded well. Output up.",
         ],
         .held: [
             "HOLDING THE LINE.",
-            "Matched. Consistency is a weapon.",
+            "Matched output. Consistency is a weapon.",
             "RECORDED. RECOVER.",
         ],
         .dropped: [
-            "RECORDED. RECOVER.",
-            "Down a notch. The Scanner remembers the peak.",
+            "OUTPUT DOWN. Recover, then answer.",
+            "Below the last reading. The Scanner remembers the peak.",
             "Regroup. The next set answers.",
         ],
         .baseline: [
@@ -119,6 +122,15 @@ struct ReadbackBlock: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
             chipsRow
+            if let netLine {
+                Text(netLine)
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .kerning(1)
+                    .foregroundStyle(SettColor.ash)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
             Text(payload.message)
                 .font(.system(.caption, design: .monospaced))
                 .kerning(1)
@@ -148,6 +160,35 @@ struct ReadbackBlock: View {
 
     private var loggedLine: String {
         "LOGGED · \(WeightFormat.compactWithUnit(grams: payload.weightGrams, unit: unit)) × \(payload.reps)"
+    }
+
+    /// The scoring payoff: the single combined e1RM delta, plus the weight↔reps
+    /// exchange rate when the two axes moved in opposite directions (the trade case).
+    /// Shown only for scored sets (not baseline / warm-up / off-the-record).
+    private var netLine: String? {
+        switch payload.outcome {
+        case .baseline, .warmup, .casual: return nil
+        default: break
+        }
+        guard let net = payload.readback.e1RMDeltaGrams else { return nil }
+        let sym = unit.symbol
+        let base: String
+        if net > 0 {
+            base = "NET +\(WeightFormat.compact(grams: net, unit: unit)) \(sym) output"
+        } else if net < 0 {
+            base = "NET −\(WeightFormat.compact(grams: -net, unit: unit)) \(sym) output"
+        } else {
+            base = "NET even"
+        }
+        // Trade-off: weight and reps moved opposite ways — surface the exchange rate.
+        let w = payload.readback.weightDeltaGrams ?? 0
+        let r = payload.readback.repsDelta ?? 0
+        if (w > 0 && r < 0) || (w < 0 && r > 0) {
+            let perRep = ProgressEngine.oneRepEquivalentGrams(weightGrams: payload.weightGrams,
+                                                              reps: payload.reps)
+            return "\(base) · 1 rep ≈ \(WeightFormat.compact(grams: perRep, unit: unit)) \(sym) here"
+        }
+        return base
     }
 
     @ViewBuilder

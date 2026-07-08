@@ -16,6 +16,17 @@ public enum ProgressEngine {
         return Int(estimate.rounded())
     }
 
+    /// The exchange rate behind per-set scoring: how many grams on the bar one
+    /// extra rep is worth in e1RM terms at this (weight, reps). Falls out of Epley —
+    /// adding a rep raises e1RM by `w/30`, and `Δlb` of weight raises it by
+    /// `Δlb·(30+r)/30`, so a rep equals `w/(30+r)` on the bar. Uses the same rep cap
+    /// as `e1RMGrams`. e.g. 250 lb × 3 → ~7.6 lb per rep. This is why a set can be
+    /// scored by e1RM alone: the weight↔reps trade is priced automatically.
+    public static func oneRepEquivalentGrams(weightGrams: Int, reps: Int) -> Int {
+        let cappedReps = min(max(reps, 0), 12)
+        return Int((Double(weightGrams) / Double(30 + cappedReps)).rounded())
+    }
+
     // MARK: - Buckets
 
     /// The strict calendar bucket containing `date` in the given calendar.

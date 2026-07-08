@@ -192,15 +192,45 @@ public final class WorkoutSessionStore {
     /// `isBaseline` when there is no reference at that slot. Compute BEFORE logging.
     func readback(for workoutExercise: WorkoutExercise, slot: Int,
                   weightGrams: Int, reps: Int) -> SetReadback {
+        let e1RM = ProgressEngine.e1RMGrams(weightGrams: weightGrams, reps: reps)
+        let priorBest = bestPriorE1RMGrams(exerciseID: workoutExercise.exerciseID,
+                                           excluding: workoutExercise.workout?.id)
+        let isPR = e1RM > priorBest
         let references = previousSets(exerciseID: workoutExercise.exerciseID,
                                       excluding: workoutExercise.workout?.id)
         guard slot >= 0 && slot < references.count else {
-            return SetReadback(weightDeltaGrams: nil, repsDelta: nil, isBaseline: true)
+            return SetReadback(weightDeltaGrams: nil, repsDelta: nil, isBaseline: true,
+                               e1RMGrams: e1RM, referenceE1RMGrams: nil,
+                               e1RMDeltaGrams: nil, isPersonalBest: isPR)
         }
         let reference = references[slot]
+        let refE1RM = ProgressEngine.e1RMGrams(weightGrams: reference.weightGrams,
+                                               reps: reference.reps)
         return SetReadback(weightDeltaGrams: weightGrams - reference.weightGrams,
                            repsDelta: reps - reference.reps,
-                           isBaseline: false)
+                           isBaseline: false,
+                           e1RMGrams: e1RM, referenceE1RMGrams: refE1RM,
+                           e1RMDeltaGrams: e1RM - refE1RM, isPersonalBest: isPR)
+    }
+
+    /// Best e1RM ever recorded for this exercise across finished, non-casual,
+    /// non-warmup sets (excluding the in-progress workout) — the PR baseline.
+    /// 0 when the exercise has no prior history.
+    private func bestPriorE1RMGrams(exerciseID: UUID, excluding workoutID: UUID?) -> Int {
+        let descriptor = FetchDescriptor<Workout>(sortBy: [SortDescriptor(\.startedAt)])
+        let workouts = (try? context.fetch(descriptor)) ?? []
+        var best = 0
+        for workout in workouts
+        where workout.deletedAt == nil && workout.endedAt != nil
+            && !workout.isCasual && workout.id != workoutID {
+            for we in workout.orderedExercises where we.exerciseID == exerciseID {
+                for set in we.orderedSets where !set.isWarmup {
+                    best = max(best, ProgressEngine.e1RMGrams(weightGrams: set.weightGrams,
+                                                              reps: set.reps))
+                }
+            }
+        }
+        return best
     }
 
     // MARK: Off the record (item 6 — casual toggle)
@@ -335,10 +365,23 @@ public final class WorkoutSessionStore {
 
 // MARK: - Set readback payload
 
-/// A logged set's delta against the reference set at the same slot. `nil` deltas
-/// with `isBaseline == true` mean there was no reference to compare against.
+/// A logged set's comparison against the reference set at the same slot.
+///
+/// Per-set SCORING is driven by `e1RMDeltaGrams` — the single combined number that
+/// prices the weight↔reps trade (a rep is worth ~w/(30+r) on the bar). The raw
+/// `weightDeltaGrams`/`repsDelta` are kept only as human-readable narration chips.
+/// `nil` deltas with `isBaseline == true` mean there was no reference to compare.
 struct SetReadback: Equatable {
     let weightDeltaGrams: Int?
     let repsDelta: Int?
     let isBaseline: Bool
+    /// This set's estimated 1RM (rep-capped Epley) — the per-set "output" scalar.
+    let e1RMGrams: Int
+    /// The reference set's e1RM; nil when baseline.
+    let referenceE1RMGrams: Int?
+    /// e1RMGrams − referenceE1RMGrams; nil when baseline. The scoring signal.
+    let e1RMDeltaGrams: Int?
+    /// This set's e1RM strictly exceeds the best PRIOR e1RM for this exercise
+    /// (finished, non-casual, non-warmup sets). Drives the crit / gold PR moment.
+    let isPersonalBest: Bool
 }

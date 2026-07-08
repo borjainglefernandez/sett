@@ -487,10 +487,18 @@ struct SetPlayerView: View {
                                               readback: readback, outcome: outcome,
                                               message: message)
 
-        // Floating combat text: +N PWR, N = this set's volume load in whole pounds.
-        // Crit only when the weight beat the reference and the set isn't off the record.
-        let volumeLb = Int(Units.pounds(fromGrams: weightGrams * reps).rounded())
-        combatText?.emit("+\(volumeLb.formatted()) PWR", crit: outcome.isCrit)
+        // Floating combat text scores by e1RM, not volume: a beat emits the points
+        // gained (+ΔPWR = the e1RM gain over the reference set in whole lb); everything
+        // else shows the raw OUTPUT reading. This prices the weight↔reps trade honestly
+        // and won't hand out a confetti dump for dropping weight to pump light reps.
+        let e1RMLb = Int(Units.pounds(fromGrams: readback.e1RMGrams).rounded())
+        switch outcome {
+        case .personalBest, .beat:
+            let gainLb = Int(Units.pounds(fromGrams: readback.e1RMDeltaGrams ?? 0).rounded())
+            combatText?.emit("+\(gainLb.formatted()) PWR", crit: outcome.isCrit)
+        default: // baseline / held / dropped / warmup / casual — the reading, no celebration
+            combatText?.emit("OUTPUT \(e1RMLb.formatted())", crit: false)
+        }
         if outcome.isCrit {
             Haptics.prSignature()
             goldFlash = true
