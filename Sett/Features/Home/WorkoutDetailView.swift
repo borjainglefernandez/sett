@@ -81,24 +81,33 @@ struct WorkoutDetailView: View {
             Text(workoutExercise.exerciseNameSnapshot)
                 .font(.headline)
             ForEach(Array(workoutExercise.orderedSets.enumerated()), id: \.element.id) { index, set in
-                HStack(spacing: 12) {
-                    Text("\(index + 1)")
-                        .font(.caption)
-                        .monospacedDigit()
-                        .foregroundStyle(.tertiary)
-                        .frame(width: 20, alignment: .leading)
-                    Text("\(services.settings.displayWeight(set.weightGrams)) × \(set.reps)")
-                        .font(.subheadline)
-                        .monospacedDigit()
-                    if set.isWarmup {
-                        Text("warm-up")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(SettColor.cardNested, in: Capsule())
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 12) {
+                        Text("\(index + 1)")
+                            .font(.caption)
+                            .monospacedDigit()
+                            .foregroundStyle(.tertiary)
+                            .frame(width: 20, alignment: .leading)
+                        Text("\(services.settings.displayWeight(set.weightGrams)) × \(set.reps)")
+                            .font(.subheadline)
+                            .monospacedDigit()
+                        if set.isWarmup {
+                            Text("warm-up")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(SettColor.cardNested, in: Capsule())
+                        }
+                        Spacer()
                     }
-                    Spacer()
+                    // Per-set note, indented to the weight × reps column.
+                    if let setNotes = set.notes, !setNotes.isEmpty {
+                        Text(setNotes)
+                            .font(.caption)
+                            .foregroundStyle(SettColor.ash)
+                            .padding(.leading, 32)
+                    }
                 }
             }
             if workoutExercise.orderedSets.isEmpty {

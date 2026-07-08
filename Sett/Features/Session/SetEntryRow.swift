@@ -22,6 +22,9 @@ struct SetEntryRow: View {
     @State private var reps = 0
     @State private var isGhost = true
     @State private var editingField: NumericField?
+    /// Note staged for the NEXT commit — travels into `logSet` with the checkmark.
+    @State private var pendingNote: String?
+    @State private var isEditingNote = false
 
     var body: some View {
         HStack(spacing: 8) {
@@ -35,6 +38,7 @@ struct SetEntryRow: View {
                            decrement: { stepReps(-1) },
                            increment: { stepReps(1) },
                            tapValue: { editingField = .reps })
+            noteButton
             commitButton
         }
         .frame(minHeight: 60)
@@ -97,6 +101,37 @@ struct SetEntryRow: View {
         Haptics.selection()
     }
 
+    // MARK: Note (quiet — a whisper next to the checkmark)
+
+    private var hasPendingNote: Bool {
+        pendingNote?.isEmpty == false
+    }
+
+    private var noteButton: some View {
+        Button {
+            isEditingNote = true
+        } label: {
+            Image(systemName: "note.text")
+                .font(.body.weight(.semibold))
+                .foregroundStyle(hasPendingNote ? SettColor.heroCyan : SettColor.ash)
+                .frame(width: 36, height: 52)
+                .contentShape(Rectangle())
+                .overlay(alignment: .topTrailing) {
+                    if hasPendingNote {
+                        Circle()
+                            .fill(SettColor.heroCyan)
+                            .frame(width: 6, height: 6)
+                            .offset(x: -2, y: 10)
+                    }
+                }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(hasPendingNote ? "Edit set note" : "Add set note")
+        .sheet(isPresented: $isEditingNote) {
+            SetNoteSheet(initialText: pendingNote ?? "") { pendingNote = $0 }
+        }
+    }
+
     // MARK: Commit (tenet: one tap of the checkmark)
 
     private var commitButton: some View {
@@ -122,7 +157,9 @@ struct SetEntryRow: View {
                                               excluding: workoutExercise.workout?.id)
         let beatReference = index < references.count && weightGrams > references[index].weightGrams
 
-        session.logSet(on: workoutExercise, weightGrams: weightGrams, reps: reps)
+        session.logSet(on: workoutExercise, weightGrams: weightGrams, reps: reps,
+                       notes: pendingNote)
+        pendingNote = nil
 
         // Floating combat text: +N PWR, N = this set's volume load in whole pounds.
         // weightGrams * reps is gram-reps volume; pounds(fromGrams:) converts it
@@ -218,6 +255,72 @@ struct SetEntryRow: View {
                 isGhost = false
             }
         }
+    }
+}
+
+// MARK: - Set note sheet (shared: pending next-set note + committed-chip edits)
+
+/// Compact note editor. `SetEntryRow` stages the result as the pending note for
+/// the next commit; `ExerciseCard` reuses it to edit a committed `SetEntry.notes`
+/// directly. Save trims whitespace and passes nil for empty text; Clear is an
+/// explicit nil save.
+struct SetNoteSheet: View {
+    let initialText: String
+    let onSave: (String?) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var text = ""
+    @FocusState private var isFocused: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("SET NOTE")
+                .font(.system(size: 13, weight: .bold, design: .monospaced))
+                .kerning(3)
+                .foregroundStyle(SettColor.bone)
+            TextField("felt heavy, left side weaker…", text: $text)
+                .font(.subheadline)
+                .foregroundStyle(SettColor.bone)
+                .focused($isFocused)
+                .submitLabel(.done)
+                .onSubmit(save)
+                .padding(12)
+                .background(SettColor.cardNested, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            HStack(spacing: 12) {
+                Button {
+                    onSave(nil)
+                    dismiss()
+                } label: {
+                    Text("Clear")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(SettColor.ash)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .background(SettColor.cardNested, in: Capsule())
+                }
+                .buttonStyle(.plain)
+                Button(action: save) {
+                    Text("Save")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .background(Aura.cyan, in: Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .presentationDetents([.height(220)])
+        .onAppear {
+            text = initialText
+            isFocused = true
+        }
+    }
+
+    private func save() {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        onSave(trimmed.isEmpty ? nil : trimmed)
+        dismiss()
     }
 }
 

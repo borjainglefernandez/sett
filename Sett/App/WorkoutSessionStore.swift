@@ -78,10 +78,13 @@ public final class WorkoutSessionStore {
     }
 
     /// Commit a set (tenet 2: one tap of the checkmark) and auto-start rest (tenet 1).
-    public func logSet(on workoutExercise: WorkoutExercise, weightGrams: Int, reps: Int, isWarmup: Bool = false) {
+    /// `notes` is the optional per-set note staged in the entry row's note sheet.
+    public func logSet(on workoutExercise: WorkoutExercise, weightGrams: Int, reps: Int,
+                       isWarmup: Bool = false, notes: String? = nil) {
         let index = (workoutExercise.orderedSets.last?.orderIndex ?? -1) + 1
         let set = SetEntry(orderIndex: index, weightGrams: weightGrams,
                            entryUnit: settings.unit, reps: reps, isWarmup: isWarmup)
+        set.notes = notes
         set.workoutExercise = workoutExercise
         context.insert(set)
         if let workout = activeWorkout { touchAndSave(workout) }
@@ -201,7 +204,9 @@ public final class WorkoutSessionStore {
 
     // MARK: Helpers
 
-    private func fetchExercise(id: UUID) -> Exercise? {
+    /// Resolve the Exercise row behind a loose `exerciseID` reference (public so
+    /// session views can surface Exercise-level fields like the machine setup).
+    public func fetchExercise(id: UUID) -> Exercise? {
         var descriptor = FetchDescriptor<Exercise>(predicate: #Predicate { $0.id == id })
         descriptor.fetchLimit = 1
         return (try? context.fetch(descriptor))?.first

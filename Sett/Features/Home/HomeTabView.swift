@@ -56,6 +56,7 @@ struct HomeTabView: View {
                         firstRunCard
                     } else {
                         SevenSlotBurstRow(trainedDays: trainedDaysThisWeek, goalTarget: weeklyGoalTarget)
+                        NetGlanceStrip()
                         startCard
                     }
                     BodyweightChipCard(latest: latestBodyweight.first)

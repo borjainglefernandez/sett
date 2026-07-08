@@ -41,10 +41,12 @@ struct ExerciseDetailView: View {
     @State private var bestSet: SetSample?
     @State private var recentGroups: [SessionGroup] = []
     @State private var hasLoaded = false
+    @State private var isEditingSetup = false
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
+                machineSetupCard
                 if samples.isEmpty {
                     neverTrainedCard
                 } else {
@@ -63,6 +65,64 @@ struct ExerciseDetailView: View {
         .navigationTitle(exercise.name)
         .navigationBarTitleDisplayMode(.inline)
         .onAppear(perform: loadIfNeeded)
+    }
+
+    // MARK: Machine setup (Exercise.instructions — the machine-setup field app-wide)
+
+    /// Etched card near the top: the setup in bone mono with an edit pencil, or a
+    /// quiet "Add machine setup" affordance when empty. Edits go through the ONE
+    /// shared `MachineSetupSheet` (Session/ExerciseCard.swift).
+    private var machineSetupCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .center) {
+                Text("MACHINE SETUP")
+                    .font(.system(size: 13, weight: .bold, design: .monospaced))
+                    .kerning(3)
+                    .foregroundStyle(SettColor.bone)
+                Spacer()
+                if hasSetup {
+                    Button {
+                        isEditingSetup = true
+                    } label: {
+                        Image(systemName: "pencil")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(SettColor.ash)
+                            .frame(width: 32, height: 32)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Edit machine setup")
+                }
+            }
+            if let setup = exercise.instructions, !setup.isEmpty {
+                Text(setup)
+                    .font(.system(.subheadline, design: .monospaced))
+                    .foregroundStyle(SettColor.bone)
+            } else {
+                Button {
+                    isEditingSetup = true
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "gearshape")
+                            .font(.caption)
+                        Text("Add machine setup")
+                            .font(.subheadline)
+                    }
+                    .foregroundStyle(SettColor.ash)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .settCard()
+        .sheet(isPresented: $isEditingSetup) {
+            MachineSetupSheet(exercise: exercise)
+        }
+    }
+
+    private var hasSetup: Bool {
+        exercise.instructions?.isEmpty == false
     }
 
     // MARK: PR card (gold — earned)
