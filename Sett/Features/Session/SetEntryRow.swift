@@ -33,12 +33,12 @@ struct SetEntryRow: View {
                            decrement: { stepWeight(-1) },
                            increment: { stepWeight(1) },
                            tapValue: { editingField = .weight })
-                .layoutPriority(1)
             stepperCluster(valueText: "\(reps)",
                            caption: "reps",
                            decrement: { stepReps(-1) },
                            increment: { stepReps(1) },
                            tapValue: { editingField = .reps })
+                .frame(width: 112) // fixed: 2 step buttons + room for 2 digits — never squeezed
             noteButton
             commitButton
         }
