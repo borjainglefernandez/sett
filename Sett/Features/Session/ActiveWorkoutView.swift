@@ -474,10 +474,11 @@ struct ActiveWorkoutView: View {
                 advanceCursor()
             }
         } else if outcome.isGold {
-            // Beat/crit: hold the REST overlay so the SET-state gold flash reads.
+            // Beat/crit: hold the REST overlay so the SET-state gather→release burst
+            // + overload flash complete on the scouter before REST takes over.
             isHoldingRestOverlay = true
             Task { @MainActor in
-                try? await Task.sleep(for: .milliseconds(450))
+                try? await Task.sleep(for: .milliseconds(650))
                 isHoldingRestOverlay = false
             }
         }

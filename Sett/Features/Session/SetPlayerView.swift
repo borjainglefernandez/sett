@@ -5,8 +5,8 @@ import SettCore
 /// scouter. One set fills the screen: the exercise name and SET n/m up top; the
 /// center is a SCOUTER CORE — huge weight × reps numerals inside a living aura
 /// ring whose colour is a live reading of how this set scores against last time
-/// (cyan = holding, gold = ascending/beat, white-gold = a new ceiling, indigo =
-/// down); beneath, a readable SCOUTER LOG showing the machine setting and note
+/// (green = holding the line, amber = beat it, red = a new ceiling / overload,
+/// steel = output down); beneath, a readable SCOUTER LOG (setting + note)
 /// (both auto-populated from the previous session); then the LOG slab.
 ///
 /// The number stays sacred — input latency first, spectacle around it. On LOG the
@@ -38,14 +38,21 @@ struct SetPlayerView: View {
     @State private var isEditingSetting = false
     /// The field whose numeric keypad is open (tap a number to type directly).
     @State private var padField: NumericField?
-    /// 0.4 s gold flash on the numerals when the logged set beat its reference.
-    @State private var goldFlash = false
+    /// 0.4 s white-hot overload flash on the numerals on a ceiling break (PR).
+    /// No gold in-session — gold is the app-wide power level only.
+    @State private var overloadFlash = false
     /// Exercise row behind the loose `exerciseID` — the setting default source.
     @State private var exercise: Exercise?
     /// Previous session's reading at this slot (values + note + setting + prior best).
     @State private var reference: WorkoutSessionStore.SlotReference?
     /// Bumped on log so the aura ring flares (the power-up).
     @State private var burstToken = 0
+    /// Live "over the ceiling" edge — drives the PEAK swaps + a one-shot PWR kick.
+    @State private var overCeiling = false
+    /// Two multiplicative PWR scales: `pwrKick` punches on crossing the ceiling
+    /// ("it's over…"), `pwrSurge` punches on any big jump (add a plate → it leaps).
+    @State private var pwrKick: CGFloat = 1
+    @State private var pwrSurge: CGFloat = 1
 
     // Scanner acquisition (item 3b): a ~350 ms scanline sweep + digit scramble on
     // every new slot. `acquiring` gates the scramble; `scanProgress` drives the
@@ -187,6 +194,9 @@ struct SetPlayerView: View {
         weightGrams = ghost.weightGrams
         reps = ghost.reps
         isGhost = true
+        // If we open onto a set already above the ceiling, reflect that in the
+        // initial state (the crossing kick/haptic only fire on a live edge later).
+        overCeiling = ceilingPwr > 0 && powerReading >= ceilingPwr
         // Auto-populate from the previous session: the note carries over, and the
         // setting defaults to last session's setting, then the exercise default.
         pendingNote = ref.note
@@ -197,10 +207,10 @@ struct SetPlayerView: View {
 
     private var header: some View {
         VStack(spacing: 8) {
-            Text("TARGET ACQUIRED")
+            Text(overCeiling ? "CEILING BROKEN" : "TARGET ACQUIRED")
                 .font(.system(size: 10, weight: .bold, design: .monospaced))
                 .kerning(3)
-                .foregroundStyle(liveTier.color)
+                .foregroundStyle(overCeiling ? TimeChamber.scouterRed : liveTier.color)
                 .accessibilityHidden(true)
             HStack(spacing: 9) {
                 if let equipment = exercise?.equipment {
@@ -234,7 +244,7 @@ struct SetPlayerView: View {
     /// Numbers are always bright bone (legible over the nebula); a ghost (not-yet-
     /// edited) reading is dimmed via opacity rather than a murky colour.
     private var numeralColor: Color {
-        goldFlash ? SettColor.saiyanGold : SettColor.bone
+        overloadFlash ? TimeChamber.scouterRedPale : SettColor.bone
     }
 
     private var numeralOpacity: Double {
@@ -245,9 +255,11 @@ struct SetPlayerView: View {
     /// level dead centre, REPS + its picker at the bottom.
     private var scouterCore: some View {
         ZStack {
-            ScouterLens(tier: isCommitted ? .base : liveTier, burstToken: burstToken)
+            ScouterLens(tier: isCommitted ? .base : liveTier, burstToken: burstToken,
+                        charge: liveCharge, ceilingFrac: ceilingFrac, atCeiling: overCeiling)
                 .frame(width: 344, height: 236)
                 .animation(.easeInOut(duration: 0.35), value: liveTier)
+                .animation(.easeOut(duration: 0.3), value: liveCharge)
             VStack(spacing: 0) {
                 fieldRow(text: WeightFormat.compact(grams: displayedWeightGrams,
                                                     unit: services.settings.unit),
@@ -263,6 +275,31 @@ struct SetPlayerView: View {
             .overlay { acquisitionScanline }
         }
         .frame(minHeight: 248)
+        .onChange(of: powerReading) { old, new in handlePowerChange(old: old, new: new) }
+    }
+
+    /// Live reactions to the power reading changing as you dial: the signature
+    /// "over the ceiling" beat (edge-triggered — PEAK swaps + a kick + a rigid tap
+    /// on the false→true crossing only), and a surge on any big jump (a plate leaps
+    /// the reading). Pure edge detection — deterministic; Reduce Motion drops the
+    /// scale punches but keeps the state/haptic.
+    private func handlePowerChange(old: Int, new: Int) {
+        let over = ceilingPwr > 0 && new >= ceilingPwr
+        if over != overCeiling {
+            withAnimation(.easeInOut(duration: 0.25)) { overCeiling = over }
+            if over {
+                Haptics.rigid()
+                if !reduceMotion {
+                    pwrKick = 1.15
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.5)) { pwrKick = 1 }
+                }
+            }
+        }
+        let jump = abs(new - old)
+        if !reduceMotion, jump >= 15 {
+            pwrSurge = 1.12
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.5)) { pwrSurge = 1 }
+        }
     }
 
     /// One half of the scouter: the big number (tap to type) flanked by − / + circle
@@ -298,22 +335,34 @@ struct SetPlayerView: View {
     /// The scouter's power reading — this set's estimated output (e1RM), dead centre
     /// of the lens, rolling as you dial the numbers, in the live scouter hue.
     private var powerReadout: some View {
-        HStack(spacing: 6) {
-            SettSigil(size: 13, color: liveTier.color)
-            Text("PWR")
-                .font(.system(size: 11, weight: .bold, design: .monospaced))
-                .kerning(2)
-                .foregroundStyle(liveTier.color.opacity(0.85))
-            Text("\(powerReading)")
-                .font(.system(size: 20, weight: .heavy, design: .monospaced))
-                .monospacedDigit()
-                .foregroundStyle(liveTier.color)
-                .contentTransition(.numericText(value: Double(powerReading)))
+        VStack(spacing: 1) {
+            HStack(spacing: 6) {
+                SettSigil(size: 13, color: liveTier.color)
+                Text("PWR")
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .kerning(2)
+                    .foregroundStyle(liveTier.color.opacity(0.85))
+                Text("\(powerReading)")
+                    .font(.system(size: 27, weight: .heavy, design: .monospaced))
+                    .monospacedDigit()
+                    .foregroundStyle(liveTier.color)
+                    .contentTransition(.numericText(value: Double(powerReading)))
+                    .scaleEffect(pwrKick * pwrSurge)
+            }
+            // The ceiling you're chasing — a dim ghost that flips to OVER (in the
+            // live hue) the instant you dial past it.
+            if ceilingPwr > 0 {
+                Text(overCeiling ? "OVER \(ceilingPwr)" : "CEILING \(ceilingPwr)")
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .kerning(1.5)
+                    .foregroundStyle(overCeiling ? liveTier.color : SettColor.ash)
+            }
         }
         .shadow(color: .black.opacity(0.85), radius: 3)
         .animation(.snappy(duration: 0.2), value: powerReading)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Power reading \(powerReading)")
+        .accessibilityLabel(overCeiling ? "Power reading \(powerReading), over the ceiling"
+                                        : "Power reading \(powerReading)")
     }
 
     /// This set's e1RM ("output") — from canonical grams, so it's the SAME number
@@ -322,6 +371,25 @@ struct SetPlayerView: View {
         let grams = ProgressEngine.e1RMGrams(weightGrams: displayedWeightGrams, reps: displayedReps)
         return Int(Units.pounds(fromGrams: grams).rounded())
     }
+
+    /// The all-time ceiling for this slot as a power level (0 = none yet) — the
+    /// number you're chasing. Drives the gauge notch (and, in a later beat, the
+    /// live "over the ceiling" moment while dialing).
+    private var ceilingPwr: Int {
+        guard let ref = reference, ref.priorBestE1RMGrams > 0 else { return 0 }
+        return Int(Units.pounds(fromGrams: ref.priorBestE1RMGrams).rounded())
+    }
+
+    /// Gauge fill (0…1): the live reading against the ceiling, compressed so the
+    /// ceiling notch sits at 0.82 of the strip — leaving headroom to sweep visibly
+    /// PAST it on a PR. With no ceiling yet, a calm mid-fill. Pure state.
+    private var liveCharge: Double {
+        guard ceilingPwr > 0 else { return 0.55 }
+        return min(1.0, Double(powerReading) / Double(ceilingPwr) * 0.82)
+    }
+
+    /// Where the ceiling notch sits on the gauge (−1 = no ceiling → no notch).
+    private var ceilingFrac: Double { ceilingPwr > 0 ? 0.82 : -1 }
 
     private func unitCaption(_ text: String) -> some View {
         Text(text)
@@ -339,8 +407,8 @@ struct SetPlayerView: View {
             .monospacedDigit()
             .foregroundStyle(numeralColor)
             .opacity(numeralOpacity)
-            .shadow(color: goldFlash ? SettColor.saiyanGold.opacity(0.7) : .black.opacity(0.85),
-                    radius: goldFlash ? 12 : 6)
+            .shadow(color: overloadFlash ? TimeChamber.scouterRed.opacity(0.7) : .black.opacity(0.85),
+                    radius: overloadFlash ? 12 : 6)
             .fixedSize()
             .contentShape(Rectangle())
             .onTapGesture {
@@ -574,7 +642,8 @@ struct SetPlayerView: View {
         switch outcome {
         case .personalBest, .beat:
             let gainLb = Int(Units.pounds(fromGrams: readback.e1RMDeltaGrams ?? 0).rounded())
-            combatText?.emit("+\(gainLb.formatted()) PWR", crit: outcome.isCrit)
+            combatText?.emit("+\(gainLb.formatted()) PWR", crit: outcome.isCrit,
+                             magnitude: gainLb, color: outcome.auraTier.color)
         case .held:
             combatText?.emit("HELD", crit: false)
         case .heldUnderFire:
@@ -584,15 +653,40 @@ struct SetPlayerView: View {
         default:
             combatText?.emit("OUTPUT \(e1RMLb.formatted())", crit: false)
         }
+        playCommitHaptics(for: outcome)
         if outcome.isCrit {
-            Haptics.prSignature()
-            goldFlash = true
+            overloadFlash = true
             Task { @MainActor in
                 try? await Task.sleep(for: .milliseconds(400))
-                withAnimation(.easeOut(duration: 0.2)) { goldFlash = false }
+                withAnimation(.easeOut(duration: 0.2)) { overloadFlash = false }
             }
         }
         onLogged(outcome)
+    }
+
+    /// Escalating commit haptics scaled to the outcome — the "kiai" ramp. A PR
+    /// climbs light → medium → rigid into the PR double-pulse (landing on the
+    /// burst); a beat is a medium → rigid one-two; holds get a light confirm.
+    /// NOT gated by Reduce Motion — haptics are a separate accessibility axis.
+    private func playCommitHaptics(for outcome: LogOutcome) {
+        switch outcome {
+        case .personalBest:
+            Task { @MainActor in
+                Haptics.light()
+                try? await Task.sleep(for: .milliseconds(90));  Haptics.medium()
+                try? await Task.sleep(for: .milliseconds(90));  Haptics.rigid()
+                try? await Task.sleep(for: .milliseconds(120)); Haptics.prSignature()
+            }
+        case .beat:
+            Task { @MainActor in
+                Haptics.medium()
+                try? await Task.sleep(for: .milliseconds(100)); Haptics.rigid()
+            }
+        case .held, .heldUnderFire, .baseline, .stalled, .dropped:
+            Haptics.light()
+        case .warmup, .casual:
+            Haptics.selection()
+        }
     }
 }
 
@@ -641,8 +735,22 @@ struct PlayerSlab: View {
                 }
                 .contentShape(Capsule())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressableSlabStyle(enabled: isEnabled))
         .disabled(!isEnabled)
         .accessibilityLabel(title.capitalized)
+    }
+}
+
+/// The slab presses IN (0.97) with a synchronous rigid tap on touch-down — the
+/// physical "charge" before LOG fires on touch-up (so commit latency is untouched).
+private struct PressableSlabStyle: ButtonStyle {
+    var enabled: Bool
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+            .onChange(of: configuration.isPressed) { _, pressed in
+                if pressed && enabled { Haptics.rigid() }
+            }
     }
 }

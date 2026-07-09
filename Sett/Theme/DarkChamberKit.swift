@@ -436,14 +436,24 @@ public final class CombatTextEmitter {
         public let text: String
         public let crit: Bool
         public let jitter: CGFloat
+        /// Absolute magnitude of the gain (lb) — scales the splash's size, rise, and
+        /// glow so a +2 tick and a +45 record never read the same. 0 = neutral.
+        public var magnitude: Int = 0
+        /// Text / glow colour — the tier overload hue for gains, bone for status words.
+        public var color: Color = SettColor.bone
     }
 
     public private(set) var entries: [Entry] = []
 
     public init() {}
 
-    public func emit(_ text: String, crit: Bool = false) {
-        let entry = Entry(id: UUID(), text: text, crit: crit, jitter: .random(in: -10 ... 10))
+    public func emit(_ text: String, crit: Bool = false, magnitude: Int = 0,
+                     color: Color = SettColor.bone) {
+        // Deterministic jitter (no .random — chrome must be recompute-safe): fan
+        // successive splashes across a fixed −10…10 spread by their queue position.
+        let jitter = CGFloat((entries.count * 7) % 21 - 10)
+        let entry = Entry(id: UUID(), text: text, crit: crit, jitter: jitter,
+                          magnitude: abs(magnitude), color: color)
         entries.append(entry)
         if entries.count > 6 {
             entries.removeFirst(entries.count - 6)
@@ -501,11 +511,20 @@ struct CombatTextLabel: View {
     @State private var scale: CGFloat = 1
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    /// Bigger gains launch a bigger splash — the font grows, it flies higher, and
+    /// the glow blooms, so the magnitude of the climb is legible at a glance.
+    private var magBoost: CGFloat { min(CGFloat(entry.magnitude), 45) }
+    private var fontSize: CGFloat { (entry.crit ? 17 : 14) + magBoost * 0.22 }
+    private var riseTarget: CGFloat { -40 - magBoost }
+    private var glowRadius: CGFloat {
+        entry.crit ? 8 + magBoost * 0.2 : (entry.magnitude > 0 ? 5 : 0)
+    }
+
     var body: some View {
         Text(entry.text)
-            .font(.system(size: entry.crit ? 17 : 14, weight: .bold, design: .monospaced))
-            .foregroundStyle(entry.crit ? SettColor.saiyanGold : SettColor.bone)
-            .auraGlow(entry.crit ? SettColor.saiyanGold : .clear, radius: 8)
+            .font(.system(size: fontSize, weight: .bold, design: .monospaced))
+            .foregroundStyle(entry.color)
+            .auraGlow(glowRadius > 0 ? entry.color : .clear, radius: glowRadius)
             .scaleEffect(scale)
             .offset(y: rise)
             .opacity(opacity)
@@ -525,12 +544,12 @@ struct CombatTextLabel: View {
             scale = 2
             withAnimation(.spring(response: 0.25, dampingFraction: 0.5)) { scale = 1 }
             withAnimation(.easeOut(duration: 0.7).delay(0.3)) {
-                rise = -40
+                rise = riseTarget
                 opacity = 0
             }
         } else {
             withAnimation(.easeOut(duration: 0.7)) {
-                rise = -40
+                rise = riseTarget
                 opacity = 0
             }
         }

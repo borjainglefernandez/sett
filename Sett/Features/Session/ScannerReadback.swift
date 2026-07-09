@@ -160,6 +160,9 @@ struct ReadbackBlock: View {
     let unit: WeightUnit
 
     @State private var materialized = false
+    /// The PWR number races up from last time's output to this reading on appear —
+    /// the iconic scouter "readout sprinting up and locking."
+    @State private var displayedPwr: Double = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// The scouter aura this reading lit up — same green→amber→red ramp as the lens.
@@ -169,6 +172,13 @@ struct ReadbackBlock: View {
     /// number for the same lift regardless of the user's display unit.
     private var powerLevel: Int {
         Int(Units.pounds(fromGrams: payload.readback.e1RMGrams).rounded())
+    }
+
+    /// Where the count-up starts — last time's output at this slot (or this reading
+    /// itself when there's no reference, so a baseline simply holds still).
+    private var startPwr: Int {
+        let grams = payload.readback.referenceE1RMGrams ?? payload.readback.e1RMGrams
+        return Int(Units.pounds(fromGrams: grams).rounded())
     }
 
     private var powerDelta: Int? {
@@ -232,8 +242,14 @@ struct ReadbackBlock: View {
         .blur(radius: materialized || reduceMotion ? 0 : 6)
         .scaleEffect(materialized || reduceMotion ? 1 : 1.04)
         .onAppear {
-            if reduceMotion { materialized = true }
-            else { withAnimation(.easeOut(duration: 0.3)) { materialized = true } }
+            if reduceMotion {
+                materialized = true
+                displayedPwr = Double(powerLevel)
+            } else {
+                withAnimation(.easeOut(duration: 0.3)) { materialized = true }
+                displayedPwr = Double(startPwr)   // seed at last time's output…
+                withAnimation(.easeOut(duration: 0.7)) { displayedPwr = Double(powerLevel) } // …then sprint up
+            }
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityText)
@@ -248,7 +264,7 @@ struct ReadbackBlock: View {
                 .font(.system(size: 11, weight: .bold, design: .monospaced))
                 .kerning(2)
                 .foregroundStyle(tier.color.opacity(0.85))
-            Text("\(powerLevel)")
+            CountingNumber(value: displayedPwr)
                 .font(.system(size: 24, weight: .heavy, design: .monospaced))
                 .monospacedDigit()
                 .foregroundStyle(tier.color)
@@ -377,6 +393,23 @@ struct ReadbackBlock: View {
         }
         parts.append(payload.message)
         return parts.joined(separator: ", ")
+    }
+}
+
+// MARK: - Counting number (deterministic odometer for the PWR count-up)
+
+/// A whole number that SwiftUI interpolates through as `value` animates — the
+/// count-up runs off the animation clock (no Date / no timer), so it's fully
+/// deterministic and recompute-safe. Styling (font, colour) is inherited from the
+/// environment, so callers style it exactly like a plain `Text`.
+struct CountingNumber: View, Animatable {
+    var value: Double
+    nonisolated var animatableData: Double {
+        get { value }
+        set { value = newValue }
+    }
+    var body: some View {
+        Text("\(Int(value.rounded()))")
     }
 }
 

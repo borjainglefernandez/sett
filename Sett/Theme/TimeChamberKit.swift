@@ -327,9 +327,9 @@ struct AuraRing: View {
 
     var body: some View {
         ZStack {
-            // Outer bloom.
+            // Outer bloom (brightens on both inhale + burst).
             Circle()
-                .stroke(tier.color.opacity(0.24 * tier.intensity), lineWidth: 14 + flare * 22)
+                .stroke(tier.color.opacity(0.24 * tier.intensity), lineWidth: 14 + abs(flare) * 22)
                 .blur(radius: 16 + flare * 14)
                 .scaleEffect(reduceMotion ? 1 : (pulse ? 1.015 : 0.985))
             // Steady base ring.
@@ -346,8 +346,13 @@ struct AuraRing: View {
         .onChange(of: tier) { _, _ in startSpin() }
         .onChange(of: burstToken) { _, _ in
             guard !reduceMotion else { return }
-            flare = 1
-            withAnimation(.spring(response: 0.5, dampingFraction: 0.55)) { flare = 0 }
+            // Gather (inhale — contract + brighten), then detonate (snap out + settle).
+            withAnimation(.easeIn(duration: 0.14)) { flare = -0.3 }
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(140))
+                flare = 1
+                withAnimation(.spring(response: 0.5, dampingFraction: 0.55)) { flare = 0 }
+            }
         }
     }
 
@@ -399,6 +404,14 @@ struct ScouterLensShape: Shape {
 struct ScouterLens: View {
     var tier: AuraTier
     var burstToken: Int = 0
+    /// Gauge fill 0…1 — the live power reading vs the ceiling. The tick strip lights
+    /// left→right to this level. Default 1 keeps standalone / preview use full.
+    var charge: Double = 1
+    /// Where the ceiling notch sits on the strip (0…1); −1 hides it.
+    var ceilingFrac: Double = -1
+    /// True when the live reading has crossed the ceiling — flips LOCK→PEAK and
+    /// holds the indicator solid (the scouter has locked onto a record).
+    var atCeiling: Bool = false
 
     @State private var flare: CGFloat = 0
     @State private var scanDrift: CGFloat = 0   // scan-line drift (0→1, wraps seamlessly)
@@ -409,8 +422,8 @@ struct ScouterLens: View {
     var body: some View {
         let shape = ScouterLensShape()
         ZStack {
-            // Soft aura bloom behind the whole lens.
-            shape.fill(tier.color.opacity(0.16 * tier.intensity + Double(flare) * 0.25))
+            // Soft aura bloom behind the whole lens (brightens on both inhale + burst).
+            shape.fill(tier.color.opacity(0.16 * tier.intensity + Double(abs(flare)) * 0.25))
                 .blur(radius: 26)
                 .scaleEffect(1.06 + flare * 0.06)
 
@@ -434,8 +447,8 @@ struct ScouterLens: View {
             lockIndicator
 
             // Rim — bright scouter hue, glowing, with an inner hairline.
-            shape.stroke(tier.gradient, style: StrokeStyle(lineWidth: 2.5 + flare * 2, lineJoin: .round))
-                .shadow(color: tier.color.opacity(0.7), radius: 8 + flare * 10)
+            shape.stroke(tier.gradient, style: StrokeStyle(lineWidth: 2.5 + abs(flare) * 2, lineJoin: .round))
+                .shadow(color: tier.color.opacity(0.7), radius: 8 + abs(flare) * 10)
             shape.stroke(tier.color.opacity(0.35), lineWidth: 1).padding(5)
 
             emitter
@@ -446,8 +459,13 @@ struct ScouterLens: View {
         .onAppear(perform: startScan)
         .onChange(of: burstToken) { _, _ in
             guard !reduceMotion else { return }
-            flare = 1
-            withAnimation(.spring(response: 0.5, dampingFraction: 0.55)) { flare = 0 }
+            // Gather (inhale — contract + brighten), then detonate (snap out + settle).
+            withAnimation(.easeIn(duration: 0.14)) { flare = -0.3 }
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(140))
+                flare = 1
+                withAnimation(.spring(response: 0.5, dampingFraction: 0.55)) { flare = 0 }
+            }
         }
     }
 
@@ -485,13 +503,19 @@ struct ScouterLens: View {
         }
     }
 
-    /// Power-reading ticks along the bottom inner edge — the scouter scale.
+    /// Live power gauge along the bottom inner edge — the scouter scale. Ticks light
+    /// left→right to `charge`; a taller notch marks the ceiling (prior best), so you
+    /// watch the reading march toward it and, on a PR, sweep visibly past. Pure state.
     private func tickStrip(in size: CGSize) -> some View {
-        HStack(spacing: 5) {
+        let ceilingIndex = ceilingFrac >= 0 ? min(17, max(0, Int((ceilingFrac * 17).rounded()))) : -1
+        return HStack(spacing: 5) {
             ForEach(0 ..< 18, id: \.self) { i in
+                let lit = Double(i) / 17 <= charge
+                let isCeiling = i == ceilingIndex
                 Rectangle()
-                    .fill(tier.color.opacity(i.isMultiple(of: 3) ? 0.7 : 0.3))
-                    .frame(width: 1.5, height: i.isMultiple(of: 3) ? 8 : 4)
+                    .fill(isCeiling ? tier.secondary : tier.color.opacity(lit ? 0.9 : 0.16))
+                    .frame(width: isCeiling ? 2 : 1.5,
+                           height: isCeiling ? 11 : (lit ? 8 : 4))
             }
         }
         .frame(width: size.width * 0.62)
@@ -516,8 +540,8 @@ struct ScouterLens: View {
                     .fill(tier.color)
                     .frame(width: 5, height: 5)
                     .shadow(color: tier.color, radius: 3)
-                    .opacity(reduceMotion ? 1 : (blink ? 1 : 0.25))
-                Text("LOCK")
+                    .opacity(atCeiling ? 1 : (reduceMotion ? 1 : (blink ? 1 : 0.25)))
+                Text(atCeiling ? "PEAK" : "LOCK")
                     .font(.system(size: 7, weight: .bold, design: .monospaced))
                     .kerning(1)
                     .foregroundStyle(tier.color.opacity(0.85))
