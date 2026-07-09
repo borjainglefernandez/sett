@@ -17,6 +17,8 @@ struct ExerciseCard: View {
     @State private var exercise: Exercise?
     /// Committed set whose note is being edited in the shared `SetNoteSheet`.
     @State private var editingSet: SetEntry?
+    /// Committed set whose weight/reps are being fixed in `SetValuesEditSheet`.
+    @State private var editingValues: SetEntry?
     /// Exercise whose machine setup is being edited in `MachineSetupSheet`.
     @State private var setupTarget: Exercise?
 
@@ -47,6 +49,11 @@ struct ExerciseCard: View {
         }
         .sheet(item: $editingSet) { set in
             SetNoteSheet(initialText: set.notes ?? "") { saveNote($0, on: set) }
+        }
+        .sheet(item: $editingValues) { set in
+            SetValuesEditSheet(set: set, unit: services.settings.unit) { weight, reps, warm in
+                session.editSet(set, weightGrams: weight, reps: reps, isWarmup: warm)
+            }
         }
         .sheet(item: $setupTarget) { target in
             MachineSetupSheet(exercise: target)
@@ -174,7 +181,18 @@ struct ExerciseCard: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityHint("Edits this set's note")
+        .accessibilityHint("Edits this set's note. Long-press to fix weight and reps or delete.")
+        .contextMenu {
+            Button {
+                editingValues = set
+            } label: { Label("Fix weight & reps", systemImage: "pencil") }
+            Button {
+                editingSet = set
+            } label: { Label("Edit note", systemImage: "note.text") }
+            Button(role: .destructive) {
+                session.deleteSet(set)
+            } label: { Label("Delete set", systemImage: "trash") }
+        }
     }
 
     /// Mutation rules: updatedAt + needsPush + save on the SetEntry itself.
@@ -220,6 +238,81 @@ struct ExerciseCard: View {
                            color: repsDelta > 0 ? SettColor.positive : SettColor.negative)
         }
         return nil
+    }
+}
+
+// MARK: - Set values edit sheet (fix a mis-logged weight / reps / warm-up)
+
+/// Compact editor for a committed set's numbers — the escape hatch for a
+/// fat-fingered entry. Hands the corrected values back through `onSave`; the store
+/// applies them under the sync rules.
+struct SetValuesEditSheet: View {
+    let set: SetEntry
+    let unit: WeightUnit
+    let onSave: (_ weightGrams: Int, _ reps: Int, _ isWarmup: Bool) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var weightText = ""
+    @State private var reps = 0
+    @State private var isWarmup = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("FIX SET")
+                .font(.system(size: 13, weight: .bold, design: .monospaced))
+                .kerning(3)
+                .foregroundStyle(SettColor.bone)
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("WEIGHT (\(unit.symbol))")
+                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(SettColor.ash)
+                    TextField("0", text: $weightText)
+                        .keyboardType(.decimalPad)
+                        .font(.system(.title3, design: .monospaced))
+                        .foregroundStyle(SettColor.bone)
+                        .padding(10)
+                        .background(SettColor.cardNested, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("REPS")
+                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(SettColor.ash)
+                    Stepper(value: $reps, in: 0...100) {
+                        Text("\(reps)")
+                            .font(.system(.title3, design: .monospaced))
+                            .foregroundStyle(SettColor.bone)
+                            .monospacedDigit()
+                    }
+                }
+            }
+            Toggle("Warm-up", isOn: $isWarmup)
+                .font(.subheadline)
+                .tint(TimeChamber.teal)
+            Button(action: save) {
+                Text("Save")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .background(Aura.cyan, in: Capsule())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .presentationDetents([.height(300)])
+        .onAppear {
+            weightText = WeightFormat.compact(grams: set.weightGrams, unit: unit)
+            reps = set.reps
+            isWarmup = set.isWarmup
+        }
+    }
+
+    private func save() {
+        let value = Double(weightText.replacingOccurrences(of: ",", with: ".")) ?? 0
+        onSave(Units.grams(fromDisplay: max(0, value), unit: unit), max(0, reps), isWarmup)
+        Haptics.selection()
+        dismiss()
     }
 }
 

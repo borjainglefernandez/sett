@@ -126,6 +126,28 @@ public final class WorkoutSessionStore {
         Haptics.light()
     }
 
+    /// Fix a mis-logged set (wrong weight/reps/warmup). Mutates in place under the
+    /// sync rules — the next progression recompute + reference fetch pick it up.
+    public func editSet(_ set: SetEntry, weightGrams: Int, reps: Int, isWarmup: Bool) {
+        set.weightGrams = weightGrams
+        set.reps = reps
+        set.isWarmup = isWarmup
+        set.updatedAt = .now
+        set.needsPush = true
+        if let workout = set.workoutExercise?.workout ?? activeWorkout { touchAndSave(workout) }
+        Haptics.selection()
+    }
+
+    /// Soft-delete a logged set (a fat-fingered 500 lb entry poisoned ghost autofill
+    /// and the power level forever with no way to remove it).
+    public func deleteSet(_ set: SetEntry) {
+        set.deletedAt = .now
+        set.updatedAt = .now
+        set.needsPush = true
+        if let workout = set.workoutExercise?.workout ?? activeWorkout { touchAndSave(workout) }
+        Haptics.medium()
+    }
+
     public func startRest(seconds: Int, nextUp: String? = nil) {
         restTotalSeconds = seconds
         let ends = Date.now.addingTimeInterval(TimeInterval(seconds))
@@ -380,6 +402,13 @@ public final class WorkoutSessionStore {
 
     public func finishWorkout() {
         guard let workout = activeWorkout else { return }
+        // Prune exercises opened but never logged into — they'd clutter history and
+        // the recap with empty entries.
+        for we in workout.orderedExercises where we.orderedSets.isEmpty {
+            we.deletedAt = .now
+            we.updatedAt = .now
+            we.needsPush = true
+        }
         let plBefore = progression.snapshotPowerLevel
 
         workout.endedAt = .now
