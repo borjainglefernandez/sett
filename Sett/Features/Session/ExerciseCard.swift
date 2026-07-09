@@ -27,15 +27,17 @@ struct ExerciseCard: View {
             header
             machineSetupRow
             if isExpanded {
-                let pairs = setPairs
-                if !pairs.isEmpty {
-                    VStack(spacing: 6) {
-                        ForEach(Array(pairs.enumerated()), id: \.element.set.id) { index, pair in
-                            setRow(set: pair.set, reference: pair.reference, number: index + 1)
-                        }
+                VStack(spacing: 6) {
+                    // Logged sets (filled), the active next-set input, then every set
+                    // still planned as a dimmed placeholder — the whole plan up front.
+                    ForEach(setPairs, id: \.set.id) { pair in
+                        setRow(set: pair.set, reference: pair.reference, label: pair.label)
+                    }
+                    SetEntryRow(workoutExercise: workoutExercise, setNumber: workingLoggedCount + 1)
+                    ForEach(pendingSlots, id: \.self) { ordinal in
+                        plannedRow(number: ordinal + 1, slot: ordinal)
                     }
                 }
-                SetEntryRow(workoutExercise: workoutExercise)
             }
         }
         .padding(14)
@@ -69,16 +71,29 @@ struct ExerciseCard: View {
                              excluding: workoutExercise.workout?.id)
     }
 
-    /// Each logged set paired with last week's set at the same working-set ordinal.
-    private var setPairs: [(set: SetEntry, reference: SetEntry?)] {
+    /// Each logged set paired with last week's set at the same working-set ordinal,
+    /// plus its badge label — the working-set number, or "W" for a warm-up.
+    private var setPairs: [(set: SetEntry, reference: SetEntry?, label: String)] {
         let refs = referenceSets
         var working = 0
         return workoutExercise.orderedSets.map { set in
-            if set.isWarmup { return (set, nil) }
+            if set.isWarmup { return (set, nil, "W") }
             let ref = working < refs.count ? refs[working] : nil
             working += 1
-            return (set, ref)
+            return (set, ref, "\(working)")
         }
+    }
+
+    private var workingLoggedCount: Int { workoutExercise.orderedSets.filter { !$0.isWarmup }.count }
+    private var plannedWorking: Int { session.plannedSetCount(for: workoutExercise) }
+
+    /// Working-set ordinals STILL planned after the active next-set input (which covers
+    /// ordinal `workingLoggedCount`). Empty for a quick-start (no plan) or once the
+    /// plan is met — the whole plan is shown from the start, not revealed one at a time.
+    private var pendingSlots: [Int] {
+        let start = workingLoggedCount + 1
+        guard plannedWorking > start else { return [] }
+        return Array(start ..< plannedWorking)
     }
 
     // MARK: Effective output + per-set scoring (matches the scouter's green→amber→red)
@@ -215,7 +230,7 @@ struct ExerciseCard: View {
     /// A committed set rendered in the scouter language: a tier-coloured index badge +
     /// a left accent bar, the lift, its PWR, and the vs-last delta (▲/◇/▼). Tap edits
     /// the note; long-press fixes the values or deletes.
-    private func setRow(set: SetEntry, reference: SetEntry?, number: Int) -> some View {
+    private func setRow(set: SetEntry, reference: SetEntry?, label: String) -> some View {
         let tier = setTier(set, reference: reference)
         let delta = (set.isWarmup || reference == nil) ? nil : pwr(set) - pwr(reference!)
         let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
@@ -223,7 +238,7 @@ struct ExerciseCard: View {
             editingSet = set
         } label: {
             HStack(spacing: 10) {
-                Text("\(number)")
+                Text(label)
                     .font(.system(size: 12, weight: .heavy, design: .monospaced))
                     .monospacedDigit()
                     .foregroundStyle(set.isWarmup ? SettColor.ash : tier.color)
@@ -270,7 +285,7 @@ struct ExerciseCard: View {
             .contentShape(shape)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Set \(number), \(WeightFormat.compactWithUnit(grams: set.weightGrams, unit: unit)) by \(set.reps)")
+        .accessibilityLabel("Set \(label), \(WeightFormat.compactWithUnit(grams: set.weightGrams, unit: unit)) by \(set.reps)")
         .accessibilityHint("Edits this set's note. Long-press to fix weight and reps or delete.")
         .contextMenu {
             Button {
@@ -283,6 +298,42 @@ struct ExerciseCard: View {
                 session.deleteSet(set)
             } label: { Label("Delete set", systemImage: "trash") }
         }
+    }
+
+    /// A still-to-do planned set: a dashed, dimmed placeholder showing the target (the
+    /// ghost autofill) so the whole plan is visible from the start. The active input
+    /// row above it is where the next set is actually logged.
+    private func plannedRow(number: Int, slot: Int) -> some View {
+        let ghost = session.ghostValues(for: workoutExercise, slot: slot)
+        let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
+        return HStack(spacing: 10) {
+            Text("\(number)")
+                .font(.system(size: 12, weight: .heavy, design: .monospaced))
+                .monospacedDigit()
+                .foregroundStyle(SettColor.iron)
+                .frame(width: 24, height: 24)
+                .background {
+                    Circle().strokeBorder(SettColor.iron.opacity(0.6),
+                                          style: StrokeStyle(lineWidth: 1, dash: [2.5, 2.5]))
+                }
+            Text("\(WeightFormat.compactWithUnit(grams: ghost.weightGrams, unit: unit)) × \(ghost.reps)")
+                .font(.system(size: 15, weight: .semibold, design: .monospaced))
+                .monospacedDigit()
+                .foregroundStyle(SettColor.iron)
+            Spacer(minLength: 6)
+            Text("PLANNED")
+                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .kerning(1)
+                .foregroundStyle(SettColor.iron)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 9)
+        .background {
+            shape.strokeBorder(SettColor.cardBorder.opacity(0.7),
+                               style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Planned set \(number), target \(WeightFormat.compactWithUnit(grams: ghost.weightGrams, unit: unit)) by \(ghost.reps)")
     }
 
     /// vs-last PWR delta: ▲ ahead, ▼ behind (◇ on a cut — a dip is not a failure).

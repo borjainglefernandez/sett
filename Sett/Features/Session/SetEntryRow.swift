@@ -9,6 +9,9 @@ import SettCore
 /// Tapping ✓ commits the ghost values as-is — a repeat set is one tap.
 struct SetEntryRow: View {
     let workoutExercise: WorkoutExercise
+    /// Optional leading badge — the working-set number this active input represents,
+    /// so the overview reads as one numbered checklist alongside the planned rows.
+    var setNumber: Int? = nil
 
     @Environment(WorkoutSessionStore.self) private var session
     @Environment(AppServices.self) private var services
@@ -26,6 +29,15 @@ struct SetEntryRow: View {
 
     var body: some View {
         HStack(spacing: 8) {
+            if let setNumber {
+                Text("\(setNumber)")
+                    .font(.system(size: 12, weight: .heavy, design: .monospaced))
+                    .monospacedDigit()
+                    .foregroundStyle(SettColor.heroCyan)
+                    .frame(width: 22, height: 22)
+                    .background { Circle().strokeBorder(SettColor.heroCyan.opacity(0.6), lineWidth: 1) }
+                    .accessibilityHidden(true)
+            }
             stepperCluster(valueText: weightValueText,
                            caption: services.settings.unit.symbol,
                            decrement: { stepWeight(-1) },
@@ -36,7 +48,7 @@ struct SetEntryRow: View {
                            decrement: { stepReps(-1) },
                            increment: { stepReps(1) },
                            tapValue: { editingField = .reps })
-                .frame(width: 112) // fixed: 2 step buttons + room for 2 digits — never squeezed
+                .frame(width: 96) // fixed: 2 step buttons + room for 2 digits — never squeezed
             noteButton
             commitButton
         }
@@ -83,7 +95,7 @@ struct SetEntryRow: View {
             Image(systemName: symbol)
                 .font(.body.weight(.semibold))
                 .foregroundStyle(SettColor.heroCyan)
-                .frame(width: 38, height: 44)
+                .frame(width: 33, height: 44)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
