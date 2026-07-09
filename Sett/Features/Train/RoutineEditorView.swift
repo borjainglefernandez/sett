@@ -18,6 +18,10 @@ private struct RoutineDraftExercise: Identifiable {
     var muscleRaw: String
     var equipment: Equipment
     var setCount: Int = 3
+    /// Display mirror of the catalog `Exercise.instructions` (the machine-setup
+    /// field app-wide). Edits go through the shared `MachineSetupSheet`, which
+    /// writes the Exercise directly; this mirror keeps the row current.
+    var machineSetup: String? = nil
 }
 
 // MARK: - Editor
@@ -40,6 +44,10 @@ struct RoutineEditorView: View {
     @State private var isShowingExercisePicker = false
     /// When set, the picker replaces this draft instead of appending a new one.
     @State private var replacingDraftID: RoutineDraftExercise.ID?
+    /// The catalog Exercise whose machine setup is being edited in the shared sheet.
+    @State private var setupTarget: Exercise?
+    /// The draft that owns `setupTarget`, so its display mirror can refresh on dismiss.
+    @State private var setupDraftID: RoutineDraftExercise.ID?
     @State private var hasLoadedDraft = false
     @State private var editMode: EditMode = .inactive
 
@@ -115,6 +123,9 @@ struct RoutineEditorView: View {
             RoutineExercisePickerSheet { exercise in
                 pick(exercise)
             }
+        }
+        .sheet(item: $setupTarget, onDismiss: refreshSetupMirror) { exercise in
+            MachineSetupSheet(exercise: exercise)
         }
         .onAppear(perform: loadDraftIfNeeded)
     }
@@ -231,10 +242,12 @@ struct RoutineEditorView: View {
                 Text(draft.wrappedValue.equipment.rawValue.capitalized)
                     .font(.system(size: 11, weight: .medium, design: .monospaced))
                     .foregroundStyle(SettColor.iron)
+                setupLine(draft.wrappedValue)
             }
             Spacer(minLength: 6)
             setCountControl(draft)
             let index = drafts.firstIndex { $0.id == draft.wrappedValue.id } ?? 0
+            let hasSetup = !(draft.wrappedValue.machineSetup ?? "").isEmpty
             Menu {
                 Button {
                     move(fromIndex: index, by: -1)
@@ -245,6 +258,12 @@ struct RoutineEditorView: View {
                 } label: { Label("Move down", systemImage: "arrow.down") }
                     .disabled(index >= drafts.count - 1)
                 Divider()
+                Button {
+                    openSetup(for: draft.wrappedValue)
+                } label: {
+                    Label(hasSetup ? "Edit machine setup" : "Add machine setup",
+                          systemImage: "gearshape")
+                }
                 Button {
                     replacingDraftID = draft.wrappedValue.id
                     isShowingExercisePicker = true
@@ -272,6 +291,60 @@ struct RoutineEditorView: View {
         guard index >= 0, index < drafts.count, target >= 0, target < drafts.count else { return }
         withAnimation { drafts.swapAt(index, target) }
         Haptics.selection()
+    }
+
+    // MARK: Machine setup (Exercise.instructions — what to set the machine to)
+
+    /// At-a-glance setup caption under the name: the saved setup (tappable to
+    /// edit) if one exists, a quiet "Add setup" for machines/cables when empty,
+    /// hidden for free weights. Mirrors the session card's rule.
+    @ViewBuilder
+    private func setupLine(_ draft: RoutineDraftExercise) -> some View {
+        let setup = draft.machineSetup ?? ""
+        if !setup.isEmpty {
+            Button { openSetup(for: draft) } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "gearshape.fill").font(.system(size: 10))
+                    Text(setup)
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .lineLimit(1)
+                }
+                .foregroundStyle(SettColor.ash)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Machine setup: \(setup)")
+            .accessibilityHint("Edits the machine setup")
+        } else if draft.equipment == .machine || draft.equipment == .cable {
+            Button { openSetup(for: draft) } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "gearshape").font(.system(size: 10))
+                    Text("Add setup")
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                }
+                .foregroundStyle(SettColor.iron)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Add machine setup")
+        }
+    }
+
+    /// Resolve the catalog Exercise and hand it to the shared setup sheet.
+    private func openSetup(for draft: RoutineDraftExercise) {
+        guard let exercise = resolveExercise(for: draft) else { return }
+        setupDraftID = draft.id
+        setupTarget = exercise
+    }
+
+    /// The sheet mutated the Exercise in place; pull the fresh setup back into the
+    /// draft so the row caption updates without a re-fetch on every body pass.
+    private func refreshSetupMirror() {
+        defer { setupDraftID = nil }
+        guard let id = setupDraftID,
+              let idx = drafts.firstIndex(where: { $0.id == id }),
+              let exercise = resolveExercise(for: drafts[idx]) else { return }
+        drafts[idx].machineSetup = exercise.instructions
     }
 
     private func setCountControl(_ draft: Binding<RoutineDraftExercise>) -> some View {
@@ -333,13 +406,15 @@ struct RoutineEditorView: View {
         name = routine.name
         daysOfWeekMask = routine.daysOfWeekMask
         drafts = routine.orderedExercises.map { re in
-            RoutineDraftExercise(
+            let catalog = catalogExercise(forID: re.exerciseID)
+            return RoutineDraftExercise(
                 existing: re,
                 exerciseID: re.exerciseID,
                 name: re.exerciseNameSnapshot,
                 muscleRaw: re.muscleRaw,
-                equipment: equipment(forExerciseID: re.exerciseID),
-                setCount: re.plannedSetCount > 0 ? re.plannedSetCount : max(1, re.orderedPlannedSets.count)
+                equipment: catalog?.equipment ?? .machine,
+                setCount: re.plannedSetCount > 0 ? re.plannedSetCount : max(1, re.orderedPlannedSets.count),
+                machineSetup: catalog?.instructions
             )
         }
         // Seed the default-rest control from the first override, else the app default.
@@ -347,10 +422,12 @@ struct RoutineEditorView: View {
             ?? services.settings.defaultRestSeconds
     }
 
-    private func equipment(forExerciseID id: UUID) -> Equipment {
+    /// Fetch the catalog Exercise behind a loose `exerciseID` (equipment + machine
+    /// setup live there). Returns nil if the row references a deleted exercise.
+    private func catalogExercise(forID id: UUID) -> Exercise? {
         var descriptor = FetchDescriptor<Exercise>(predicate: #Predicate { $0.id == id })
         descriptor.fetchLimit = 1
-        return (try? modelContext.fetch(descriptor))?.first?.equipment ?? .machine
+        return (try? modelContext.fetch(descriptor))?.first
     }
 
     /// Picker callback: replace the flagged draft in place, else append a new one.
@@ -360,6 +437,7 @@ struct RoutineEditorView: View {
             drafts[idx].name = exercise.name
             drafts[idx].muscleRaw = exercise.muscleRaw
             drafts[idx].equipment = exercise.equipment
+            drafts[idx].machineSetup = exercise.instructions
             drafts[idx].pickedExercise = exercise
             Haptics.light()
         } else {
@@ -369,7 +447,8 @@ struct RoutineEditorView: View {
                 name: exercise.name,
                 muscleRaw: exercise.muscleRaw,
                 equipment: exercise.equipment,
-                setCount: 3
+                setCount: 3,
+                machineSetup: exercise.instructions
             ))
             Haptics.light()
         }
