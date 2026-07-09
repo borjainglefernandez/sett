@@ -20,6 +20,9 @@ public final class WorkoutSessionStore {
     public private(set) var restEndsAt: Date?
     public private(set) var restTotalSeconds: Int = 0
     public var isResting: Bool { restEndsAt.map { $0 > .now } ?? false }
+    /// The label carried into the rest-complete notification, kept so a ±time
+    /// adjustment can reschedule the alert without the caller re-supplying it.
+    private var restNextUp: String?
 
     private let container: ModelContainer
     private let settings: UserSettingsStore
@@ -115,25 +118,35 @@ public final class WorkoutSessionStore {
         set.workoutExercise = workoutExercise
         context.insert(set)
         if let workout = activeWorkout { touchAndSave(workout) }
-        startRest(seconds: workoutExercise.restSeconds ?? settings.defaultRestSeconds)
+        startRest(seconds: workoutExercise.restSeconds ?? settings.defaultRestSeconds,
+                  nextUp: workoutExercise.exerciseNameSnapshot)
         Haptics.light()
     }
 
-    public func startRest(seconds: Int) {
+    public func startRest(seconds: Int, nextUp: String? = nil) {
         restTotalSeconds = seconds
-        restEndsAt = Date.now.addingTimeInterval(TimeInterval(seconds))
+        let ends = Date.now.addingTimeInterval(TimeInterval(seconds))
+        restEndsAt = ends
+        restNextUp = nextUp
+        // Beyond the app boundary (tenet 1): schedule a lock-screen alert for when
+        // rest ends. Auth is requested lazily here so the prompt lands in context.
+        RestNotifier.requestAuthorizationIfNeeded()
+        RestNotifier.scheduleRestComplete(at: ends, nextUp: nextUp)
         Haptics.rigid()
     }
 
     public func adjustRest(by delta: Int) {
         guard let ends = restEndsAt else { return }
-        restEndsAt = ends.addingTimeInterval(TimeInterval(delta))
+        let newEnds = ends.addingTimeInterval(TimeInterval(delta))
+        restEndsAt = newEnds
         restTotalSeconds = max(0, restTotalSeconds + delta)
+        RestNotifier.scheduleRestComplete(at: newEnds, nextUp: restNextUp)   // reschedule
         Haptics.selection()
     }
 
     public func skipRest() {
         restEndsAt = nil
+        RestNotifier.cancelRestComplete()
     }
 
     // MARK: Set Player queue support (v3.1 — all derived, nothing stored)
@@ -433,6 +446,7 @@ public final class WorkoutSessionStore {
         activeWorkout = nil
         isPresentingWorkout = false
         restEndsAt = nil
+        RestNotifier.cancelRestComplete()
         Haptics.success()
     }
 
@@ -443,6 +457,7 @@ public final class WorkoutSessionStore {
         activeWorkout = nil
         isPresentingWorkout = false
         restEndsAt = nil
+        RestNotifier.cancelRestComplete()
     }
 
     // MARK: Helpers
