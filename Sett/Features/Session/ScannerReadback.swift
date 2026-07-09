@@ -125,13 +125,29 @@ struct ReadbackBlock: View {
     @State private var materialized = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    /// The scouter aura this reading lit up — same green→amber→red ramp as the lens.
+    private var tier: AuraTier { payload.outcome.auraTier }
+
+    /// This set's output as a power level — from canonical grams, so it's the SAME
+    /// number for the same lift regardless of the user's display unit.
+    private var powerLevel: Int {
+        Int(Units.pounds(fromGrams: payload.readback.e1RMGrams).rounded())
+    }
+
+    private var powerDelta: Int? {
+        guard let grams = payload.readback.e1RMDeltaGrams else { return nil }
+        let value = Int(Units.pounds(fromGrams: grams).rounded())
+        return value == 0 ? nil : value
+    }
+
     var body: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 9) {
+            if payload.outcome != .casual { powerLine }
             Text(loggedLine)
-                .font(.system(size: 15, weight: .bold, design: .monospaced))
+                .font(.system(size: 14, weight: .bold, design: .monospaced))
                 .kerning(1)
                 .monospacedDigit()
-                .foregroundStyle(payload.outcome.isGold ? SettColor.saiyanGold : SettColor.bone)
+                .foregroundStyle(SettColor.bone)
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
             chipsRow
@@ -155,10 +171,12 @@ struct ReadbackBlock: View {
         .padding(.vertical, 16)
         .padding(.horizontal, 20)
         .background {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color.black)
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(SettColor.cardBorder, lineWidth: 1)
+            let shape = RoundedRectangle(cornerRadius: 16, style: .continuous)
+            shape.fill(TimeChamber.void.opacity(0.85))
+            shape.strokeBorder(tier.color.opacity(0.5), lineWidth: 1.5)
+                .shadow(color: tier.color.opacity(0.45), radius: 9)
+            CornerTicksShape(length: 6, inset: 6)
+                .stroke(tier.color.opacity(0.55), lineWidth: 1)
         }
         .opacity(materialized ? 1 : 0)
         .blur(radius: materialized || reduceMotion ? 0 : 6)
@@ -169,6 +187,29 @@ struct ReadbackBlock: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityText)
+    }
+
+    /// The scouter's final reading: the power level in the aura hue, with the ΔPWR
+    /// gained vs last time when this was a scored set.
+    private var powerLine: some View {
+        HStack(spacing: 6) {
+            SettSigil(size: 15, color: tier.color)
+            Text("PWR")
+                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                .kerning(2)
+                .foregroundStyle(tier.color.opacity(0.85))
+            Text("\(powerLevel)")
+                .font(.system(size: 24, weight: .heavy, design: .monospaced))
+                .monospacedDigit()
+                .foregroundStyle(tier.color)
+            if let delta = powerDelta {
+                Text("\(delta > 0 ? "+" : "−")\(abs(delta))")
+                    .font(.system(size: 13, weight: .bold, design: .monospaced))
+                    .monospacedDigit()
+                    .foregroundStyle(delta > 0 ? SettColor.positive : SettColor.negative)
+            }
+        }
+        .shadow(color: .black.opacity(0.6), radius: 3)
     }
 
     private var loggedLine: String {
@@ -213,7 +254,7 @@ struct ReadbackBlock: View {
             chip(text: "WARM-UP", color: SettColor.ash)
         default:
             if payload.readback.isBaseline {
-                chip(text: "BASELINE SET", color: SettColor.heroCyan)
+                chip(text: "BASELINE SET", color: tier.color)
             } else {
                 HStack(spacing: 8) {
                     weightChip

@@ -115,6 +115,10 @@ struct ActiveWorkoutView: View {
             ZStack {
                 pane(workout, exercises: exercises, position: position)
                     .transition(paneTransition)
+                    // Hide the SET pane while resting so the REST overlay's
+                    // translucent scrim reveals only the cosmic backdrop, not the
+                    // scouter behind it.
+                    .opacity(isRestOverlayVisible ? 0 : 1)
                 if isShowingInPlaceReadback, let readback = session.lastReadback {
                     ReadbackBlock(payload: readback, unit: services.settings.unit)
                         .padding(.horizontal, 24)

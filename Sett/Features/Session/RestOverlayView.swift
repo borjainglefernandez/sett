@@ -65,6 +65,9 @@ struct RestOverlayView: View {
         }
     }
 
+    /// The aura from the set you just logged — the rest screen keeps its colour.
+    private var tier: AuraTier { session.lastReadback?.outcome.auraTier ?? .base }
+
     // MARK: Content
 
     private func content(remaining: Int, fraction: Double) -> some View {
@@ -77,9 +80,10 @@ struct RestOverlayView: View {
             VStack(spacing: 36) {
                 VStack(spacing: 12) {
                     Text("RECALIBRATING")
-                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
                         .kerning(3)
-                        .foregroundStyle(SettColor.iron)
+                        .foregroundStyle(tier.color)
+                        .shadow(color: .black.opacity(0.7), radius: 3)
                         .accessibilityHidden(true)
                     ring(remaining: remaining, fraction: fraction)
                 }
@@ -96,15 +100,17 @@ struct RestOverlayView: View {
     private func ring(remaining: Int, fraction: Double) -> some View {
         ZStack {
             Circle()
-                .stroke(SettColor.iron.opacity(0.35), lineWidth: 2)
+                .stroke(tier.color.opacity(0.18), lineWidth: 3)
             Circle()
                 .trim(from: 0, to: fraction)
-                .stroke(SettColor.iron, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                .stroke(tier.gradient, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                .shadow(color: tier.color.opacity(0.7), radius: 8)
                 .rotationEffect(.degrees(-90))
             Text(timeText(remaining))
                 .font(.system(size: numeralSize, weight: .heavy, design: .monospaced))
                 .monospacedDigit()
                 .foregroundStyle(SettColor.bone)
+                .shadow(color: .black.opacity(0.7), radius: 5)
                 .lineLimit(1)
                 .minimumScaleFactor(0.5)
                 .padding(28)
@@ -122,14 +128,18 @@ struct RestOverlayView: View {
             onAdvance()
         } label: {
             Text(nextLabel)
-                .font(.system(.footnote, design: .monospaced))
+                .font(.system(.footnote, design: .monospaced).weight(.semibold))
                 .kerning(1)
-                .foregroundStyle(SettColor.ash)
+                .foregroundStyle(SettColor.bone)
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
-                .contentShape(Rectangle())
+                .background {
+                    Capsule().fill(TimeChamber.void.opacity(0.55))
+                    Capsule().strokeBorder(tier.color.opacity(0.35), lineWidth: 1)
+                }
+                .contentShape(Capsule())
         }
         .buttonStyle(.plain)
         .accessibilityHint("Skips the rest and jumps to this set")
@@ -151,9 +161,13 @@ struct RestOverlayView: View {
             Text(label)
                 .font(.system(.subheadline, design: .monospaced).weight(.semibold))
                 .monospacedDigit()
-                .foregroundStyle(SettColor.ash)
-                .frame(minWidth: 64, minHeight: 44)
-                .contentShape(Rectangle())
+                .foregroundStyle(SettColor.bone)
+                .frame(minWidth: 62, minHeight: 40)
+                .background {
+                    Capsule().fill(TimeChamber.void.opacity(0.55))
+                    Capsule().strokeBorder(tier.color.opacity(0.3), lineWidth: 1)
+                }
+                .contentShape(Capsule())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label == "skip" ? "Skip rest" : "\(label) seconds")
