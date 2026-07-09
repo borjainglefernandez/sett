@@ -21,6 +21,7 @@ struct WorkoutSummaryView: View {
     let summary: WorkoutSummaryData
 
     @Environment(ProgressionStore.self) private var progression
+    @Environment(AppServices.self) private var services
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -39,6 +40,8 @@ struct WorkoutSummaryView: View {
     @State private var displayedPowerLevel = 0
     @State private var ratingHalfStars = 0
     @State private var showingHowXPWorks = false
+    /// Rendered dark-chamber share card (the social pillar's zero-backend v0).
+    @State private var shareImage: Image?
 
     // Scan Ritual v3 choreography.
     @State private var scrambling = false
@@ -109,9 +112,26 @@ struct WorkoutSummaryView: View {
         .presentationDragIndicator(.hidden)
         .presentationBackground(TimeChamber.void)
         .task { await runStages() }
+        .task { renderShareCard() }
         .sheet(isPresented: $showingHowXPWorks) {
             HowPowerWorksView()
         }
+    }
+
+    @MainActor private func renderShareCard() {
+        let card = SummaryShareCard(
+            title: summary.title,
+            powerLevel: summary.powerLevelAfter,
+            netReps: summary.netReps,
+            netVolumeGrams: summary.netVolumeGrams,
+            netIsNew: summary.netIsNew,
+            durationSeconds: summary.durationSeconds,
+            unit: services.settings.unit,
+            isCasual: summary.isCasual
+        )
+        let renderer = ImageRenderer(content: card)
+        renderer.scale = 3
+        shareImage = renderer.uiImage.map(Image.init(uiImage:))
     }
 
     // MARK: Staging
@@ -498,6 +518,15 @@ struct WorkoutSummaryView: View {
     private var wrapUp: some View {
         VStack(spacing: 16) {
             starRating
+            if let shareImage, !summary.isCasual {
+                ShareLink(item: shareImage,
+                          preview: SharePreview("\(summary.title) — PWR \(summary.powerLevelAfter)",
+                                                image: shareImage)) {
+                    Label("Share Power Scan", systemImage: "square.and.arrow.up")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(SettColor.heroCyan)
+                }
+            }
             Button {
                 dismiss()
             } label: {
@@ -595,6 +624,100 @@ struct WorkoutSummaryView: View {
         var descriptor = FetchDescriptor<Workout>(predicate: #Predicate { $0.id == workoutID })
         descriptor.fetchLimit = 1
         return (try? modelContext.fetch(descriptor))?.first
+    }
+}
+
+// MARK: - Share card (the social pillar's zero-backend v0)
+
+/// A self-contained dark-chamber card rendered by `ImageRenderer` for ShareLink —
+/// the group iMessage thread becomes the interim leaderboard for ~zero cost. The
+/// POWER LEVEL stays gold (the sacred number); no @Environment so it renders clean.
+struct SummaryShareCard: View {
+    let title: String
+    let powerLevel: Int
+    let netReps: Int
+    let netVolumeGrams: Int
+    let netIsNew: Bool
+    let durationSeconds: Int
+    let unit: WeightUnit
+    let isCasual: Bool
+
+    private var netVolume: Int { Int((Double(netVolumeGrams) / unit.gramsPerUnit).rounded()) }
+    private func signed(_ v: Int) -> String { v > 0 ? "+\(v)" : "\(v)" }
+    private var durationText: String {
+        let m = max(0, durationSeconds) / 60
+        return m >= 60 ? "\(m / 60)h \(m % 60)m" : "\(m)m"
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                SettSigil(size: 20, color: SettColor.saiyanGold)
+                Text("SETT")
+                    .font(.system(size: 20, weight: .heavy, design: .monospaced))
+                    .kerning(6)
+                    .foregroundStyle(SettColor.bone)
+            }
+            .padding(.top, 40)
+
+            Spacer()
+
+            Text(title.uppercased())
+                .font(.system(size: 15, weight: .bold, design: .monospaced))
+                .kerning(2)
+                .foregroundStyle(SettColor.ash)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+                .padding(.horizontal, 24)
+
+            Text("POWER LEVEL")
+                .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                .kerning(3)
+                .foregroundStyle(SettColor.ash)
+                .padding(.top, 26)
+
+            Text("\(powerLevel)")
+                .font(.system(size: 92, weight: .heavy, design: .monospaced))
+                .monospacedDigit()
+                .foregroundStyle(SettColor.saiyanGold)
+                .shadow(color: SettColor.saiyanGold.opacity(0.5), radius: 22)
+
+            Spacer()
+
+            VStack(spacing: 14) {
+                if netIsNew {
+                    Text("NEW TERRITORY")
+                        .font(.system(size: 14, weight: .bold, design: .monospaced))
+                        .kerning(2)
+                        .foregroundStyle(SettColor.heroCyan)
+                } else {
+                    HStack(spacing: 30) {
+                        stat(signed(netReps), "NET REPS")
+                        stat(signed(netVolume), "NET \(unit.symbol.uppercased())")
+                    }
+                }
+                stat(durationText, "TIME")
+            }
+            .padding(.bottom, 40)
+        }
+        .frame(width: 440, height: 560)
+        .background(SettColor.screen)
+        .overlay {
+            Rectangle().strokeBorder(SettColor.saiyanGold.opacity(0.18), lineWidth: 1)
+        }
+    }
+
+    private func stat(_ value: String, _ label: String) -> some View {
+        VStack(spacing: 4) {
+            Text(value)
+                .font(.system(size: 22, weight: .heavy, design: .monospaced))
+                .monospacedDigit()
+                .foregroundStyle(SettColor.bone)
+            Text(label)
+                .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                .kerning(1)
+                .foregroundStyle(SettColor.ash)
+        }
     }
 }
 
