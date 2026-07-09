@@ -32,6 +32,13 @@ struct ActiveWorkoutView: View {
     /// 1.2 s in-place overlay on the SET state before the cursor advances (item 4).
     @State private var isShowingInPlaceReadback = false
 
+    /// Ambient aura tier for the shared cosmic backdrop — normally `.base`, jumps
+    /// to the last log's outcome tier so the whole chamber glows with the reading,
+    /// then eases back. Bumped `transformationToken` fires the full-screen burst.
+    @State private var ambientTier: AuraTier = .base
+    @State private var transformationToken = 0
+    @State private var ambientDecayTask: Task<Void, Never>?
+
     @State private var isShowingOverview = false
     @State private var isConfirmingFinish = false
     @State private var isConfirmingCancel = false
@@ -53,7 +60,8 @@ struct ActiveWorkoutView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.black.ignoresSafeArea())
+        .background(TimeChamberBackground(tier: ambientTier).animation(.easeInOut(duration: 0.6), value: ambientTier).allowsHitTesting(false))
+        .overlay(TransformationBurst(tier: ambientTier, token: transformationToken).allowsHitTesting(false))
         .combatTextEmitter(combatText)
         .environment(combatText)
         .sheet(isPresented: $isShowingOverview) {
@@ -402,6 +410,18 @@ struct ActiveWorkoutView: View {
     /// flash reads). When rest is zero, the readback shows as a 1.2 s in-place
     /// overlay on the SET state before the cursor advances (item 4).
     private func handleLogged(on exercise: WorkoutExercise, outcome: LogOutcome) {
+        // Light the chamber with this reading's aura; fire the full-screen
+        // transformation on a win. The tier eases back to base after a beat.
+        let tier = outcome.auraTier
+        ambientTier = tier
+        if tier.isTransformation { transformationToken += 1 }
+        ambientDecayTask?.cancel()
+        ambientDecayTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(8))
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeInOut(duration: 1.2)) { ambientTier = .base }
+        }
+
         let restSeconds = exercise.restSeconds ?? services.settings.defaultRestSeconds
         if restSeconds <= 0 {
             // No REST overlay: clear the zero-length timer logSet started, then run

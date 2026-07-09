@@ -34,6 +34,19 @@ enum LogOutcome {
         if delta == 0 { return .held }
         return .dropped
     }
+
+    /// The transformation aura this outcome lights up (Time Chamber language).
+    var auraTier: AuraTier {
+        switch self {
+        case .personalBest: .radiant
+        case .beat: .ascended
+        case .held: .base
+        case .baseline: .base
+        case .dropped: .fatigued
+        case .warmup: .calm
+        case .casual: .calm
+        }
+    }
 }
 
 // MARK: - Scanner message pools (item 5 — deterministic, no randomness APIs)

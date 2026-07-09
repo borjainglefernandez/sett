@@ -31,7 +31,9 @@ struct RestOverlayView: View {
                 }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.black.ignoresSafeArea())
+        // Translucent scrim only — the shell's cosmic Time Chamber shows through so
+        // rest still reads as "floating in the void," not a black cutaway.
+        .background(TimeChamber.void.opacity(0.45).ignoresSafeArea())
         // onChange never fires when the overlay MOUNTS already at zero (e.g. the
         // hold-for-gold-flash delay outliving a very short rest) — sweep once.
         .onAppear { handleTick(remainingSeconds(at: .now)) }

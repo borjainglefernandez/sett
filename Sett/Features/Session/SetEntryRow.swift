@@ -228,6 +228,8 @@ struct SetEntryRow: View {
 /// explicit nil save.
 struct SetNoteSheet: View {
     let initialText: String
+    var title = "SET NOTE"
+    var placeholder = "felt heavy, left side weaker…"
     let onSave: (String?) -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -236,11 +238,11 @@ struct SetNoteSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("SET NOTE")
+            Text(title)
                 .font(.system(size: 13, weight: .bold, design: .monospaced))
                 .kerning(3)
                 .foregroundStyle(SettColor.bone)
-            TextField("felt heavy, left side weaker…", text: $text)
+            TextField(placeholder, text: $text)
                 .font(.subheadline)
                 .foregroundStyle(SettColor.bone)
                 .focused($isFocused)

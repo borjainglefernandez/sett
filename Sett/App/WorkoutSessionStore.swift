@@ -84,11 +84,12 @@ public final class WorkoutSessionStore {
     /// Commit a set (tenet 2: one tap of the checkmark) and auto-start rest (tenet 1).
     /// `notes` is the optional per-set note staged in the entry row's note sheet.
     public func logSet(on workoutExercise: WorkoutExercise, weightGrams: Int, reps: Int,
-                       isWarmup: Bool = false, notes: String? = nil) {
+                       isWarmup: Bool = false, notes: String? = nil, setting: String? = nil) {
         let index = (workoutExercise.orderedSets.last?.orderIndex ?? -1) + 1
         let set = SetEntry(orderIndex: index, weightGrams: weightGrams,
                            entryUnit: settings.unit, reps: reps, isWarmup: isWarmup)
         set.notes = notes
+        set.setting = setting
         set.workoutExercise = workoutExercise
         context.insert(set)
         if let workout = activeWorkout { touchAndSave(workout) }
@@ -133,6 +134,37 @@ public final class WorkoutSessionStore {
             return (reference.weightGrams, reference.reps)
         }
         return (0, 10)
+    }
+
+    /// Everything the Set Player needs about the previous session's set at this slot:
+    /// the reference weight/reps (for the live aura preview), the note and machine
+    /// setting to AUTO-POPULATE, and the all-time prior best e1RM (for the PR line).
+    /// One resolution, fetched once when the pane loads. `weightGrams == nil` ⇒ no
+    /// reference at this slot; note/setting still fall back to the most recent set.
+    struct SlotReference: Equatable {
+        var weightGrams: Int?
+        var reps: Int?
+        var note: String?
+        var setting: String?
+        var priorBestE1RMGrams: Int
+        var hasReference: Bool { weightGrams != nil }
+    }
+
+    func slotReference(for workoutExercise: WorkoutExercise, slot: Int) -> SlotReference {
+        let references = previousSets(exerciseID: workoutExercise.exerciseID,
+                                      excluding: workoutExercise.workout?.id)
+        let priorBest = bestPriorE1RMGrams(exerciseID: workoutExercise.exerciseID,
+                                           excluding: workoutExercise.workout?.id)
+        if slot >= 0 && slot < references.count {
+            let r = references[slot]
+            return SlotReference(weightGrams: r.weightGrams, reps: r.reps,
+                                 note: r.notes, setting: r.setting,
+                                 priorBestE1RMGrams: priorBest)
+        }
+        let last = references.last
+        return SlotReference(weightGrams: nil, reps: nil,
+                             note: last?.notes, setting: last?.setting,
+                             priorBestE1RMGrams: priorBest)
     }
 
     /// The number of sets the source routine plans for this exercise — the authoritative

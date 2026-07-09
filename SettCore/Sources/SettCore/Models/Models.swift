@@ -169,6 +169,10 @@ public final class SetEntry {
     /// Per-set timestamp — drives pairing, buckets, and badges.
     public var completedAt: Date
     public var notes: String?
+    /// The machine setup used for THIS set (seat/pin/pad notes). Defaults from the
+    /// exercise's setup or last session's set; stored per-set so a mid-workout tweak
+    /// is remembered. Optional → migration-safe (nil for pre-existing rows).
+    public var setting: String? = nil
     public var createdAt: Date
     public var updatedAt: Date
     public var deletedAt: Date?
