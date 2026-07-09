@@ -76,6 +76,72 @@ enum AuraTier: Equatable {
 
     /// Whether this tier is a "win" worth a brighter transformation flash.
     var isTransformation: Bool { self == .ascended || self == .radiant }
+
+    // MARK: Form — separates a held WIN from idle, and orders the ladder.
+    // (No new hues: every value stays on the green→amber→red ramp; gold untouched.)
+
+    /// Ordering on the transformation ladder — higher = more powered-up. Lets callers
+    /// detect an UPWARD tier change (AuraTier isn't Comparable) to fire a spool-up.
+    /// Distinct integers, monotonic with `intensity`.
+    var rank: Int {
+        switch self {
+        case .dormant: 0
+        case .calm: 1
+        case .fatigued: 2
+        case .defended: 3
+        case .base: 4
+        case .ascended: 5
+        case .radiant: 6
+        }
+    }
+
+    /// 0…1 — how COMPLETE the energy ring reads. A sustained charge closes the halo
+    /// (fuller arcs); a resting/quiet tier shows only a thin, broken filament. This is
+    /// what separates a HELD win (.base) from the idle .dormant chamber — all green,
+    /// but the win's ring is visibly fuller. Consumed by AuraRing arc trims.
+    var ringCompleteness: Double {
+        switch self {
+        case .dormant:  0.34
+        case .calm:     0.46
+        case .fatigued: 0.52
+        case .defended: 0.74
+        case .base:     0.82
+        case .ascended: 0.94
+        case .radiant:  1.0
+        }
+    }
+
+    /// 0…1 — rim / hairline brightness. Idle rim is a faint outline; a held win lights
+    /// the rim to a solid charged phosphor. Same hue, brighter & more solid.
+    var rimOpacity: Double {
+        switch self {
+        case .dormant:  0.30
+        case .calm:     0.40
+        case .fatigued: 0.48
+        case .defended: 0.66
+        case .base:     0.78
+        case .ascended: 0.92
+        case .radiant:  1.0
+        }
+    }
+
+    /// How far the base hue is pushed toward its pale companion — a brighter "charged"
+    /// phosphor. Green→pale-green is still green, so the ramp holds.
+    var phosphorMix: Double {
+        switch self {
+        case .dormant:  0.0
+        case .calm:     0.06
+        case .fatigued: 0.08
+        case .defended: 0.16
+        case .base:     0.22
+        case .ascended: 0.20
+        case .radiant:  0.30
+        }
+    }
+
+    /// The rim / core phosphor tone: the tier hue brightened toward its pale companion
+    /// by `phosphorMix`. Stays on the green→amber→red ramp, just brighter for a charge.
+    var phosphor: Color { color.mix(with: secondary, by: phosphorMix) }
 }
 
 // MARK: - Chamber backgrounds (pick your training realm)
@@ -225,41 +291,59 @@ extension View {
 struct MoteField: View {
     var tier: AuraTier
 
+    @State private var spoolBias: CGFloat = 0   // transient inward pull + brighten on tier-up
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        if reduceMotion {
-            Canvas { context, size in
-                for track in Self.tracks.prefix(28) {
-                    let x = track.x * size.width
-                    let y = track.baseY * size.height
-                    let d = track.size
-                    context.fill(Path(ellipseIn: CGRect(x: x, y: y, width: d, height: d)),
-                                 with: .color(tint(track).opacity(0.30)))
-                }
-            }
-            .allowsHitTesting(false)
-        } else {
-            TimelineView(.animation(minimumInterval: 1.0 / 20.0)) { timeline in
+        Group {
+            if reduceMotion {
                 Canvas { context, size in
-                    let t = timeline.date.timeIntervalSinceReferenceDate
-                    context.blendMode = .plusLighter
-                    let count = 14 + Int(16 * tier.intensity)
-                    for track in Self.tracks.prefix(count) {
-                        let cycle = t / track.period + track.phase
-                        let progress = cycle - cycle.rounded(.down)   // 0→1 rise
-                        let fade = sin(progress * .pi)
+                    for track in Self.tracks.prefix(28) {
                         let x = track.x * size.width
-                            + sin(t * track.wanderFreq + track.phase * 11) * track.wander
-                        let y = size.height * (1.02 - progress * 1.04)
-                        let d = track.size * (0.8 + 0.5 * tier.intensity)
-                        context.fill(
-                            Path(ellipseIn: CGRect(x: x - d / 2, y: y - d / 2, width: d, height: d)),
-                            with: .color(tint(track).opacity(fade * 0.5 * (0.5 + tier.intensity / 2)))
-                        )
+                        let y = track.baseY * size.height
+                        let d = track.size
+                        // Reduce Motion: brightness STEP only — no inward drift.
+                        context.fill(Path(ellipseIn: CGRect(x: x, y: y, width: d, height: d)),
+                                     with: .color(tint(track).opacity(0.30 * (1 + Double(spoolBias) * 0.6))))
                     }
                 }
                 .allowsHitTesting(false)
+            } else {
+                TimelineView(.animation(minimumInterval: 1.0 / 20.0)) { timeline in
+                    Canvas { context, size in
+                        let t = timeline.date.timeIntervalSinceReferenceDate
+                        context.blendMode = .plusLighter
+                        let count = 14 + Int(16 * tier.intensity)
+                        let cx = size.width * 0.5
+                        let cy = size.height * 0.42   // lens sits a touch above center
+                        for track in Self.tracks.prefix(count) {
+                            let cycle = t / track.period + track.phase
+                            let progress = cycle - cycle.rounded(.down)   // 0→1 rise
+                            let fade = sin(progress * .pi)
+                            let x = track.x * size.width
+                                + sin(t * track.wanderFreq + track.phase * 11) * track.wander
+                            let y = size.height * (1.02 - progress * 1.04)
+                            // Tier-up inward bias: briefly pull motes toward the core + brighten.
+                            let bx = x + (cx - x) * Double(spoolBias) * 0.22
+                            let by = y + (cy - y) * Double(spoolBias) * 0.22
+                            let d = track.size * (0.8 + 0.5 * tier.intensity)
+                            context.fill(
+                                Path(ellipseIn: CGRect(x: bx - d / 2, y: by - d / 2, width: d, height: d)),
+                                with: .color(tint(track).opacity(fade * 0.5 * (0.5 + tier.intensity / 2) * (1 + Double(spoolBias) * 0.6)))
+                            )
+                        }
+                    }
+                    .allowsHitTesting(false)
+                }
+            }
+        }
+        .onChange(of: tier) { old, new in
+            guard new.rank > old.rank else { return }
+            spoolBias = 1
+            if reduceMotion {
+                withAnimation(.easeOut(duration: 0.5)) { spoolBias = 0 }
+            } else {
+                withAnimation(.spring(response: 0.55, dampingFraction: 0.6)) { spoolBias = 0 }
             }
         }
     }
@@ -323,27 +407,38 @@ struct AuraRing: View {
     @State private var spinB = false   // slower counter-arc
     @State private var pulse = false
     @State private var flare: CGFloat = 0
+    @State private var spoolKick: Double = 0   // additive rotation on tier-up (deg)
+    @State private var spoolGlow: CGFloat = 0  // bloom overshoot on tier-up
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ZStack {
-            // Outer bloom (brightens on both inhale + burst).
+            // Outer bloom — charged phosphor (a held win glows brighter), swelling on
+            // burst (flare) and on a tier-up spool (spoolGlow).
             Circle()
-                .stroke(tier.color.opacity(0.24 * tier.intensity), lineWidth: 14 + abs(flare) * 22)
+                .stroke(tier.phosphor.opacity(0.24 * tier.intensity + Double(abs(spoolGlow)) * 0.22),
+                        lineWidth: 14 + abs(flare) * 22 + abs(spoolGlow) * 10)
                 .blur(radius: 16 + flare * 14)
                 .scaleEffect(reduceMotion ? 1 : (pulse ? 1.015 : 0.985))
-            // Steady base ring.
-            Circle().stroke(tier.color.opacity(0.45), lineWidth: 1.5)
-            // Energy arcs — same wrap-safe angle, differing direction/trim/width.
-            arc(trim: 0.55, width: 3.0).rotationEffect(.degrees(spinA ? 360 : 0))
-            arc(trim: 0.14, width: 4.0).rotationEffect(.degrees(spinA ? 360 : 0)).blur(radius: 1)
-            arc(trim: 0.30, width: 2.0).rotationEffect(.degrees(spinB ? -360 : 0))
+            // Steady base ring — brightness & tone read the tier's FORM (a held win is
+            // a solid charged phosphor; idle is a faint ember).
+            Circle().stroke(tier.phosphor.opacity(0.55 * tier.rimOpacity), lineWidth: 1.5)
+            // Energy arcs — trims scale with ringCompleteness (a sustained charge closes
+            // the halo; idle shows a thin filament), and ±spoolKick flares them open on
+            // a tier-up.
+            arc(trim: 0.55 * tier.ringCompleteness, width: 3.0).rotationEffect(.degrees((spinA ? 360 : 0) + spoolKick))
+            arc(trim: 0.14 * tier.ringCompleteness, width: 4.0).rotationEffect(.degrees((spinA ? 360 : 0) + spoolKick)).blur(radius: 1)
+            arc(trim: 0.30 * tier.ringCompleteness, width: 2.0).rotationEffect(.degrees((spinB ? -360 : 0) - spoolKick))
         }
         .scaleEffect(1 + flare * 0.10)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
         .onAppear(perform: startSpin)
-        .onChange(of: tier) { _, _ in startSpin() }
+        .onChange(of: tier) { old, new in
+            startSpin()
+            guard new.rank > old.rank else { return }
+            spoolUp()
+        }
         .onChange(of: burstToken) { _, _ in
             guard !reduceMotion else { return }
             // Gather (inhale — contract + brighten), then detonate (snap out + settle).
@@ -360,6 +455,24 @@ struct AuraRing: View {
         Circle()
             .trim(from: 0, to: trim)
             .stroke(tier.gradient, style: StrokeStyle(lineWidth: width, lineCap: .round))
+    }
+
+    /// Transient spool-up on an upward tier change: arcs sweep an extra ~40° over
+    /// 0.4 s (they accelerate) and the outer bloom springs past then settles.
+    private func spoolUp() {
+        guard !reduceMotion else {
+            // Reduce Motion: an instant brightness STEP (no withAnimation — spoolGlow
+            // also feeds the bloom lineWidth geometry, which must not TWEEN under RM).
+            spoolGlow = 1
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(500))
+                spoolGlow = 0
+            }
+            return
+        }
+        withAnimation(.easeOut(duration: 0.4)) { spoolKick += 40 }
+        spoolGlow = 1
+        withAnimation(.spring(response: 0.5, dampingFraction: 0.5)) { spoolGlow = 0 }
     }
 
     private func startSpin() {
@@ -412,27 +525,47 @@ struct ScouterLens: View {
     /// True when the live reading has crossed the ceiling — flips LOCK→PEAK and
     /// holds the indicator solid (the scouter has locked onto a record).
     var atCeiling: Bool = false
+    /// True during the ~0.35 s acquisition sweep on a fresh slot (the player owns the
+    /// timing). Fires ONE downward sweep + a searching lock flicker, then the
+    /// instrument rests: static scan lines, no sweep, a SOLID lock. Default false so
+    /// standalone / preview use renders the settled state, not a screensaver.
+    var acquiring: Bool = false
+    /// 0…1 — glass strain: how far the live reading sits above the phase "held" band
+    /// toward the ceiling. Seeded hairline stress-fractures fade in at this opacity;
+    /// past ~0.6 a ~1px buzz creeps in. 0 = pristine glass.
+    var overload: Double = 0
+    /// Stable per-slot seed for the crack polylines (pass acquireSeed so a set always
+    /// cracks the same way). Non-zero fallback for previews.
+    var crackSeed: UInt64 = 0x5E77_C4A6_0F13
+    /// One-shot milestone highlight: `milestoneTick` is the gauge tick (0…17) to
+    /// brighten as the reading crosses a round-hundred below the ceiling; `milestoneGlow`
+    /// (1→0, animated by the caller) fades it. −1 / 0 = none.
+    var milestoneTick: Int = -1
+    var milestoneGlow: Double = 0
 
     @State private var flare: CGFloat = 0
-    @State private var scanDrift: CGFloat = 0   // scan-line drift (0→1, wraps seamlessly)
-    @State private var sweepPhase: CGFloat = 0  // the sweep bar's travel (0→1)
-    @State private var blink = false            // lock indicator pulse
+    @State private var sweepPhase: CGFloat = 0  // one-shot acquisition sweep travel (0→1)
+    @State private var blink = false            // lock flicker — only while acquiring
+    @State private var spoolGlow: CGFloat = 0   // rim/bloom overshoot on an upward tier change
+    @State private var crackFlash: Double = 0   // extra crack brightness on a PR crossing
+    @State private var crackJitter: CGFloat = 0 // ~1px seeded strain buzz past 0.6 overload
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         let shape = ScouterLensShape()
         ZStack {
-            // Soft aura bloom behind the whole lens (brightens on both inhale + burst).
-            shape.fill(tier.color.opacity(0.16 * tier.intensity + Double(abs(flare)) * 0.25))
+            // Soft aura bloom — charged phosphor (a held win glows brighter than idle),
+            // brightening on inhale/burst (flare) and on a tier-up spool (spoolGlow).
+            shape.fill(tier.phosphor.opacity(0.16 * tier.intensity + Double(abs(flare)) * 0.25 + Double(abs(spoolGlow)) * 0.20))
                 .blur(radius: 26)
-                .scaleEffect(1.06 + flare * 0.06)
+                .scaleEffect(1.06 + flare * 0.06 + spoolGlow * 0.05)
 
             // Glass: dark core (legibility) warming to the scouter hue at the edges.
             shape.fill(
                 RadialGradient(
                     colors: [TimeChamber.void.opacity(0.82),
                              TimeChamber.void.opacity(0.5),
-                             tier.color.opacity(0.18)],
+                             tier.phosphor.opacity(0.10 + 0.14 * tier.rimOpacity)],
                     center: .center, startRadius: 6, endRadius: 240
                 )
             )
@@ -442,21 +575,28 @@ struct ScouterLens: View {
                 sweepBar
             }
             .clipShape(shape)
+            GeometryReader { geo in crackLayer(in: geo.size) }.clipShape(shape)
             GeometryReader { geo in tickStrip(in: geo.size) }.clipShape(shape)
             targetBrackets
             lockIndicator
 
-            // Rim — bright scouter hue, glowing, with an inner hairline.
-            shape.stroke(tier.gradient, style: StrokeStyle(lineWidth: 2.5 + abs(flare) * 2, lineJoin: .round))
-                .shadow(color: tier.color.opacity(0.7), radius: 8 + abs(flare) * 10)
-            shape.stroke(tier.color.opacity(0.35), lineWidth: 1).padding(5)
+            // Rim — charged phosphor, its solidity reading the tier's FORM (a held win is
+            // a near-solid rim; idle a faint outline), brightening on flare + spool.
+            shape.stroke(tier.gradient,
+                         style: StrokeStyle(lineWidth: 2.5 + abs(flare) * 2 + abs(spoolGlow) * 1.6, lineJoin: .round))
+                .opacity(0.35 + 0.65 * tier.rimOpacity)
+                .shadow(color: tier.color.opacity(0.7 * tier.rimOpacity), radius: 8 + abs(flare) * 10 + abs(spoolGlow) * 8)
+            shape.stroke(tier.phosphor.opacity(0.35 * tier.rimOpacity), lineWidth: 1).padding(5)
 
             emitter
         }
         .scaleEffect(1 + flare * 0.03)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
-        .onAppear(perform: startScan)
+        .onChange(of: tier) { old, new in
+            guard new.rank > old.rank else { return }
+            spoolUp()
+        }
         .onChange(of: burstToken) { _, _ in
             guard !reduceMotion else { return }
             // Gather (inhale — contract + brighten), then detonate (snap out + settle).
@@ -467,16 +607,68 @@ struct ScouterLens: View {
                 withAnimation(.spring(response: 0.5, dampingFraction: 0.55)) { flare = 0 }
             }
         }
+        .onChange(of: acquiring) { _, isAcquiring in
+            guard !reduceMotion else { return }
+            if isAcquiring {
+                // One downward sweep — the scouter reading the fresh target.
+                sweepPhase = 0
+                withAnimation(.linear(duration: 0.35)) { sweepPhase = 1 }
+                // Lock dot searches (fast flicker) until the read settles.
+                blink = false
+                withAnimation(.easeInOut(duration: 0.16).repeatForever(autoreverses: true)) { blink = true }
+            } else {
+                // Settle: a finite anim replaces the repeatForever, stopping the loop.
+                withAnimation(.easeOut(duration: 0.12)) { blink = false }
+            }
+        }
+        .onChange(of: overload > 0.6) { _, straining in
+            guard !reduceMotion else { return }
+            if straining {
+                crackJitter = 0
+                withAnimation(.easeInOut(duration: 0.08).repeatForever(autoreverses: true)) { crackJitter = 1 }
+            } else {
+                withAnimation(.easeOut(duration: 0.2)) { crackJitter = 0 }
+            }
+        }
+        .onChange(of: atCeiling) { _, isPeak in
+            guard !reduceMotion, isPeak else { return }   // PR crossing: flash then reform
+            crackFlash = 0.7
+            withAnimation(.easeOut(duration: 0.5)) { crackFlash = 0 }
+        }
     }
 
-    private func startScan() {
-        guard !reduceMotion else { return }
-        withAnimation(.linear(duration: 3.0).repeatForever(autoreverses: false)) { scanDrift = 1 }
-        withAnimation(.easeInOut(duration: 2.4).repeatForever(autoreverses: true)) { sweepPhase = 1 }
-        withAnimation(.easeInOut(duration: 0.75).repeatForever(autoreverses: true)) { blink = true }
+    /// Rim + bloom overshoot on an upward tier change (arcs live in AuraRing).
+    /// Composes additively with the burst `flare`.
+    private func spoolUp() {
+        guard !reduceMotion else {
+            // Reduce Motion: an instant brightness STEP (no withAnimation — spoolGlow
+            // also feeds the bloom scale + rim geometry, which must not TWEEN under RM).
+            spoolGlow = 1
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(500))
+                spoolGlow = 0
+            }
+            return
+        }
+        spoolGlow = 1
+        withAnimation(.spring(response: 0.5, dampingFraction: 0.5)) { spoolGlow = 0 }
     }
 
-    /// Faint horizontal scan lines drifting slowly upward (seamless wrap).
+    /// LOCK dot: SOLID at rest (locked) and at PEAK; a fast flicker only while a fresh
+    /// read is being acquired. Reduce Motion holds it solid.
+    private var lockDotOpacity: Double {
+        if atCeiling || reduceMotion { return 1 }
+        if acquiring { return blink ? 1 : 0.25 }
+        return 1
+    }
+
+    /// SCAN (searching) while acquiring, LOCK once settled, PEAK at the ceiling.
+    private var lockCaption: String {
+        if atCeiling { return "PEAK" }
+        return acquiring ? "SCAN" : "LOCK"
+    }
+
+    /// Faint horizontal scan lines — a STATIC phosphor grid (no drift at rest).
     private var scanLines: some View {
         GeometryReader { geo in
             let h = geo.size.height
@@ -486,12 +678,13 @@ struct ScouterLens: View {
                 Rectangle()
                     .fill(tier.color.opacity(0.10))
                     .frame(height: 1)
-                    .offset(y: CGFloat(i) * spacing - spacing + scanDrift * spacing)
+                    .offset(y: CGFloat(i) * spacing - spacing)
             }
         }
     }
 
-    /// A bright bar sweeping down the lens — the scanner reading the target.
+    /// A bright bar sweeping down the lens — the scanner reading the target. A ONE-SHOT
+    /// tied to acquisition (visible only while `acquiring`); at rest it's hidden.
     private var sweepBar: some View {
         GeometryReader { geo in
             Rectangle()
@@ -499,8 +692,53 @@ struct ScouterLens: View {
                                      startPoint: .leading, endPoint: .trailing))
                 .frame(height: 2)
                 .shadow(color: tier.color.opacity(0.8), radius: 6)
-                .offset(y: (reduceMotion ? 0.5 : sweepPhase) * (geo.size.height - 2))
+                .offset(y: sweepPhase * (geo.size.height - 2))
+                .opacity(acquiring ? 1 : 0)
         }
+    }
+
+    /// A few seeded hairline fractures across the glass — deterministic polylines from
+    /// `crackSeed`, so a given set always cracks identically (pure, no Date/random).
+    private func crackPath(in size: CGSize) -> Path {
+        var rng = SeededGen(seed: crackSeed | 1)
+        var path = Path()
+        for _ in 0 ..< 5 {                       // 5 strands
+            var pt = CGPoint(x: rng.unit() * size.width, y: rng.unit() * size.height)
+            path.move(to: pt)
+            var dir = rng.unit() * 2 * .pi
+            let kinks = 3 + Int(rng.unit() * 3)  // 3…5
+            for _ in 0 ..< kinks {
+                let len = (0.10 + rng.unit() * 0.16) * size.width
+                dir += (rng.unit() - 0.5) * 1.1
+                pt = CGPoint(x: pt.x + cos(dir) * len, y: pt.y + sin(dir) * len)
+                path.addLine(to: pt)
+                if rng.unit() > 0.6 {            // short branch fork
+                    let bl = (0.05 + rng.unit() * 0.08) * size.width
+                    let bd = dir + (rng.unit() - 0.5) * 1.6
+                    path.addLine(to: CGPoint(x: pt.x + cos(bd) * bl, y: pt.y + sin(bd) * bl))
+                    path.move(to: pt)
+                }
+            }
+        }
+        return path
+    }
+
+    /// Stress-fracture overlay: a dark hairline channel + a hot aura-hued edge, faded in
+    /// by `overload`, brightened by `crackFlash` on a PR, buzzed ~1px by `crackJitter`.
+    /// Reduce Motion → static at `overload` opacity, no offset.
+    private func crackLayer(in size: CGSize) -> some View {
+        let base = crackPath(in: size)
+        return ZStack {
+            base.stroke(TimeChamber.void.opacity(0.9),
+                        style: StrokeStyle(lineWidth: 1.4, lineCap: .round, lineJoin: .round))
+            base.stroke(tier.secondary.opacity(0.85),
+                        style: StrokeStyle(lineWidth: 0.6, lineCap: .round, lineJoin: .round))
+                .shadow(color: tier.color.opacity(0.7), radius: 2 + crackFlash * 4)
+        }
+        .opacity(min(1, overload + crackFlash))
+        .offset(x: reduceMotion ? 0 : crackJitter, y: reduceMotion ? 0 : crackJitter * 0.6)
+        .animation(.easeOut(duration: 0.3), value: overload)
+        .allowsHitTesting(false)
     }
 
     /// Live power gauge along the bottom inner edge — the scouter scale. Ticks light
@@ -512,10 +750,13 @@ struct ScouterLens: View {
             ForEach(0 ..< 18, id: \.self) { i in
                 let lit = Double(i) / 17 <= charge
                 let isCeiling = i == ceilingIndex
+                let isMilestone = i == milestoneTick && milestoneGlow > 0
                 Rectangle()
-                    .fill(isCeiling ? tier.secondary : tier.color.opacity(lit ? 0.9 : 0.16))
+                    .fill(isCeiling ? tier.secondary
+                          : (isMilestone ? tier.secondary : tier.color.opacity(lit ? 0.9 : 0.16)))
                     .frame(width: isCeiling ? 2 : 1.5,
-                           height: isCeiling ? 11 : (lit ? 8 : 4))
+                           height: (isCeiling ? 11 : (lit ? 8 : 4)) + (isMilestone ? CGFloat(5 * milestoneGlow) : 0))
+                    .brightness(isMilestone ? milestoneGlow * 0.3 : 0)
             }
         }
         .frame(width: size.width * 0.62)
@@ -540,8 +781,8 @@ struct ScouterLens: View {
                     .fill(tier.color)
                     .frame(width: 5, height: 5)
                     .shadow(color: tier.color, radius: 3)
-                    .opacity(atCeiling ? 1 : (reduceMotion ? 1 : (blink ? 1 : 0.25)))
-                Text(atCeiling ? "PEAK" : "LOCK")
+                    .opacity(lockDotOpacity)
+                Text(lockCaption)
                     .font(.system(size: 7, weight: .bold, design: .monospaced))
                     .kerning(1)
                     .foregroundStyle(tier.color.opacity(0.85))
@@ -570,6 +811,95 @@ struct ScouterLens: View {
                     .position(x: -8, y: midY)
             }
         }
+    }
+}
+
+// MARK: - Ki convergence (inward speck rush that hands off to the burst)
+
+/// A one-shot inward particle layer: on `burstToken` a seeded ring of specks rushes
+/// INTO the lens centre over ~260 ms, then cuts out exactly as the outward `flare`
+/// detonates (snaps to +1 at ~140 ms in ScouterLens/AuraRing) — restoring a true
+/// "gather → detonate" on LOG. Pure Core-Animation: ONE shared `converge` value,
+/// per-speck deterministic tracks read through pow() — no TimelineView, no Date, no
+/// random. Reduce Motion renders NOTHING.
+struct KiConvergence: View {
+    var tier: AuraTier
+    var burstToken: Int = 0
+    /// Stable seed so the speck ring is identical across recomputes (slot-derived).
+    var seed: UInt64 = 0
+
+    @State private var converge: CGFloat = 0   // 0 = out on the ring, 1 = arrived
+    @State private var visible = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// Density scales with the tier — a PR pulls in more ki than a hold (10…20).
+    private var count: Int { 10 + Int(10 * tier.intensity) }
+
+    var body: some View {
+        if reduceMotion {
+            Color.clear   // renders nothing; no ForEach / no per-frame work
+        } else {
+            GeometryReader { geo in
+                let c = CGPoint(x: geo.size.width / 2, y: geo.size.height / 2)
+                // Ring radius: just outside the numeral block, inside the rim.
+                let ringR = min(geo.size.width, geo.size.height) * 0.46
+                ZStack {
+                    ForEach(0 ..< count, id: \.self) { i in
+                        let s = Self.speck(i, seed: seed)
+                        // pow() staggers arrival off the single shared `converge`.
+                        let f = CGFloat(pow(Double(converge), Double(s.speed)))
+                        let pos = CGPoint(x: c.x + s.dir.dx * ringR * (1 - f),
+                                          y: c.y + s.dir.dy * ringR * (1 - f))
+                        Circle()
+                            .fill(s.warm ? tier.secondary : tier.color)
+                            .frame(width: s.size, height: s.size)
+                            .shadow(color: tier.color.opacity(0.8), radius: 2)
+                            .scaleEffect(0.6 + 0.4 * f)          // tightens as it nears centre
+                            .opacity(visible ? Double(1 - f) * s.bright : 0)
+                            .position(pos)
+                            .blur(radius: 0.4)
+                    }
+                }
+                .blendMode(.plusLighter)
+            }
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+            .onChange(of: burstToken) { _, _ in fire() }
+        }
+    }
+
+    private func fire() {
+        guard !reduceMotion else { return }
+        // Snap the ring to its outer start, fully lit, then rush inward.
+        converge = 0
+        visible = true
+        withAnimation(.easeIn(duration: 0.26)) { converge = 1 }
+        // Cut visibility as the outward detonation takes over (flare → +1 at ~140 ms),
+        // so the inward layer never fights the expansion.
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(150))
+            withAnimation(.easeOut(duration: 0.12)) { visible = false }
+        }
+    }
+
+    private struct Speck {
+        let dir: CGVector   // unit-ish direction centre → ring point (elliptical jitter)
+        let size: CGFloat
+        let speed: CGFloat  // pow exponent — >1 arrives later, <1 earlier
+        let bright: Double
+        let warm: Bool
+    }
+
+    private static func speck(_ i: Int, seed: UInt64) -> Speck {
+        var rng = SeededGen(seed: seed &+ UInt64(i) &* 0x9E37_79B9_7F4A_7C15)
+        let angle = rng.unit() * 2 * .pi
+        let radiusJitter = 0.85 + rng.unit() * 0.30    // 0.85…1.15 (elliptical ring)
+        let dir = CGVector(dx: cos(angle) * radiusJitter, dy: sin(angle) * radiusJitter)
+        let size = 2.0 + rng.unit() * 3.0              // 2…5 pt
+        let speed = 0.8 + rng.unit() * 0.6             // 0.8…1.4 arrival stagger
+        let bright = 0.6 + rng.unit() * 0.4
+        let warm = rng.unit() > 0.6                    // a few take the hotter secondary hue
+        return Speck(dir: dir, size: size, speed: CGFloat(speed), bright: bright, warm: warm)
     }
 }
 

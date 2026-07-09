@@ -53,13 +53,21 @@ struct SetPlayerView: View {
     /// ("it's over…"), `pwrSurge` punches on any big jump (add a plate → it leaps).
     @State private var pwrKick: CGFloat = 1
     @State private var pwrSurge: CGFloat = 1
+    /// The last round-hundred PWR milestone acknowledged (raw PWR, e.g. 200), so a
+    /// milestone acks once on the upward crossing and never re-fires as you jitter
+    /// around it. −1 until load() seeds it.
+    @State private var lastMilestone: Int = -1
+    /// One-shot milestone ack driver: fades 1→0, driving the PWR pale-brighten + kick
+    /// AND (into ScouterLens) the gauge-tick brightening. 0 = idle.
+    @State private var milestoneGlow: CGFloat = 0
+    /// The gauge tick (0…17) to brighten for the current milestone; −1 = none.
+    @State private var milestoneTick: Int = -1
 
-    // Scanner acquisition (item 3b): a ~350 ms scanline sweep + digit scramble on
-    // every new slot. `acquiring` gates the scramble; `scanProgress` drives the
-    // sweep (0 → 1). Reduce Motion direct-sets both to the settled state.
+    // Scanner acquisition: on every new slot, a deterministic digit scramble + the
+    // lens's one-shot acquisition sweep. `acquiring` gates the scramble and drives the
+    // lens sweep (ScouterLens owns the sweep visuals now). Reduce Motion: stays false.
     @State private var acquiring = false
     @State private var acquireFrame = 0
-    @State private var scanProgress: CGFloat = 1
     @State private var acquireTask: Task<Void, Never>?
 
     /// The app's largest numeral — the one fixed-size exception granted to the player.
@@ -129,17 +137,20 @@ struct SetPlayerView: View {
         return base &* 0x9E37_79B9_7F4A_7C15 &+ UInt64(bitPattern: Int64(slotIndex + 1))
     }
 
+    /// Stable-per-slot seed for the inward ki-convergence ring, folded with `burstToken`
+    /// so each burst's speck ring is distinct yet fully deterministic (no Date/random).
+    private var convergeSeed: UInt64 {
+        acquireSeed &* 0x9E37_79B9_7F4A_7C15 &+ UInt64(burstToken + 1)
+    }
+
     private func startAcquisition() {
         acquireTask?.cancel()
         guard !reduceMotion else {
             acquiring = false
-            scanProgress = 1
             return
         }
         acquiring = true
         acquireFrame = 0
-        scanProgress = 0
-        withAnimation(.linear(duration: 0.35)) { scanProgress = 1 }
         acquireTask = Task { @MainActor in
             for step in 1 ... 7 {
                 try? await Task.sleep(for: .milliseconds(50))
@@ -197,6 +208,9 @@ struct SetPlayerView: View {
         // If we open onto a set already above the ceiling, reflect that in the
         // initial state (the crossing kick/haptic only fire on a live edge later).
         overCeiling = ceilingPwr > 0 && powerReading >= ceilingPwr
+        // Seed the milestone gate to the hundred we OPEN on, so climbing acks only NEW
+        // hundreds (opening onto a 250-lb slot never re-acks 100/200).
+        lastMilestone = max(0, (powerReading / 100) * 100)
         // Auto-populate from the previous session: the note carries over, and the
         // setting defaults to last session's setting, then the exercise default.
         pendingNote = ref.note
@@ -256,10 +270,17 @@ struct SetPlayerView: View {
     private var scouterCore: some View {
         ZStack {
             ScouterLens(tier: isCommitted ? .base : liveTier, burstToken: burstToken,
-                        charge: liveCharge, ceilingFrac: ceilingFrac, atCeiling: overCeiling)
+                        charge: liveCharge, ceilingFrac: ceilingFrac, atCeiling: overCeiling,
+                        acquiring: acquiring,
+                        overload: isCommitted ? 0 : liveOverload, crackSeed: acquireSeed,
+                        milestoneTick: milestoneTick, milestoneGlow: Double(milestoneGlow))
                 .frame(width: 344, height: 236)
                 .animation(.easeInOut(duration: 0.35), value: liveTier)
                 .animation(.easeOut(duration: 0.3), value: liveCharge)
+                .animation(.easeOut(duration: 0.3), value: liveOverload)
+            KiConvergence(tier: isCommitted ? .base : liveTier,
+                          burstToken: burstToken, seed: convergeSeed)
+                .frame(width: 344, height: 236)
             VStack(spacing: 0) {
                 fieldRow(text: WeightFormat.compact(grams: displayedWeightGrams,
                                                     unit: services.settings.unit),
@@ -272,7 +293,6 @@ struct SetPlayerView: View {
                          field: .reps, salt: 0x77, accessibility: "Reps")
             }
             .frame(width: 300, height: 150)
-            .overlay { acquisitionScanline }
         }
         .frame(minHeight: 248)
         .onChange(of: powerReading) { old, new in handlePowerChange(old: old, new: new) }
@@ -288,6 +308,9 @@ struct SetPlayerView: View {
         if over != overCeiling {
             withAnimation(.easeInOut(duration: 0.25)) { overCeiling = over }
             if over {
+                // The ceiling owns this moment — kill any in-flight milestone ack.
+                milestoneGlow = 0
+                milestoneTick = -1
                 Haptics.rigid()
                 if !reduceMotion {
                     pwrKick = 1.15
@@ -300,6 +323,54 @@ struct SetPlayerView: View {
             pwrSurge = 1.12
             withAnimation(.spring(response: 0.35, dampingFraction: 0.5)) { pwrSurge = 1 }
         }
+        // ── Round-hundred milestones (always subordinate to the ceiling) ──────────
+        // Below your best, ack each round PWR hundred you climb past — quieter than the
+        // ceiling beat, suppressed while at/over the ceiling. Upward crossing only,
+        // deterministic (integer hundred buckets), fires once per bucket.
+        if !over, lastMilestone >= 0 {
+            let bucket = new / 100
+            let crossed = bucket * 100
+            if bucket > lastMilestone / 100, crossed > 0,
+               ceilingPwr == 0 || crossed < ceilingPwr {
+                lastMilestone = crossed
+                milestoneAck(for: crossed)
+            } else if bucket < lastMilestone / 100 {
+                lastMilestone = crossed   // dialed down — re-arm, no re-fire in-bucket
+            }
+        }
+    }
+
+    /// The quiet "passed a hundred" ack — subordinate to the ceiling beat: a soft
+    /// selection tap, a brief pale brighten + tiny kick of the PWR number, and a
+    /// momentary brightening of the gauge tick. Reduce Motion keeps the haptic + a
+    /// static tick highlight and drops the fade/kick.
+    private func milestoneAck(for value: Int) {
+        Haptics.selection()
+        milestoneTick = milestoneTickIndex(for: value)
+        guard !reduceMotion else {
+            milestoneGlow = 0.6
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(500))
+                milestoneGlow = 0
+                milestoneTick = -1
+            }
+            return
+        }
+        milestoneGlow = 1
+        withAnimation(.easeOut(duration: 0.45)) { milestoneGlow = 0 }
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(460))
+            milestoneTick = -1
+        }
+    }
+
+    /// The gauge tick (0…17) a milestone value lands on — the SAME mapping the strip
+    /// uses (charge = reading/ceiling × 0.82). −1 when there is no ceiling (the gauge
+    /// is a static mid-fill then, so the PWR brighten carries the ack alone).
+    private func milestoneTickIndex(for value: Int) -> Int {
+        guard ceilingPwr > 0 else { return -1 }
+        let frac = min(1.0, Double(value) / Double(ceilingPwr) * 0.82)
+        return min(17, max(0, Int((frac * 17).rounded())))
     }
 
     /// One half of the scouter: the big number (tap to type) flanked by − / + circle
@@ -313,22 +384,6 @@ struct SetPlayerView: View {
                 unitCaption(unit)
             }
             if !isCommitted { stepCircle("plus") { step(field, 1) } }
-        }
-    }
-
-    @ViewBuilder
-    private var acquisitionScanline: some View {
-        if acquiring {
-            GeometryReader { proxy in
-                Rectangle()
-                    .fill(liveTier.secondary)
-                    .frame(height: 1.5)
-                    .offset(y: scanProgress * proxy.size.height)
-                    .opacity(0.85)
-                    .shadow(color: liveTier.color, radius: 4)
-            }
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
         }
     }
 
@@ -347,7 +402,8 @@ struct SetPlayerView: View {
                     .monospacedDigit()
                     .foregroundStyle(liveTier.color)
                     .contentTransition(.numericText(value: Double(powerReading)))
-                    .scaleEffect(pwrKick * pwrSurge)
+                    .scaleEffect(pwrKick * pwrSurge * (1 + milestoneGlow * 0.05))
+                    .brightness(Double(milestoneGlow) * 0.35)
             }
             // The ceiling you're chasing — a dim ghost that flips to OVER (in the
             // live hue) the instant you dial past it.
@@ -390,6 +446,24 @@ struct SetPlayerView: View {
 
     /// Where the ceiling notch sits on the gauge (−1 = no ceiling → no notch).
     private var ceilingFrac: Double { ceilingPwr > 0 ? 0.82 : -1 }
+
+    /// Last session's output at this slot as a power level (0 = none) — the base of the
+    /// phase "held" band; the glass only strains above this, toward the ceiling.
+    private var holdFloorPwr: Int {
+        guard let ref = reference, ref.hasReference,
+              let w = ref.weightGrams, let r = ref.reps else { return 0 }
+        return Int(Units.pounds(fromGrams: ProgressEngine.e1RMGrams(weightGrams: w, reps: r)).rounded())
+    }
+
+    /// 0…1 — glass strain: how far the live reading sits above the held band toward the
+    /// all-time ceiling. 0 at/below the band, 1 at (or past) the ceiling. Pure state —
+    /// recompute-safe, no Date / no random. Drives the lens stress-fractures.
+    private var liveOverload: Double {
+        guard ceilingPwr > 0 else { return 0 }
+        let floor = holdFloorPwr > 0 ? holdFloorPwr : Int((Double(ceilingPwr) * 0.82).rounded())
+        guard ceilingPwr > floor else { return powerReading >= ceilingPwr ? 1 : 0 }
+        return min(1, max(0, Double(powerReading - floor) / Double(ceilingPwr - floor)))
+    }
 
     private func unitCaption(_ text: String) -> some View {
         Text(text)
