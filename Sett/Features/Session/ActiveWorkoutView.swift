@@ -525,21 +525,28 @@ struct ActiveWorkoutView: View {
         let working = ordered.filter { !$0.isWarmup }
         let refs = session.previousSets(exerciseID: finished.exerciseID,
                                         excluding: session.activeWorkout?.id)
-        let refTopE1RM = refs.map { ProgressEngine.e1RMGrams(weightGrams: $0.weightGrams, reps: $0.reps) }.max() ?? 0
+        // Effective load per set (bodyweight adds the lifter's bodyweight) — each set
+        // uses its OWN workout's equipment + bodyweight.
+        let curBW = session.activeWorkout?.bodyweightGrams
+        func eff(_ s: SetEntry) -> Int {
+            LoadMath.effectiveWeightGrams(addedGrams: s.weightGrams,
+                equipment: s.workoutExercise?.equipment ?? finished.equipment,
+                bodyweightGrams: s.workoutExercise?.workout?.bodyweightGrams ?? curBW)
+        }
+        let refTopE1RM = refs.map { ProgressEngine.e1RMGrams(weightGrams: eff($0), reps: $0.reps) }.max() ?? 0
         var rows: [ExerciseSummaryData.SetRow] = []
         var topPower = 0
         var bestDelta: Int?
         var hasReference = false
         for (index, set) in working.enumerated() {
-            let e1RM = ProgressEngine.e1RMGrams(weightGrams: set.weightGrams, reps: set.reps)
+            let e1RM = ProgressEngine.e1RMGrams(weightGrams: eff(set), reps: set.reps)
             let power = Int(Units.pounds(fromGrams: e1RM).rounded())
             topPower = max(topPower, power)
             var delta: Int?
             var inBand = true
             if index < refs.count {
                 hasReference = true
-                let refE1RM = ProgressEngine.e1RMGrams(weightGrams: refs[index].weightGrams,
-                                                       reps: refs[index].reps)
+                let refE1RM = ProgressEngine.e1RMGrams(weightGrams: eff(refs[index]), reps: refs[index].reps)
                 delta = Int(Units.pounds(fromGrams: e1RM - refE1RM).rounded())
                 if bestDelta == nil || delta! > bestDelta! { bestDelta = delta }
                 // In-band = not a genuine drop for this phase (so a cut dip isn't red).

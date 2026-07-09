@@ -252,7 +252,13 @@ public final class WorkoutSessionStore {
     /// `isBaseline` when there is no reference at that slot. Compute BEFORE logging.
     func readback(for workoutExercise: WorkoutExercise, slot: Int,
                   weightGrams: Int, reps: Int) -> SetReadback {
-        let e1RM = ProgressEngine.e1RMGrams(weightGrams: weightGrams, reps: reps)
+        // e1RM scores EFFECTIVE load (bodyweight exercises add the lifter's bodyweight);
+        // the weight/reps delta chips stay in ADDED terms (they narrate the plate change).
+        let bw = workoutExercise.workout?.bodyweightGrams
+        let equipment = workoutExercise.equipment
+        let e1RM = ProgressEngine.e1RMGrams(
+            weightGrams: LoadMath.effectiveWeightGrams(addedGrams: weightGrams, equipment: equipment, bodyweightGrams: bw),
+            reps: reps)
         let priorBest = bestPriorE1RMGrams(exerciseID: workoutExercise.exerciseID,
                                            excluding: workoutExercise.workout?.id)
         let isPR = e1RM > priorBest
@@ -264,8 +270,11 @@ public final class WorkoutSessionStore {
                                e1RMDeltaGrams: nil, isPersonalBest: isPR)
         }
         let reference = references[slot]
-        let refE1RM = ProgressEngine.e1RMGrams(weightGrams: reference.weightGrams,
-                                               reps: reference.reps)
+        let refEquip = reference.workoutExercise?.equipment ?? equipment
+        let refBW = reference.workoutExercise?.workout?.bodyweightGrams ?? bw
+        let refE1RM = ProgressEngine.e1RMGrams(
+            weightGrams: LoadMath.effectiveWeightGrams(addedGrams: reference.weightGrams, equipment: refEquip, bodyweightGrams: refBW),
+            reps: reference.reps)
         return SetReadback(weightDeltaGrams: weightGrams - reference.weightGrams,
                            repsDelta: reps - reference.reps,
                            isBaseline: false,
@@ -285,8 +294,10 @@ public final class WorkoutSessionStore {
             && !workout.isCasual && workout.id != workoutID {
             for we in workout.orderedExercises where we.exerciseID == exerciseID {
                 for set in we.orderedSets where !set.isWarmup {
-                    best = max(best, ProgressEngine.e1RMGrams(weightGrams: set.weightGrams,
-                                                              reps: set.reps))
+                    let eff = LoadMath.effectiveWeightGrams(
+                        addedGrams: set.weightGrams, equipment: we.equipment,
+                        bodyweightGrams: workout.bodyweightGrams)
+                    best = max(best, ProgressEngine.e1RMGrams(weightGrams: eff, reps: set.reps))
                 }
             }
         }
@@ -343,9 +354,13 @@ public final class WorkoutSessionStore {
             let working = we.orderedSets.filter { !$0.isWarmup }
             for (index, set) in working.enumerated() where index < refs.count {
                 scored += 1
-                let e1RM = ProgressEngine.e1RMGrams(weightGrams: set.weightGrams, reps: set.reps)
-                let refE1RM = ProgressEngine.e1RMGrams(weightGrams: refs[index].weightGrams,
-                                                       reps: refs[index].reps)
+                let e1RM = ProgressEngine.e1RMGrams(
+                    weightGrams: LoadMath.effectiveWeightGrams(addedGrams: set.weightGrams, equipment: we.equipment, bodyweightGrams: workout.bodyweightGrams),
+                    reps: set.reps)
+                let ref = refs[index]
+                let refE1RM = ProgressEngine.e1RMGrams(
+                    weightGrams: LoadMath.effectiveWeightGrams(addedGrams: ref.weightGrams, equipment: ref.workoutExercise?.equipment ?? we.equipment, bodyweightGrams: ref.workoutExercise?.workout?.bodyweightGrams ?? workout.bodyweightGrams),
+                    reps: ref.reps)
                 if e1RM < refE1RM { down += 1 }
             }
         }

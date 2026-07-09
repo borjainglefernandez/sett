@@ -130,6 +130,11 @@ public final class WorkoutExercise {
     public var exerciseID: UUID
     public var exerciseNameSnapshot: String
     public var muscleRaw: String
+    /// Denormalized equipment (like `muscleRaw`) so analytics can compute EFFECTIVE
+    /// load — a bodyweight exercise adds the lifter's bodyweight — without a catalog
+    /// fetch. Default "" (→ .machine) keeps the added attribute migration-safe; only
+    /// rows created after this ship carry the real equipment.
+    public var equipmentRaw: String = ""
     public var notes: String?
     public var restSeconds: Int?
     public var createdAt: Date
@@ -143,6 +148,7 @@ public final class WorkoutExercise {
     public var sets: [SetEntry]
 
     public var muscle: Muscle { Muscle(rawValue: muscleRaw) ?? .other }
+    public var equipment: Equipment { Equipment(rawValue: equipmentRaw) ?? .machine }
 
     public var orderedSets: [SetEntry] {
         sets.filter { $0.deletedAt == nil }.sorted { $0.orderIndex < $1.orderIndex }
@@ -154,6 +160,7 @@ public final class WorkoutExercise {
         self.exerciseID = exercise.id
         self.exerciseNameSnapshot = exercise.name
         self.muscleRaw = exercise.muscleRaw
+        self.equipmentRaw = exercise.equipmentRaw
         self.notes = nil
         self.restSeconds = nil
         self.createdAt = now

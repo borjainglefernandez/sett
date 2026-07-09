@@ -113,13 +113,22 @@ struct SetPlayerView: View {
     /// The training lens this session scores through (cut/bulk/maintain).
     private var activePhase: TrainingPhase { session.activeWorkout?.phase ?? .maintaining }
 
+    /// Effective load for the CURRENT exercise (bodyweight adds the lifter's
+    /// bodyweight, so pull-ups aren't 0). Uses the current workout's bodyweight for
+    /// both the live and reference readings — a fine approximation for the aura
+    /// preview; the recorded readback uses each set's own bodyweight.
+    private func effectiveGrams(_ added: Int) -> Int {
+        LoadMath.effectiveWeightGrams(addedGrams: added, equipment: workoutExercise.equipment,
+                                      bodyweightGrams: session.activeWorkout?.bodyweightGrams)
+    }
+
     private var liveTier: AuraTier {
         if isWarmup { return .calm }
         guard let ref = reference else { return .base }
-        let e1RM = ProgressEngine.e1RMGrams(weightGrams: displayedWeightGrams, reps: displayedReps)
+        let e1RM = ProgressEngine.e1RMGrams(weightGrams: effectiveGrams(displayedWeightGrams), reps: displayedReps)
         let isPB = ref.priorBestE1RMGrams > 0 && e1RM > ref.priorBestE1RMGrams
         let refE1RM: Int? = (ref.hasReference && ref.weightGrams != nil && ref.reps != nil)
-            ? ProgressEngine.e1RMGrams(weightGrams: ref.weightGrams!, reps: ref.reps!) : nil
+            ? ProgressEngine.e1RMGrams(weightGrams: effectiveGrams(ref.weightGrams!), reps: ref.reps!) : nil
         // Reuse the real classifier so the LIVE aura matches the logged verdict.
         let preview = SetReadback(weightDeltaGrams: nil, repsDelta: nil,
                                   isBaseline: refE1RM == nil,
@@ -434,7 +443,7 @@ struct SetPlayerView: View {
     /// This set's e1RM ("output") — from canonical grams, so it's the SAME number
     /// for the same lift regardless of the display unit.
     private var powerReading: Int {
-        let grams = ProgressEngine.e1RMGrams(weightGrams: displayedWeightGrams, reps: displayedReps)
+        let grams = ProgressEngine.e1RMGrams(weightGrams: effectiveGrams(displayedWeightGrams), reps: displayedReps)
         return Int(Units.pounds(fromGrams: grams).rounded())
     }
 

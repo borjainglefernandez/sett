@@ -143,6 +143,23 @@ public struct GoalProgress: Sendable, Hashable {
 // MARK: - Sample extraction (main-actor bridge from SwiftData to Sendable inputs)
 
 @MainActor
+// MARK: - Effective load (bodyweight exercises add the lifter's bodyweight)
+
+public enum LoadMath {
+    /// Fallback bodyweight when a workout has no scale reading — a neutral adult mass
+    /// (~176 lb) so a pull-up is never scored as 0 output.
+    nonisolated public static let defaultBodyweightGrams = 80_000
+
+    /// The effective load an exercise moved: bodyweight equipment adds the lifter's
+    /// bodyweight to the added weight (so pull-ups/dips/weighted dips score real
+    /// output); everything else is the added weight unchanged.
+    nonisolated public static func effectiveWeightGrams(addedGrams: Int, equipment: Equipment,
+                                                        bodyweightGrams: Int?) -> Int {
+        guard equipment == .bodyweight else { return addedGrams }
+        return addedGrams + (bodyweightGrams ?? defaultBodyweightGrams)
+    }
+}
+
 public enum SampleExtractor {
     /// All non-deleted sets from finished, non-deleted workouts.
     public static func setSamples(context: ModelContext) -> [SetSample] {
@@ -151,10 +168,15 @@ public enum SampleExtractor {
         for workout in workouts where workout.deletedAt == nil && workout.endedAt != nil {
             for we in workout.exercises where we.deletedAt == nil {
                 for set in we.sets where set.deletedAt == nil {
+                    // Effective load: a bodyweight exercise adds the lifter's bodyweight,
+                    // so pull-ups/dips score real output instead of 0.
+                    let effective = LoadMath.effectiveWeightGrams(
+                        addedGrams: set.weightGrams, equipment: we.equipment,
+                        bodyweightGrams: workout.bodyweightGrams)
                     samples.append(SetSample(
                         exerciseID: we.exerciseID,
                         muscle: we.muscle,
-                        weightGrams: set.weightGrams,
+                        weightGrams: effective,
                         reps: set.reps,
                         isWarmup: set.isWarmup,
                         completedAt: set.completedAt,
