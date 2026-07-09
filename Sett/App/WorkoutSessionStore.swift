@@ -57,6 +57,7 @@ public final class WorkoutSessionStore {
         let workout = Workout(title: routine.name)
         workout.routineID = routine.id
         workout.routineNameSnapshot = routine.name
+        workout.domainRaw = routine.domainRaw   // the routine's realm (nil ⇒ app default)
         context.insert(workout)
 
         for (index, routineExercise) in routine.orderedExercises.enumerated() {
@@ -402,7 +403,8 @@ public final class WorkoutSessionStore {
             xpEarned: xpEarned,
             commentary: commentary,
             commentarySource: source,
-            isCasual: isCasual
+            isCasual: isCasual,
+            domainRaw: workout.domainRaw
         )
         activeWorkout = nil
         isPresentingWorkout = false

@@ -63,7 +63,7 @@ struct ActiveWorkoutView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(TimeChamberBackground(tier: ambientTier, assetName: ChamberBackground.resolve(services.settings.chamberBackground).assetName).animation(.easeInOut(duration: 0.6), value: ambientTier).allowsHitTesting(false))
+        .background(TimeChamberBackground(tier: ambientTier, assetName: sessionDomainAsset).animation(.easeInOut(duration: 0.6), value: ambientTier).allowsHitTesting(false))
         .overlay(TransformationBurst(tier: ambientTier, token: transformationToken).allowsHitTesting(false))
         .combatTextEmitter(combatText)
         .environment(combatText)
@@ -100,6 +100,14 @@ struct ActiveWorkoutView: View {
 
     private var isRestOverlayVisible: Bool {
         session.restEndsAt != nil && !isHoldingRestOverlay
+    }
+
+    /// The realm this session runs in: the workout's snapshotted domain, else the
+    /// app's default realm from Settings.
+    private var sessionDomainAsset: String {
+        ChamberBackground.resolve(
+            session.activeWorkout?.domainRaw ?? services.settings.chamberBackground
+        ).assetName
     }
 
     private func player(_ workout: Workout) -> some View {

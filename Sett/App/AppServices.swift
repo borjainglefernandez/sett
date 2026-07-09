@@ -85,6 +85,8 @@ public struct WorkoutSummaryData: Identifiable, Sendable {
     /// "Off the record" — the summary swaps the Net Progress card for a quiet
     /// OFF THE RECORD system message; PL/XP/badge stages are unchanged.
     public let isCasual: Bool
+    /// The realm this workout ran in (ChamberBackground.rawValue); nil ⇒ default.
+    public let domainRaw: String?
 
     public init(id: UUID, title: String, durationSeconds: Int,
                 powerLevelBefore: Int, powerLevelAfter: Int,
@@ -92,7 +94,7 @@ public struct WorkoutSummaryData: Identifiable, Sendable {
                 netReps: Int, netVolumeGrams: Int, netIsNew: Bool,
                 newBadgeKeys: [String], xpEarned: [CharacterKey: Int],
                 commentary: String, commentarySource: InsightSource,
-                isCasual: Bool = false) {
+                isCasual: Bool = false, domainRaw: String? = nil) {
         self.id = id
         self.title = title
         self.durationSeconds = durationSeconds
@@ -108,5 +110,6 @@ public struct WorkoutSummaryData: Identifiable, Sendable {
         self.commentary = commentary
         self.commentarySource = commentarySource
         self.isCasual = isCasual
+        self.domainRaw = domainRaw
     }
 }

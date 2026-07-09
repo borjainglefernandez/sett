@@ -132,10 +132,11 @@ struct WorkoutSummaryView: View {
         return .base
     }
 
-    /// The realm the user picked in Settings — the summary rides the same backdrop.
+    /// The realm this workout ran in (routine's domain snapshot), else the app
+    /// default — the summary rides the same backdrop as the session.
     private var bgAsset: String {
         ChamberBackground.resolve(
-            UserDefaults.standard.string(forKey: "sett.chamberBackground") ?? "nebula"
+            summary.domainRaw ?? UserDefaults.standard.string(forKey: "sett.chamberBackground") ?? "nebula"
         ).assetName
     }
 

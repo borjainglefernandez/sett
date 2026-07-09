@@ -93,10 +93,12 @@ public enum DemoData {
         hotelGym.needsPush = false
         context.insert(hotelGym)
 
-        // 3. Routines with day-of-week masks and per-set plans.
+        // 3. Routines with day-of-week masks, a realm each, and per-set plans.
+        let demoDomains = ["nebula", "storm", "volcanic"]
         var routines: [Routine] = []
         for (routineIndex, spec) in routineSpecs.enumerated() {
             let routine = Routine(name: spec.name, daysOfWeekMask: spec.daysOfWeekMask, orderIndex: routineIndex)
+            routine.domainRaw = demoDomains[routineIndex % demoDomains.count]
             routine.needsPush = false
             context.insert(routine)
             for (liftIndex, lift) in spec.lifts.enumerated() {

@@ -71,6 +71,9 @@ public final class Workout {
     /// Loose reference — never a relationship, so deleting a routine can't touch history.
     public var routineID: UUID?
     public var routineNameSnapshot: String?
+    /// The Time Chamber realm this session runs in (ChamberBackground.rawValue),
+    /// snapshotted from the routine at start; nil ⇒ the app's default realm.
+    public var domainRaw: String? = nil
     /// Loose gym reference, same pattern.
     public var gymID: UUID?
     public var gymNameSnapshot: String?
@@ -213,6 +216,9 @@ public final class Routine {
     public var orderIndex: Int
     public var notes: String?
     public var isArchived: Bool
+    /// The Time Chamber realm for this routine (ChamberBackground.rawValue); nil ⇒
+    /// the app's default realm. Optional so lightweight migration backfills nil.
+    public var domainRaw: String? = nil
     public var createdAt: Date
     public var updatedAt: Date
     public var deletedAt: Date?

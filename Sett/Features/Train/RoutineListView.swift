@@ -6,6 +6,7 @@ import SettCore
 /// that starts the routine immediately. Tap a card to edit; swipe to soft-delete.
 struct RoutineListView: View {
     @Environment(WorkoutSessionStore.self) private var session
+    @Environment(AppServices.self) private var services
     @Environment(\.modelContext) private var modelContext
 
     @Query private var routines: [Routine]
@@ -51,8 +52,8 @@ struct RoutineListView: View {
         }
     }
 
-    // MARK: Row (an etched slab; hidden NavigationLink keeps the stock chevron
-    // off the card while swipe actions and push navigation keep working)
+    // MARK: Row — a sleek realm card (the routine's domain as the backdrop; a
+    // hidden NavigationLink drives edit-on-tap while the play button starts it)
 
     private func row(_ routine: Routine) -> some View {
         ZStack {
@@ -65,42 +66,67 @@ struct RoutineListView: View {
             .accessibilityLabel(routine.name)
             .accessibilityHint("Edits the routine")
 
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(routine.name)
-                        .font(.headline)
-                        .foregroundStyle(SettColor.bone)
-                    dayChips(mask: routine.daysOfWeekMask)
-                    Text(exerciseCountText(routine))
-                        .font(.caption)
-                        .foregroundStyle(SettColor.ash)
+            ZStack {
+                Image(domainAsset(routine))
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                // Legibility: darker on the left (text) easing to a lighter reveal
+                // of the realm on the right behind the play button.
+                LinearGradient(colors: [.black.opacity(0.82), .black.opacity(0.62), .black.opacity(0.3)],
+                               startPoint: .leading, endPoint: .trailing)
+
+                HStack(spacing: 14) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(routine.name)
+                            .font(.system(.title3, design: .rounded).weight(.bold))
+                            .foregroundStyle(.white)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                            .shadow(color: .black.opacity(0.6), radius: 3)
+                        dayChips(mask: routine.daysOfWeekMask)
+                        Text(exerciseCountText(routine))
+                            .font(.system(.caption, design: .rounded).weight(.medium))
+                            .foregroundStyle(.white.opacity(0.8))
+                    }
+                    Spacer(minLength: 8)
+                    playButton(routine)
                 }
-                Spacer()
-                playButton(routine)
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(SettColor.iron)
+                .padding(.horizontal, 18)
+                .padding(.vertical, 16)
             }
-            .settCard()
+            .frame(height: 118)
+            .frame(maxWidth: .infinity)
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(.white.opacity(0.12), lineWidth: 1)
+            }
+            .shadow(color: .black.opacity(0.35), radius: 8, y: 4)
         }
+    }
+
+    /// The realm image behind a routine: its own domain, else the app default.
+    private func domainAsset(_ routine: Routine) -> String {
+        ChamberBackground.resolve(routine.domainRaw ?? services.settings.chamberBackground).assetName
     }
 
     @ViewBuilder
     private func dayChips(mask: Int) -> some View {
         if mask == 0 {
             Text("No scheduled days")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
+                .font(.system(.caption2, design: .rounded).weight(.medium))
+                .foregroundStyle(.white.opacity(0.55))
         } else {
-            HStack(spacing: 4) {
+            HStack(spacing: 5) {
                 ForEach(TrainDays.sundayFirstOrder, id: \.self) { day in
                     if TrainDays.isSet(mask, day: day) {
                         Text(TrainDays.shortNames[day])
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(SettColor.heroCyan)
-                            .padding(.horizontal, 6)
+                            .font(.system(size: 11, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 7)
                             .padding(.vertical, 3)
-                            .background(SettColor.heroCyan.opacity(0.15), in: Capsule())
+                            .background(.white.opacity(0.18), in: Capsule())
+                            .overlay { Capsule().strokeBorder(.white.opacity(0.2), lineWidth: 0.5) }
                             .accessibilityLabel(TrainDays.names[day])
                     }
                 }
@@ -118,10 +144,11 @@ struct RoutineListView: View {
             session.start(routine: routine)
         } label: {
             Image(systemName: "play.fill")
-                .font(.headline)
-                .foregroundStyle(.white)
-                .frame(width: 44, height: 44)
-                .background(SettColor.heroCyan, in: Circle())
+                .font(.title3.weight(.bold))
+                .foregroundStyle(.black)
+                .frame(width: 52, height: 52)
+                .background(.white, in: Circle())
+                .shadow(color: .black.opacity(0.3), radius: 4)
         }
         .buttonStyle(.borderless)
         .accessibilityLabel("Start \(routine.name)")

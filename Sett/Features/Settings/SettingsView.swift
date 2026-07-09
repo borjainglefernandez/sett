@@ -39,19 +39,15 @@ struct SettingsView: View {
                 .listRowSeparatorTint(SettColor.cardBorder)
 
                 Section {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 12) {
-                            ForEach(ChamberBackground.allCases) { bg in
-                                backgroundThumb(bg, selected: settings.chamberBackground == bg.rawValue)
-                            }
-                        }
-                        .padding(.vertical, 6)
-                    }
+                    ChamberDomainStrip(selection: Binding(
+                        get: { settings.chamberBackground },
+                        set: { if let value = $0 { settings.chamberBackground = value } }
+                    ))
                     .listRowInsets(EdgeInsets(top: 4, leading: 14, bottom: 4, trailing: 14))
                 } header: {
-                    sectionHeader("TIME CHAMBER")
+                    sectionHeader("DEFAULT REALM")
                 } footer: {
-                    Text("Your training realm for the logging scanner.")
+                    Text("Your default training realm. Routines can override it.")
                         .font(.system(size: 11, design: .monospaced))
                         .foregroundStyle(SettColor.iron)
                 }
@@ -121,43 +117,6 @@ struct SettingsView: View {
                 Haptics.selection()
             }
         }
-    }
-
-    /// One selectable Time Chamber backdrop thumbnail.
-    private func backgroundThumb(_ bg: ChamberBackground, selected: Bool) -> some View {
-        Button {
-            services.settings.chamberBackground = bg.rawValue
-            Haptics.selection()
-        } label: {
-            VStack(spacing: 6) {
-                Image(bg.assetName)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .frame(width: 76, height: 120)
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .strokeBorder(selected ? SettColor.heroCyan : SettColor.cardBorder,
-                                          lineWidth: selected ? 2.5 : 1)
-                    }
-                    .overlay(alignment: .topTrailing) {
-                        if selected {
-                            Image(systemName: "checkmark.circle.fill")
-                                .font(.footnote)
-                                .foregroundStyle(SettColor.heroCyan)
-                                .padding(5)
-                                .background(Circle().fill(Color.black.opacity(0.4)).padding(3))
-                        }
-                    }
-                Text(bg.title)
-                    .font(.system(size: 10, weight: .medium, design: .monospaced))
-                    .foregroundStyle(selected ? SettColor.bone : SettColor.ash)
-                    .lineLimit(1)
-            }
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(bg.title)
-        .accessibilityAddTraits(selected ? [.isSelected] : [])
     }
 
     /// The mono small-caps ash convention (NET THIS WEEK, THIS WEEK, …).

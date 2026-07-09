@@ -48,6 +48,8 @@ struct RoutineEditorView: View {
     @State private var setupTarget: Exercise?
     /// The draft that owns `setupTarget`, so its display mirror can refresh on dismiss.
     @State private var setupDraftID: RoutineDraftExercise.ID?
+    /// This routine's Time Chamber realm (ChamberBackground.rawValue); nil ⇒ default.
+    @State private var domainRaw: String?
     @State private var hasLoadedDraft = false
     @State private var editMode: EditMode = .inactive
 
@@ -64,6 +66,14 @@ struct RoutineEditorView: View {
                 restControl
             } header: {
                 sectionLabel("SCHEDULE")
+            }
+            .listRowBackground(Color.clear)
+            .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+
+            Section {
+                ChamberDomainStrip(selection: $domainRaw, allowsDefault: true)
+            } header: {
+                sectionLabel("REALM")
             }
             .listRowBackground(Color.clear)
             .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
@@ -405,6 +415,7 @@ struct RoutineEditorView: View {
         }
         name = routine.name
         daysOfWeekMask = routine.daysOfWeekMask
+        domainRaw = routine.domainRaw
         drafts = routine.orderedExercises.map { re in
             let catalog = catalogExercise(forID: re.exerciseID)
             return RoutineDraftExercise(
@@ -467,12 +478,14 @@ struct RoutineEditorView: View {
         if let routine {
             routine.name = trimmedName
             routine.daysOfWeekMask = daysOfWeekMask
+            routine.domainRaw = domainRaw
             reconcileExercises(into: routine, now: now)
             routine.updatedAt = now
             routine.needsPush = true
         } else {
             let created = Routine(name: trimmedName, daysOfWeekMask: daysOfWeekMask,
                                   orderIndex: nextOrderIndex(), now: now)
+            created.domainRaw = domainRaw
             modelContext.insert(created)
             for (index, draft) in drafts.enumerated() {
                 guard let exercise = resolveExercise(for: draft) else { continue }
