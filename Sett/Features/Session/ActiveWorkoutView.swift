@@ -475,22 +475,47 @@ struct ActiveWorkoutView: View {
         }
     }
 
-    /// Recap of the exercise just finished + a context-tuned motivational line.
+    /// Per-set recap of the exercise just finished — power reading + last-week
+    /// comparison per set — with a context-tuned motivational line.
     private func buildExerciseSummary(finished: WorkoutExercise, target: QueuePosition,
                                       exercises: [WorkoutExercise]) -> ExerciseSummaryData {
         let ordered = finished.orderedSets
         let working = ordered.filter { !$0.isWarmup }
-        let topGrams = working
-            .map { ProgressEngine.e1RMGrams(weightGrams: $0.weightGrams, reps: $0.reps) }
-            .max() ?? 0
+        let refs = session.previousSets(exerciseID: finished.exerciseID,
+                                        excluding: session.activeWorkout?.id)
+        var rows: [ExerciseSummaryData.SetRow] = []
+        var topPower = 0
+        var bestDelta: Int?
+        var hasReference = false
+        for (index, set) in working.enumerated() {
+            let e1RM = ProgressEngine.e1RMGrams(weightGrams: set.weightGrams, reps: set.reps)
+            let power = Int(Units.pounds(fromGrams: e1RM).rounded())
+            topPower = max(topPower, power)
+            var delta: Int?
+            if index < refs.count {
+                hasReference = true
+                let refE1RM = ProgressEngine.e1RMGrams(weightGrams: refs[index].weightGrams,
+                                                       reps: refs[index].reps)
+                let d = Int(Units.pounds(fromGrams: e1RM - refE1RM).rounded())
+                delta = d
+                if bestDelta == nil || d > bestDelta! { bestDelta = d }
+            }
+            rows.append(.init(number: index + 1, weightGrams: set.weightGrams,
+                              reps: set.reps, power: power, delta: delta))
+        }
         let quote = MotivationQuotes.line(for: session.motivationContext(),
                                           seed: abs(finished.orderIndex &+ finished.exerciseID.hashValue))
         let isFinal = target.exerciseIndex >= exercises.count
         let nextLabel = isFinal ? "" : exercises[target.exerciseIndex].exerciseNameSnapshot
+        let symbol = session.fetchExercise(id: finished.exerciseID)?.equipment.symbolName ?? "dumbbell.fill"
         return ExerciseSummaryData(
             exerciseName: finished.exerciseNameSnapshot,
-            sets: ordered.map { .init(weightGrams: $0.weightGrams, reps: $0.reps, isWarmup: $0.isWarmup) },
-            topPower: Int(Units.pounds(fromGrams: topGrams).rounded()),
+            equipmentSymbol: symbol,
+            rows: rows,
+            warmupCount: ordered.count - working.count,
+            topPower: topPower,
+            bestDelta: bestDelta,
+            hasReference: hasReference,
             quote: quote,
             nextLabel: nextLabel,
             isFinal: isFinal

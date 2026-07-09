@@ -1,31 +1,37 @@
 import SwiftUI
 import SettCore
 
-// MARK: - Between-exercise transition (no rest — recap + motivation)
+// MARK: - Between-exercise transition (no rest — recap + insight + motivation)
 
-/// Everything the transition needs: the exercise just finished, its sets, the top
-/// power reading, the context-aware motivational line, and where you're headed.
+/// Everything the transition needs: the exercise just finished, a per-working-set
+/// breakdown with the power reading and how it compares to last week, the headline
+/// numbers, a context-aware motivational line, and where you're headed next.
 struct ExerciseSummaryData: Identifiable, Equatable {
     let id = UUID()
     let exerciseName: String
-    let sets: [SetLine]
-    let topPower: Int      // best working-set e1RM, in lb (unit-consistent)
+    let equipmentSymbol: String
+    let rows: [SetRow]          // working sets only (warmups counted separately)
+    let warmupCount: Int
+    let topPower: Int           // best working-set e1RM, lb (unit-consistent)
+    let bestDelta: Int?         // best set's Δ PWR vs last week (nil = no reference)
+    let hasReference: Bool
     let quote: String
-    let nextLabel: String  // next exercise name, or "" when this was the last
+    let nextLabel: String       // next exercise name, or "" when this was the last
     let isFinal: Bool
 
-    struct SetLine: Identifiable, Equatable {
+    struct SetRow: Identifiable, Equatable {
         let id = UUID()
+        let number: Int
         let weightGrams: Int
         let reps: Int
-        let isWarmup: Bool
+        let power: Int          // this set's e1RM, lb
+        let delta: Int?         // vs last week's set at the same slot (lb)
     }
 }
 
 /// Shown INSTEAD of a rest countdown when you finish an exercise and the next set
-/// belongs to a different one: a quick recap of the sets you just did, the top
-/// power reading, and a motivational line tuned to how the session is going —
-/// then a tap moves you straight on. No rest between exercises.
+/// belongs to a different one: a per-set recap with the power reading and last-week
+/// comparison, a headline, and a motivational line — then a tap moves you on.
 struct ExerciseTransitionView: View {
     let data: ExerciseSummaryData
     let unit: WeightUnit
@@ -37,10 +43,10 @@ struct ExerciseTransitionView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Spacer(minLength: 12)
+            Spacer(minLength: 8)
             card
-            Spacer(minLength: 12)
-            PlayerSlab(title: data.isFinal ? "END READING" : "NEXT · \(data.nextLabel)",
+            Spacer(minLength: 8)
+            PlayerSlab(title: data.isFinal ? "END READING" : "NEXT · \(data.nextLabel.uppercased())",
                        accent: tier.color) {
                 onContinue()
             }
@@ -61,46 +67,30 @@ struct ExerciseTransitionView: View {
 
     private var card: some View {
         VStack(spacing: 16) {
-            VStack(spacing: 6) {
-                Text("EXERCISE COMPLETE")
-                    .font(.system(size: 11, weight: .bold, design: .monospaced))
-                    .kerning(3)
-                    .foregroundStyle(tier.color)
-                Text(data.exerciseName.uppercased())
-                    .font(.system(.title3, design: .monospaced).weight(.bold))
+            header
+            headline
+            setTable
+            if data.warmupCount > 0 {
+                Text("+ \(data.warmupCount) WARM-UP")
+                    .font(.system(size: 10, weight: .medium, design: .monospaced))
                     .kerning(1)
-                    .foregroundStyle(SettColor.bone)
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.7)
+                    .foregroundStyle(SettColor.iron)
             }
-
-            setChips
-
-            HStack(spacing: 6) {
-                SettSigil(size: 13, color: tier.color)
-                Text("\(workingCount) \(workingCount == 1 ? "SET" : "SETS") · TOP PWR \(data.topPower)")
-                    .font(.system(size: 12, weight: .bold, design: .monospaced))
-                    .kerning(1)
-                    .foregroundStyle(tier.color)
-            }
-
-            Rectangle().fill(tier.color.opacity(0.25)).frame(height: 1).padding(.horizontal, 8)
-
+            Rectangle().fill(tier.color.opacity(0.25)).frame(height: 1).padding(.horizontal, 4)
             Text(data.quote)
                 .font(.system(.title3, design: .rounded).weight(.semibold))
                 .foregroundStyle(SettColor.bone)
                 .multilineTextAlignment(.center)
                 .lineLimit(4)
                 .minimumScaleFactor(0.7)
-                .padding(.horizontal, 4)
+                .fixedSize(horizontal: false, vertical: true)
                 .shadow(color: .black.opacity(0.6), radius: 4)
         }
-        .padding(24)
+        .padding(22)
         .frame(maxWidth: .infinity)
         .background {
             let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
-            shape.fill(TimeChamber.void.opacity(0.82))
+            shape.fill(TimeChamber.void.opacity(0.85))
             shape.strokeBorder(tier.color.opacity(0.5), lineWidth: 1.5)
                 .shadow(color: tier.color.opacity(0.4), radius: 9)
             CornerTicksShape(length: 7, inset: 7)
@@ -108,73 +98,96 @@ struct ExerciseTransitionView: View {
         }
     }
 
-    private var workingCount: Int { data.sets.filter { !$0.isWarmup }.count }
+    private var header: some View {
+        VStack(spacing: 8) {
+            Text("EXERCISE COMPLETE")
+                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                .kerning(3)
+                .foregroundStyle(tier.color)
+            HStack(spacing: 9) {
+                Image(systemName: data.equipmentSymbol)
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(tier.color)
+                Text(data.exerciseName.uppercased())
+                    .font(.system(.title3, design: .monospaced).weight(.bold))
+                    .kerning(1)
+                    .foregroundStyle(SettColor.bone)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.7)
+            }
+        }
+    }
 
-    private var setChips: some View {
-        FlowRow(spacing: 8) {
-            ForEach(data.sets) { set in
-                Text(chipText(set))
-                    .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                    .monospacedDigit()
-                    .foregroundStyle(set.isWarmup ? SettColor.iron : SettColor.bone)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background {
-                        Capsule().strokeBorder(
-                            set.isWarmup ? SettColor.cardBorder : tier.color.opacity(0.4),
-                            lineWidth: 1
-                        )
+    /// Top power reading + the best set's improvement over last week.
+    private var headline: some View {
+        HStack(spacing: 8) {
+            SettSigil(size: 13, color: tier.color)
+            Text("TOP PWR \(data.topPower)")
+                .font(.system(size: 14, weight: .heavy, design: .monospaced))
+                .monospacedDigit()
+                .foregroundStyle(tier.color)
+            if let best = data.bestDelta {
+                Text("· \(deltaLabel(best)) VS LAST WEEK")
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .foregroundStyle(deltaColor(best))
+            }
+        }
+        .shadow(color: .black.opacity(0.6), radius: 3)
+    }
+
+    /// Per-set table: number, the lift, its power, and how it moved vs last week.
+    private var setTable: some View {
+        Grid(alignment: .trailing, horizontalSpacing: 14, verticalSpacing: 7) {
+            GridRow {
+                cell("SET", .iron, leading: true)
+                cell("LIFT", .iron, leading: true)
+                cell("PWR", .iron)
+                cell("VS LAST", .iron)
+            }
+            ForEach(data.rows) { row in
+                GridRow {
+                    cell("\(row.number)", .ash, leading: true)
+                    cell(liftText(row), .bone, leading: true)
+                    cell("\(row.power)", .bone)
+                    if let delta = row.delta {
+                        cell(deltaLabel(delta), nil, color: deltaColor(delta))
+                    } else {
+                        cell("—", .iron)
                     }
+                }
             }
         }
     }
 
-    private func chipText(_ set: ExerciseSummaryData.SetLine) -> String {
-        let weight = WeightFormat.compactWithUnit(grams: set.weightGrams, unit: unit)
-        let base = "\(weight) × \(set.reps)"
-        return set.isWarmup ? "\(base) · W" : base
-    }
-}
+    private enum Ink { case iron, ash, bone }
 
-// MARK: - Simple wrapping row (chips flow onto multiple lines)
-
-/// Minimal flow layout so set chips wrap instead of clipping — no external deps.
-struct FlowRow: Layout {
-    var spacing: CGFloat = 8
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let maxWidth = proposal.width ?? .infinity
-        var rowWidth: CGFloat = 0, rowHeight: CGFloat = 0
-        var totalHeight: CGFloat = 0, maxRowWidth: CGFloat = 0
-        for view in subviews {
-            let size = view.sizeThatFits(.unspecified)
-            if rowWidth > 0, rowWidth + spacing + size.width > maxWidth {
-                totalHeight += rowHeight + spacing
-                maxRowWidth = max(maxRowWidth, rowWidth)
-                rowWidth = size.width
-                rowHeight = size.height
-            } else {
-                rowWidth += (rowWidth > 0 ? spacing : 0) + size.width
-                rowHeight = max(rowHeight, size.height)
-            }
-        }
-        totalHeight += rowHeight
-        maxRowWidth = max(maxRowWidth, rowWidth)
-        return CGSize(width: min(maxRowWidth, maxWidth), height: totalHeight)
+    private func cell(_ text: String, _ ink: Ink?, leading: Bool = false, color: Color? = nil) -> some View {
+        Text(text)
+            .font(.system(size: 12, weight: leading ? .semibold : .bold, design: .monospaced))
+            .monospacedDigit()
+            .foregroundStyle(color ?? inkColor(ink ?? .bone))
+            .gridColumnAlignment(leading ? .leading : .trailing)
     }
 
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        var x = bounds.minX, y = bounds.minY, rowHeight: CGFloat = 0
-        for view in subviews {
-            let size = view.sizeThatFits(.unspecified)
-            if x > bounds.minX, x + size.width > bounds.maxX {
-                x = bounds.minX
-                y += rowHeight + spacing
-                rowHeight = 0
-            }
-            view.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
-            x += size.width + spacing
-            rowHeight = max(rowHeight, size.height)
+    private func inkColor(_ ink: Ink) -> Color {
+        switch ink {
+        case .iron: SettColor.iron
+        case .ash: SettColor.ash
+        case .bone: SettColor.bone
         }
+    }
+
+    private func liftText(_ row: ExerciseSummaryData.SetRow) -> String {
+        "\(WeightFormat.compactWithUnit(grams: row.weightGrams, unit: unit)) × \(row.reps)"
+    }
+
+    private func deltaLabel(_ delta: Int) -> String {
+        if delta > 0 { return "▲ +\(delta)" }
+        if delta < 0 { return "▼ \(delta)" }
+        return "= 0"
+    }
+
+    private func deltaColor(_ delta: Int) -> Color {
+        delta > 0 ? SettColor.positive : (delta < 0 ? SettColor.negative : SettColor.ash)
     }
 }

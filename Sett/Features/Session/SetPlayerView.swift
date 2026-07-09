@@ -195,13 +195,21 @@ struct SetPlayerView: View {
                 .kerning(3)
                 .foregroundStyle(liveTier.color)
                 .accessibilityHidden(true)
-            Text(workoutExercise.exerciseNameSnapshot.uppercased())
-                .font(.system(.title3, design: .monospaced).weight(.bold))
-                .kerning(2)
-                .foregroundStyle(SettColor.bone)
-                .multilineTextAlignment(.center)
-                .lineLimit(2)
-                .minimumScaleFactor(0.7)
+            HStack(spacing: 9) {
+                if let equipment = exercise?.equipment {
+                    Image(systemName: equipment.symbolName)
+                        .font(.system(.title3, design: .rounded).weight(.semibold))
+                        .foregroundStyle(liveTier.color)
+                        .accessibilityHidden(true)
+                }
+                Text(workoutExercise.exerciseNameSnapshot.uppercased())
+                    .font(.system(.title3, design: .monospaced).weight(.bold))
+                    .kerning(2)
+                    .foregroundStyle(SettColor.bone)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.7)
+            }
             Text("SET \(slotIndex + 1) / \(slotCount)")
                 .font(.system(.caption, design: .monospaced).weight(.semibold))
                 .kerning(2)
@@ -600,6 +608,9 @@ struct PlayerSlab: View {
                 .font(.system(size: 17, weight: .bold, design: .monospaced))
                 .kerning(4)
                 .foregroundStyle(isEnabled ? SettColor.bone : SettColor.iron)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+                .padding(.horizontal, 16)
                 .frame(maxWidth: .infinity, minHeight: 92)
                 .background {
                     ZStack {

@@ -18,42 +18,50 @@ enum MotivationContext {
 enum MotivationQuotes {
     static let push: [String] = [
         "PROGRESS OVER PERFECTION.",
-        "There's one thing a Saiyan always keeps… THEIR PRIDE.",
+        "There's one thing a warrior always keeps… THEIR PRIDE.",
         "Shatter your limits. Push into the domain of the gods.",
         "Comfort is the killer of joy, achievement, and fulfillment.",
-        "Giving up is a betrayal of your own potential.",
-        "Power comes in response to a need. So create the need.",
-        "The set you fear is the set that forges you.",
-        "You don't find your limit. You break it.",
-        "Chase the version of you that scares the old you.",
-        "One more rep is one more reason they remember your name.",
+        "Every limit is a door. Kick it off the hinges.",
+        "BREAK YOUR OWN RECORD. The old you was only a warm-up.",
+        "Strength is what remains after you refuse to stop.",
+        "ONE MORE REP. That's where the old you dies.",
+        "Pride is earned in the reps nobody clapped for.",
+        "The ceiling you fear is just today's floor. CLIMB PAST IT.",
+        "Talent naps while you train — every rep steals its crown.",
+        "Push until the weight forgets it was ever heavier than you.",
     ]
 
     static let lowSleep: [String] = [
-        "Ran on empty? Showing up IS the win today.",
-        "A champion is someone who gets up when they can't.",
-        "Half-charged still moves mountains. One honest set.",
-        "Tired is a feeling. The iron doesn't care. Move.",
-        "Low battery, same warrior. Don't stop — just start.",
-        "You're here on no fuel. That isn't weakness. It's will.",
+        "No sleep, still here. That isn't weakness. That is WILL.",
+        "Energy runs out. Resolve doesn't. You brought the one that matters.",
+        "The exhausted who show up outrank the rested who don't.",
+        "YOUR BODY BEGGED TO STAY DOWN — YOU STOOD UP ANYWAY.",
+        "Sleep is fuel. Heart is the engine. Yours is running.",
+        "Tired is a feeling. SHOWING UP is a decision.",
+        "Drained and dangerous — heart carries what the body cannot.",
+        "Willpower doesn't check how you slept before it answers.",
     ]
 
     static let offDay: [String] = [
-        "Off day? Answer it with one honest rep.",
-        "Bad days build the foundation. Stay in the fight.",
-        "Defeat is temporary. Quitting makes it permanent.",
-        "The days you don't feel it are the days that count double.",
-        "Not every scan is a record. Showing up still wins.",
-        "Grind through the fog. The Chamber rewards the stubborn.",
+        "You don't rise on your best days. You rise on THESE.",
+        "The base is poured on bad days. Add more concrete.",
+        "Anyone trains when strong; champions train when it hurts.",
+        "Show up flat, leave forged — dull days sharpen the blade.",
+        "You won't set records today — set STANDARDS instead.",
+        "Losing to the weight today? Return and collect the debt.",
+        "Slow is still forward. Ugly is still work. CONTINUE.",
+        "The weight didn't get heavier — you got humble. Lift anyway.",
     ]
 
     static let comeback: [String] = [
-        "Back in the Chamber. The iron missed you.",
-        "The comeback is always stronger than the setback.",
-        "First session back is the hardest rep — and it's done.",
-        "Rust is temporary. The rebuild starts NOW.",
-        "You returned. Everything from here is momentum.",
-        "Welcome back, warrior. Reclaim what's yours.",
+        "Welcome back. The rust burns off faster than you fear.",
+        "You didn't lose it. You set it down. PICK IT BACK UP.",
+        "Momentum forgives the pause. Move once and it comes home.",
+        "The comeback starts quiet. One session, then the fire remembers.",
+        "You're not starting over. You're starting stronger, wiser, hungrier.",
+        "The layoff ends the second you touch the bar again.",
+        "Every legend has a return chapter. Write yours today.",
+        "You're not behind — you're reloading. Rebuild the streak.",
     ]
 
     private static func pool(for context: MotivationContext) -> [String] {
