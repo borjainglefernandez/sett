@@ -87,7 +87,9 @@ struct WorkoutSummaryView: View {
             }
             .padding(16)
         }
-        .dungeonBackground()
+        .background(
+            TimeChamberBackground(tier: summaryTier, assetName: bgAsset).ignoresSafeArea()
+        )
         .overlay {
             // The ceiling break: UI fractures over the whole screen, gold light
             // leaking through. Non-interactive (CrackOverlay ignores hits), so
@@ -105,7 +107,7 @@ struct WorkoutSummaryView: View {
         // these propagate up to the enclosing sheet in RootView).
         .presentationDetents([.large])
         .presentationDragIndicator(.hidden)
-        .presentationBackground(SettColor.screen)
+        .presentationBackground(TimeChamber.void)
         .task { await runStages() }
         .sheet(isPresented: $showingHowXPWorks) {
             HowPowerWorksView()
@@ -120,6 +122,21 @@ struct WorkoutSummaryView: View {
     private var ceilingBroken: Bool {
         summary.tierAfter > summary.tierBefore
             || summary.newBadgeKeys.contains(where: Self.ceilingBadgeKeys.contains)
+    }
+
+    /// The scouter aura the whole scan wears: red on a ceiling break, amber when
+    /// power rose, green otherwise — matching the session's transformation ramp.
+    private var summaryTier: AuraTier {
+        if ceilingBroken { return .radiant }
+        if powerDelta > 0 { return .ascended }
+        return .base
+    }
+
+    /// The realm the user picked in Settings — the summary rides the same backdrop.
+    private var bgAsset: String {
+        ChamberBackground.resolve(
+            UserDefaults.standard.string(forKey: "sett.chamberBackground") ?? "nebula"
+        ).assetName
     }
 
     private func runStages() async {
@@ -242,24 +259,28 @@ struct WorkoutSummaryView: View {
                     }
                 }
             } else {
-                Text("Scanning…")
-                    .font(.footnote)
-                    .foregroundStyle(SettColor.heroCyan)
+                Text("SCANNING…")
+                    .font(.system(.footnote, design: .monospaced).weight(.bold))
+                    .kerning(2)
+                    .foregroundStyle(summaryTier.color)
                     .frame(height: 100)
             }
         }
         .frame(maxWidth: .infinity)
         .padding(24)
-        .background(SettColor.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(SettColor.etch, lineWidth: 1)
+        .background {
+            let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
+            shape.fill(TimeChamber.void.opacity(0.82))
+            shape.strokeBorder(summaryTier.color.opacity(0.5), lineWidth: 1.5)
+                .shadow(color: summaryTier.color.opacity(0.4), radius: 9)
+            CornerTicksShape(length: 7, inset: 7)
+                .stroke(summaryTier.color.opacity(0.55), lineWidth: 1)
         }
         .overlay {
             // Clip only the scanline, so the numeral's ember halo can spill.
             if stage == .scanning && !reduceMotion {
                 scanline
-                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             }
         }
         .scaleEffect(ceremonyPunch)
@@ -275,12 +296,13 @@ struct WorkoutSummaryView: View {
     private var powerReadout: some View {
         if scrambling {
             HStack(spacing: 10) {
-                SettSigil(size: 34, color: SettColor.heroCyan)
+                SettSigil(size: 34, color: summaryTier.color)
                 ScrambleNumeral(
                     digitCount: String(max(summary.powerLevelAfter, 1)).count,
                     seed: UInt64(bitPattern: Int64(summary.powerLevelAfter))
                         &* 0x9E37_79B9_7F4A_7C15
-                        &+ UInt64(bitPattern: Int64(summary.powerLevelBefore))
+                        &+ UInt64(bitPattern: Int64(summary.powerLevelBefore)),
+                    color: summaryTier.color
                 )
             }
             .frame(height: 68)
@@ -300,12 +322,12 @@ struct WorkoutSummaryView: View {
             .background(SettColor.saiyanGold.opacity(0.15), in: Capsule())
     }
 
-    /// The scouter reference: a horizontal cyan band sweeping down the dark card,
-    /// driven by `phaseAnimator` while the scan stage is active.
+    /// The scouter scan: a horizontal band in the scan's aura hue sweeping down the
+    /// dark card, driven by `phaseAnimator` while the scan stage is active.
     private var scanline: some View {
         GeometryReader { proxy in
             Rectangle()
-                .fill(LinearGradient(colors: [.clear, SettColor.heroCyan.opacity(0.8), .clear],
+                .fill(LinearGradient(colors: [.clear, summaryTier.color.opacity(0.8), .clear],
                                      startPoint: .top, endPoint: .bottom))
                 .frame(height: 28)
                 .phaseAnimator([0.0, 1.0]) { view, phase in
@@ -569,13 +591,14 @@ struct WorkoutSummaryView: View {
 private struct ScrambleNumeral: View {
     let digitCount: Int
     let seed: UInt64
+    var color: Color = SettColor.heroCyan
 
     @State private var frame = 0
 
     var body: some View {
         Text(scrambledText)
             .font(.system(size: 56, weight: .heavy, design: .monospaced).italic())
-            .foregroundStyle(SettColor.heroCyan.opacity(0.85))
+            .foregroundStyle(color.opacity(0.85))
             .lineLimit(1)
             .minimumScaleFactor(0.5)
             .accessibilityHidden(true)
