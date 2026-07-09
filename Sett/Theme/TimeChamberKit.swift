@@ -23,25 +23,24 @@ enum AuraTier: Equatable {
     case fatigued  // output down — cool indigo, dimmed
     case calm      // warm-up / off the record — quiet teal
 
-    /// Primary aura hue.
+    /// Primary aura hue — the classic scouter ramp: green holding, amber when you
+    /// beat last time, RED when you crack a ceiling (the scouter overloading).
     var color: Color {
         switch self {
-        case .dormant, .base: SettColor.heroCyan
-        case .ascended: SettColor.saiyanGold
-        case .radiant: TimeChamber.zenith
-        case .fatigued: TimeChamber.indigo
-        case .calm: TimeChamber.teal
+        case .dormant, .base, .calm: TimeChamber.scouterGreen
+        case .ascended: TimeChamber.scouterAmber
+        case .radiant: TimeChamber.scouterRed
+        case .fatigued: TimeChamber.scouterSteel
         }
     }
 
     /// A hotter/lighter companion hue for gradients and cores.
     var secondary: Color {
         switch self {
-        case .dormant, .base: TimeChamber.iceBlue
-        case .ascended: TimeChamber.hotGold
-        case .radiant: .white
+        case .dormant, .base, .calm: TimeChamber.scouterGreenPale
+        case .ascended: TimeChamber.scouterAmberPale
+        case .radiant: TimeChamber.scouterRedPale
         case .fatigued: TimeChamber.iceBlue
-        case .calm: SettColor.heroCyan
         }
     }
 
@@ -124,6 +123,16 @@ enum TimeChamber {
     static let teal = Color(dynamicLight: 0x63E0C8, dark: 0x63E0C8)
     /// Deep void used to scrim the hero image for legibility.
     static let void = Color(dynamicLight: 0x070512, dark: 0x070512)
+
+    // The classic scouter ramp — green phosphor → amber → overload red.
+    static let scouterGreen = Color(dynamicLight: 0x46E0A0, dark: 0x46E0A0)
+    static let scouterGreenPale = Color(dynamicLight: 0xC2FFE2, dark: 0xC2FFE2)
+    static let scouterAmber = Color(dynamicLight: 0xFFC24D, dark: 0xFFC24D)
+    static let scouterAmberPale = Color(dynamicLight: 0xFFE7A8, dark: 0xFFE7A8)
+    static let scouterRed = Color(dynamicLight: 0xFF5A3C, dark: 0xFF5A3C)
+    static let scouterRedPale = Color(dynamicLight: 0xFFB29B, dark: 0xFFB29B)
+    /// "Output down" — a cool steel blue.
+    static let scouterSteel = Color(dynamicLight: 0x7FA8E0, dark: 0x7FA8E0)
 }
 
 // MARK: - Time Chamber background (the cosmic void)
@@ -389,7 +398,9 @@ struct ScouterLens: View {
     var burstToken: Int = 0
 
     @State private var flare: CGFloat = 0
-    @State private var sweep = false
+    @State private var scanDrift: CGFloat = 0   // scan-line drift (0→1, wraps seamlessly)
+    @State private var sweepPhase: CGFloat = 0  // the sweep bar's travel (0→1)
+    @State private var blink = false            // lock indicator pulse
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -400,21 +411,26 @@ struct ScouterLens: View {
                 .blur(radius: 26)
                 .scaleEffect(1.06 + flare * 0.06)
 
-            // Glass: dark core (legibility) warming to the aura at the edges.
+            // Glass: dark core (legibility) warming to the scouter hue at the edges.
             shape.fill(
                 RadialGradient(
                     colors: [TimeChamber.void.opacity(0.82),
                              TimeChamber.void.opacity(0.5),
-                             tier.color.opacity(0.16)],
+                             tier.color.opacity(0.18)],
                     center: .center, startRadius: 6, endRadius: 240
                 )
             )
 
-            scanLines.clipShape(shape)
+            ZStack {
+                scanLines
+                sweepBar
+            }
+            .clipShape(shape)
             GeometryReader { geo in tickStrip(in: geo.size) }.clipShape(shape)
             targetBrackets
+            lockIndicator
 
-            // Rim — bright aura, glowing, with an inner hairline.
+            // Rim — bright scouter hue, glowing, with an inner hairline.
             shape.stroke(tier.gradient, style: StrokeStyle(lineWidth: 2.5 + flare * 2, lineJoin: .round))
                 .shadow(color: tier.color.opacity(0.7), radius: 8 + flare * 10)
             shape.stroke(tier.color.opacity(0.35), lineWidth: 1).padding(5)
@@ -424,6 +440,7 @@ struct ScouterLens: View {
         .scaleEffect(1 + flare * 0.03)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
+        .onAppear(perform: startScan)
         .onChange(of: burstToken) { _, _ in
             guard !reduceMotion else { return }
             flare = 1
@@ -431,16 +448,37 @@ struct ScouterLens: View {
         }
     }
 
-    /// Three faint horizontal scan lines drifting slowly (Core-Animation offset).
+    private func startScan() {
+        guard !reduceMotion else { return }
+        withAnimation(.linear(duration: 3.0).repeatForever(autoreverses: false)) { scanDrift = 1 }
+        withAnimation(.easeInOut(duration: 2.4).repeatForever(autoreverses: true)) { sweepPhase = 1 }
+        withAnimation(.easeInOut(duration: 0.75).repeatForever(autoreverses: true)) { blink = true }
+    }
+
+    /// Faint horizontal scan lines drifting slowly upward (seamless wrap).
     private var scanLines: some View {
         GeometryReader { geo in
             let h = geo.size.height
-            ForEach(0 ..< 3, id: \.self) { i in
+            let spacing: CGFloat = 13
+            let count = Int(h / spacing) + 2
+            ForEach(0 ..< count, id: \.self) { i in
                 Rectangle()
-                    .fill(tier.color.opacity(0.12))
+                    .fill(tier.color.opacity(0.10))
                     .frame(height: 1)
-                    .offset(y: h * (0.3 + 0.2 * Double(i)))
+                    .offset(y: CGFloat(i) * spacing - spacing + scanDrift * spacing)
             }
+        }
+    }
+
+    /// A bright bar sweeping down the lens — the scanner reading the target.
+    private var sweepBar: some View {
+        GeometryReader { geo in
+            Rectangle()
+                .fill(LinearGradient(colors: [.clear, tier.secondary.opacity(0.55), .clear],
+                                     startPoint: .leading, endPoint: .trailing))
+                .frame(height: 2)
+                .shadow(color: tier.color.opacity(0.8), radius: 6)
+                .offset(y: (reduceMotion ? 0.5 : sweepPhase) * (geo.size.height - 2))
         }
     }
 
@@ -464,6 +502,24 @@ struct ScouterLens: View {
             .stroke(tier.color.opacity(0.5), lineWidth: 1.5)
             .padding(.horizontal, 44)
             .padding(.vertical, 18)
+    }
+
+    /// A blinking lock light + "LOCK" caption — the scouter has a target.
+    private var lockIndicator: some View {
+        GeometryReader { geo in
+            HStack(spacing: 4) {
+                Circle()
+                    .fill(tier.color)
+                    .frame(width: 5, height: 5)
+                    .shadow(color: tier.color, radius: 3)
+                    .opacity(reduceMotion ? 1 : (blink ? 1 : 0.25))
+                Text("LOCK")
+                    .font(.system(size: 7, weight: .bold, design: .monospaced))
+                    .kerning(1)
+                    .foregroundStyle(tier.color.opacity(0.85))
+            }
+            .position(x: geo.size.width - 66, y: 30)
+        }
     }
 
     /// The scouter's characteristic side piece: a triangular emitter off the left

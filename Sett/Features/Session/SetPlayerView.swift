@@ -36,9 +36,7 @@ struct SetPlayerView: View {
     @State private var pendingSetting: String?
     @State private var isEditingNote = false
     @State private var isEditingSetting = false
-    /// Stepper capsule under one numeral; nil = the happy path (numbers + slab only).
-    @State private var activeStepper: NumericField?
-    @State private var stepperHideTask: Task<Void, Never>?
+    /// The field whose numeric keypad is open (tap a number to type directly).
     @State private var padField: NumericField?
     /// 0.4 s gold flash on the numerals when the logged set beat its reference.
     @State private var goldFlash = false
@@ -78,7 +76,7 @@ struct SetPlayerView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear { load(); startAcquisition() }
-        .onDisappear { stepperHideTask?.cancel(); acquireTask?.cancel() }
+        .onDisappear { acquireTask?.cancel() }
         .sheet(item: $padField) { field in
             numericPad(for: field)
         }
@@ -87,8 +85,8 @@ struct SetPlayerView: View {
         }
         .sheet(isPresented: $isEditingSetting) {
             SetNoteSheet(initialText: pendingSetting ?? "",
-                         title: "MACHINE SETTING",
-                         placeholder: "seat 5 · rope · pin 9") { pendingSetting = $0 }
+                         title: "SETTING",
+                         placeholder: "seat 5 · pin 9 · collars on") { pendingSetting = $0 }
         }
     }
 
@@ -193,9 +191,9 @@ struct SetPlayerView: View {
     private var header: some View {
         VStack(spacing: 8) {
             Text("TARGET ACQUIRED")
-                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
                 .kerning(3)
-                .foregroundStyle(liveTier.color.opacity(0.8))
+                .foregroundStyle(liveTier.color)
                 .accessibilityHidden(true)
             Text(workoutExercise.exerciseNameSnapshot.uppercased())
                 .font(.system(.title3, design: .monospaced).weight(.bold))
@@ -205,13 +203,15 @@ struct SetPlayerView: View {
                 .lineLimit(2)
                 .minimumScaleFactor(0.7)
             Text("SET \(slotIndex + 1) / \(slotCount)")
-                .font(.system(.caption, design: .monospaced))
+                .font(.system(.caption, design: .monospaced).weight(.semibold))
                 .kerning(2)
-                .foregroundStyle(SettColor.ash)
+                .foregroundStyle(SettColor.bone)
         }
         .padding(.horizontal, 24)
-        // Keeps the header readable over bright realms (White Void, Sanctuary).
-        .shadow(color: .black.opacity(0.55), radius: 6)
+        // A tight dark halo keeps the header crisp over ANY realm (incl. the bright
+        // White Void / Golden Sanctuary).
+        .shadow(color: .black.opacity(0.85), radius: 2)
+        .shadow(color: .black.opacity(0.5), radius: 7)
     }
 
     // MARK: Scouter core (numerals inside the living aura ring)
@@ -227,7 +227,7 @@ struct SetPlayerView: View {
     }
 
     private var scouterCore: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 16) {
             ZStack {
                 ScouterLens(tier: isCommitted ? .base : liveTier, burstToken: burstToken)
                     .frame(width: 344, height: 208)
@@ -235,32 +235,33 @@ struct SetPlayerView: View {
                 reading
                     .padding(.horizontal, 40)
             }
-            if let field = activeStepper {
-                stepperCapsule(for: field)
-                    .transition(.opacity.combined(with: .scale(scale: 0.9)))
+            if !isCommitted {
+                adjustRow
             }
         }
         .frame(minHeight: 240)
     }
 
-    /// The reading: weight × reps on ONE baseline at ONE size (so they never
-    /// misalign), with small inline unit labels. Each number is tap-to-adjust /
-    /// long-press-for-keypad.
+    /// Inside the lens: the scouter POWER readout (live e1RM) above weight × reps.
+    /// The two numbers sit on ONE baseline at ONE size so they never misalign.
     private var reading: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 5) {
-            numeralText(WeightFormat.compact(grams: displayedWeightGrams,
-                                             unit: services.settings.unit),
-                        field: .weight, salt: 0x11, accessibility: "Weight")
-            unitCaption(services.settings.unit.symbol.uppercased())
-            Text("×")
-                .font(.system(size: numeralSize * 0.5, weight: .heavy, design: .monospaced))
-                .foregroundStyle(SettColor.ash)
-                .padding(.horizontal, 4)
-                .accessibilityHidden(true)
-            numeralText("\(displayedReps)", field: .reps, salt: 0x77, accessibility: "Reps")
-            unitCaption("REPS")
+        VStack(spacing: 5) {
+            powerReadout
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                numeralText(WeightFormat.compact(grams: displayedWeightGrams,
+                                                 unit: services.settings.unit),
+                            field: .weight, salt: 0x11, accessibility: "Weight")
+                unitCaption(services.settings.unit.symbol.uppercased())
+                Text("×")
+                    .font(.system(size: numeralSize * 0.5, weight: .heavy, design: .monospaced))
+                    .foregroundStyle(SettColor.ash)
+                    .padding(.horizontal, 3)
+                    .accessibilityHidden(true)
+                numeralText("\(displayedReps)", field: .reps, salt: 0x77, accessibility: "Reps")
+                unitCaption("REPS")
+            }
+            .lineLimit(1)
         }
-        .lineLimit(1)
         .overlay {
             if acquiring {
                 GeometryReader { proxy in
@@ -277,11 +278,39 @@ struct SetPlayerView: View {
         }
     }
 
+    /// The scouter's power reading — this set's estimated output (e1RM) in the
+    /// display unit, rolling as you dial the numbers, in the live scouter hue.
+    private var powerReadout: some View {
+        HStack(spacing: 5) {
+            SettSigil(size: 11, color: liveTier.color)
+            Text("PWR")
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .kerning(2)
+                .foregroundStyle(liveTier.color.opacity(0.8))
+            Text("\(powerReading)")
+                .font(.system(size: 15, weight: .heavy, design: .monospaced))
+                .monospacedDigit()
+                .foregroundStyle(liveTier.color)
+                .contentTransition(.numericText(value: Double(powerReading)))
+        }
+        .shadow(color: .black.opacity(0.8), radius: 3)
+        .animation(.snappy(duration: 0.2), value: powerReading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Power reading \(powerReading)")
+    }
+
+    /// This set's e1RM ("output") in the display unit — the scouter power level.
+    private var powerReading: Int {
+        let grams = ProgressEngine.e1RMGrams(weightGrams: displayedWeightGrams, reps: displayedReps)
+        return Int(Units.pounds(fromGrams: grams).rounded())
+    }
+
     private func unitCaption(_ text: String) -> some View {
         Text(text)
-            .font(.system(size: 12, weight: .semibold, design: .monospaced))
+            .font(.system(size: 13, weight: .bold, design: .monospaced))
             .kerning(1)
-            .foregroundStyle(SettColor.iron)
+            .foregroundStyle(SettColor.ash)
+            .shadow(color: .black.opacity(0.7), radius: 3)
             .accessibilityHidden(true)
     }
 
@@ -298,58 +327,50 @@ struct SetPlayerView: View {
             .contentShape(Rectangle())
             .onTapGesture {
                 guard !isCommitted else { return }
-                showStepper(for: field)
-            }
-            .onLongPressGesture(minimumDuration: 0.4) {
-                guard !isCommitted else { return }
-                stepperHideTask?.cancel()
-                activeStepper = nil
-                padField = field
+                Haptics.selection()
+                padField = field   // tap the number → type it on the keypad
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("\(accessibility) \(text)")
-            .accessibilityHint(isCommitted ? "" : "Tap to adjust, long press for keypad")
+            .accessibilityHint(isCommitted ? "" : "Tap to type, or use the − / + buttons")
     }
 
-    // MARK: Adjust (stepper capsule — materializes beneath, auto-hides after 4 s)
+    // MARK: Adjust (always-visible − / + steppers under the scouter)
 
-    private func showStepper(for field: NumericField) {
-        withAnimation(.snappy(duration: 0.18)) { activeStepper = field }
-        Haptics.selection()
-        scheduleStepperAutoHide()
-    }
-
-    private func scheduleStepperAutoHide() {
-        stepperHideTask?.cancel()
-        stepperHideTask = Task { @MainActor in
-            try? await Task.sleep(for: .seconds(4))
-            guard !Task.isCancelled else { return }
-            withAnimation(.easeOut(duration: 0.2)) { activeStepper = nil }
+    private var adjustRow: some View {
+        HStack(spacing: 14) {
+            fieldStepper(label: services.settings.unit.symbol.uppercased(), field: .weight)
+            fieldStepper(label: "REPS", field: .reps)
         }
+        .transition(.opacity)
     }
 
-    private func stepperCapsule(for field: NumericField) -> some View {
-        HStack(spacing: 0) {
+    private func fieldStepper(label: String, field: NumericField) -> some View {
+        HStack(spacing: 8) {
             stepButton("minus") { step(field, -1) }
-            Rectangle()
-                .fill(SettColor.cardBorder)
-                .frame(width: 1, height: 20)
+            Text(label)
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .kerning(1)
+                .foregroundStyle(SettColor.ash)
+                .frame(minWidth: 30)
             stepButton("plus") { step(field, 1) }
         }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
         .background {
-            ZStack {
-                Capsule().fill(TimeChamber.void.opacity(0.85))
-                Capsule().strokeBorder(liveTier.color.opacity(0.5), lineWidth: 1)
-            }
+            Capsule().fill(TimeChamber.void.opacity(0.6))
+            Capsule().strokeBorder(liveTier.color.opacity(0.32), lineWidth: 1)
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(field == .weight ? "Adjust weight" : "Adjust reps")
     }
 
     private func stepButton(_ symbol: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.body.weight(.semibold))
+                .font(.subheadline.weight(.bold))
                 .foregroundStyle(SettColor.bone)
-                .frame(width: 56, height: 44)
+                .frame(width: 40, height: 34)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -365,7 +386,6 @@ struct SetPlayerView: View {
         }
         isGhost = false
         Haptics.selection()
-        scheduleStepperAutoHide()
     }
 
     // MARK: Numeric pad (long-press — shared NumericPadSheet)
@@ -453,7 +473,7 @@ struct SetPlayerView: View {
                         Text(label)
                             .font(.system(size: 9, weight: .bold, design: .monospaced))
                             .kerning(1.5)
-                            .foregroundStyle(SettColor.iron)
+                            .foregroundStyle(SettColor.ash)
                         if let tag {
                             Text("· \(tag)")
                                 .font(.system(size: 9, weight: .medium, design: .monospaced))
@@ -462,7 +482,7 @@ struct SetPlayerView: View {
                     }
                     Text(value?.isEmpty == false ? value! : placeholder)
                         .font(.system(.subheadline, design: .rounded))
-                        .foregroundStyle(value?.isEmpty == false ? SettColor.bone : SettColor.iron)
+                        .foregroundStyle(value?.isEmpty == false ? SettColor.bone : SettColor.ash)
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
                 }
@@ -482,11 +502,9 @@ struct SetPlayerView: View {
         .accessibilityLabel("\(label): \(value?.isEmpty == false ? value! : "none")")
     }
 
-    private var showsSetting: Bool {
-        if pendingSetting?.isEmpty == false { return true }
-        guard let equipment = exercise?.equipment else { return false }
-        return equipment == .machine || equipment == .cable
-    }
+    /// The setting row is available for EVERY exercise now (seat/pin/collars/belt
+    /// notes apply to free weights too), so the feature is always discoverable.
+    private var showsSetting: Bool { true }
 
     private var hasNote: Bool { pendingNote?.isEmpty == false }
     private var settingCarried: Bool {
@@ -550,8 +568,6 @@ struct SetPlayerView: View {
                        isWarmup: isWarmup, notes: pendingNote, setting: pendingSetting)
         pendingNote = nil
         pendingSetting = nil
-        stepperHideTask?.cancel()
-        activeStepper = nil
         burstToken += 1
 
         let loggedSetCount = session.activeWorkout?.orderedExercises

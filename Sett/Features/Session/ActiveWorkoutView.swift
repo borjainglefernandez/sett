@@ -179,6 +179,9 @@ struct ActiveWorkoutView: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 2)
+        // Dark halo so the bar (elapsed time + controls) reads over bright realms.
+        .shadow(color: .black.opacity(0.8), radius: 2)
+        .shadow(color: .black.opacity(0.45), radius: 8)
     }
 
     /// Off-the-record toggle (item 6a): turning ON confirms; OFF is silent.
@@ -235,7 +238,7 @@ struct ActiveWorkoutView: View {
             Text(elapsedText(from: workout.startedAt, at: context.date))
                 .font(.system(.subheadline, design: .monospaced).weight(.semibold))
                 .monospacedDigit()
-                .foregroundStyle(SettColor.iron)
+                .foregroundStyle(SettColor.ash)
         }
         .accessibilityLabel("Elapsed time")
     }
