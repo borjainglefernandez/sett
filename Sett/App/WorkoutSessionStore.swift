@@ -46,6 +46,7 @@ public final class WorkoutSessionStore {
 
     public func quickStart(title: String = "Workout") {
         let workout = Workout(title: title)
+        workout.phaseRaw = settings.trainingPhase
         context.insert(workout)
         try? context.save()
         activeWorkout = workout
@@ -58,6 +59,7 @@ public final class WorkoutSessionStore {
         workout.routineID = routine.id
         workout.routineNameSnapshot = routine.name
         workout.domainRaw = routine.domainRaw   // the routine's realm (nil ⇒ app default)
+        workout.phaseRaw = settings.trainingPhase
         context.insert(workout)
 
         for (index, routineExercise) in routine.orderedExercises.enumerated() {
@@ -268,6 +270,9 @@ public final class WorkoutSessionStore {
            workout.startedAt.timeIntervalSince(prevEnd) > 14 * 86_400 {
             return .comeback
         }
+
+        // A cut reframes the whole session — its lines also cover low-energy days.
+        if workout.phase == .cutting { return .cutting }
 
         // Sleep / readiness (Oura), keyed to the workout's day.
         var cal = Calendar(identifier: .gregorian)

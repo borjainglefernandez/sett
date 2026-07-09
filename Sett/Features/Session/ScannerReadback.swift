@@ -9,30 +9,55 @@ import SettCore
 /// `.beat`. `.personalBest` is the crit (gold flash + PR haptic); `.beat` is a
 /// gold-sweep win without the ceremony. `.casual` suppresses all of it.
 enum LogOutcome {
-    case personalBest // crit — this set's e1RM beats the exercise's all-time best
-    case beat         // net e1RM up vs the reference set (not an all-time PR)
-    case held         // net e1RM unchanged
-    case dropped      // net e1RM down
-    case baseline     // no reference set at this slot
-    case warmup       // logged as a warm-up
-    case casual       // workout is off the record
+    case personalBest  // crit — this set's e1RM beats the exercise's all-time best
+    case beat          // e1RM up vs the reference set (not an all-time PR)
+    case held          // e1RM within the phase's green "held" band — a WIN
+    case heldUnderFire // realistic dip under the held band — supportive, never cold
+    case stalled       // bulk only — flat, not enough when you're fed
+    case dropped       // genuine decline (never returned in CUTTING)
+    case baseline      // no reference set at this slot
+    case warmup        // logged as a warm-up
+    case casual        // workout is off the record
 
     /// crit: gold numeral flash + prSignature haptic + gold combat text.
     var isCrit: Bool { self == .personalBest }
-    /// beat/crit: gold sweep + longer hold into REST. Others transition bone.
+    /// beat/crit: gold sweep + longer hold into REST + win burst. Others don't.
     var isGold: Bool { self == .personalBest || self == .beat }
+    /// A phase-neutral "you held the line" success (green), vs a defended dip.
+    var isHold: Bool { self == .held }
 
-    static func classify(readback: SetReadback, isWarmup: Bool, isCasual: Bool) -> LogOutcome {
+    /// Score by the RATIO of this set's e1RM to the reference set's, through the
+    /// phase lens — so a cut celebrates retention and never lights the cold aura.
+    static func classify(readback: SetReadback, phase: TrainingPhase,
+                         isWarmup: Bool, isCasual: Bool) -> LogOutcome {
         if isCasual { return .casual }
         if isWarmup { return .warmup }
         if readback.isBaseline { return .baseline }
-        // Score by the combined e1RM delta — the single number that trades weight
-        // against reps. A record beats everything; otherwise up/even/down.
-        if readback.isPersonalBest { return .personalBest }
-        let delta = readback.e1RMDeltaGrams ?? 0
-        if delta > 0 { return .beat }
-        if delta == 0 { return .held }
-        return .dropped
+        if readback.isPersonalBest { return .personalBest }   // all-time PR always hyped
+        guard let referenceE1RM = readback.referenceE1RMGrams, referenceE1RM > 0 else {
+            let delta = readback.e1RMDeltaGrams ?? 0
+            return delta > 0 ? .beat : (delta == 0 ? .held : .dropped)
+        }
+        let ratio = Double(readback.e1RMGrams) / Double(referenceE1RM)
+        switch phase {
+        case .cutting:
+            // Defend the ceiling: −6%…+3% is the green win; a bigger dip is a
+            // supportive hold, NEVER a cold drop.
+            if ratio > 1.03 { return .beat }
+            if ratio >= 0.94 { return .held }
+            return .heldUnderFire
+        case .bulking:
+            // Break the ceiling: growth is the baseline; flat is a nudge to push.
+            if ratio > 1.02 { return .beat }
+            if ratio >= 0.98 { return .stalled }
+            return .dropped
+        case .maintaining:
+            // Hold at altitude: the flat line itself is the target (±4%).
+            if ratio > 1.04 { return .beat }
+            if ratio >= 0.96 { return .held }
+            if ratio >= 0.90 { return .heldUnderFire }
+            return .dropped
+        }
     }
 
     /// The transformation aura this outcome lights up (Time Chamber language).
@@ -40,11 +65,11 @@ enum LogOutcome {
         switch self {
         case .personalBest: .radiant
         case .beat: .ascended
-        case .held: .base
-        case .baseline: .base
+        case .held, .baseline: .base
+        case .heldUnderFire: .defended    // warm amber — held under fire, not cold
+        case .stalled: .calm
         case .dropped: .fatigued
-        case .warmup: .calm
-        case .casual: .calm
+        case .warmup, .casual: .calm
         }
     }
 }
@@ -71,6 +96,17 @@ enum ScannerMessages {
             "HOLDING THE LINE.",
             "Matched output. Consistency is a weapon.",
             "RECORDED. RECOVER.",
+        ],
+        .heldUnderFire: [
+            "HELD UNDER FIRE. The ceiling still stands.",
+            "A dip is the toll for getting lean, not ground lost.",
+            "Lighter tank, same threat. RETENTION LOGGED.",
+            "Steel doesn't rust because the plates got lighter.",
+        ],
+        .stalled: [
+            "FLAT. You're fed — go take more.",
+            "Matched, not beaten. Add a rep. Feed the lift.",
+            "The surplus wants growth. Answer it.",
         ],
         .dropped: [
             "OUTPUT DOWN. Recover, then answer.",
@@ -111,6 +147,7 @@ struct LoggedReadback: Equatable {
     let readback: SetReadback
     let outcome: LogOutcome
     let message: String
+    var phase: TrainingPhase = .maintaining
 }
 
 // MARK: - Readback block (item 4 — SystemMessageView-style materialize)
@@ -137,7 +174,20 @@ struct ReadbackBlock: View {
     private var powerDelta: Int? {
         guard let grams = payload.readback.e1RMDeltaGrams else { return nil }
         let value = Int(Units.pounds(fromGrams: grams).rounded())
-        return value == 0 ? nil : value
+        if value == 0 { return nil }
+        // On a cut, never surface a negative PWR splash — retention is the story.
+        if payload.phase == .cutting, value < 0 { return nil }
+        return value
+    }
+
+    /// On a cut, show how much of last week's e1RM you retained, in place of the
+    /// (suppressed) negative delta — "you held the ceiling" made concrete.
+    private var retentionText: String? {
+        guard payload.phase == .cutting,
+              payload.outcome == .held || payload.outcome == .heldUnderFire,
+              let reference = payload.readback.referenceE1RMGrams, reference > 0 else { return nil }
+        let pct = Int((Double(payload.readback.e1RMGrams) / Double(reference) * 100).rounded())
+        return "RETAINED \(pct)%"
     }
 
     var body: some View {
@@ -207,6 +257,10 @@ struct ReadbackBlock: View {
                     .font(.system(size: 13, weight: .bold, design: .monospaced))
                     .monospacedDigit()
                     .foregroundStyle(delta > 0 ? SettColor.positive : SettColor.negative)
+            } else if let retentionText {
+                Text(retentionText)
+                    .font(.system(size: 12, weight: .bold, design: .monospaced))
+                    .foregroundStyle(tier.color)
             }
         }
         .shadow(color: .black.opacity(0.6), radius: 3)
@@ -221,7 +275,9 @@ struct ReadbackBlock: View {
     /// Shown only for scored sets (not baseline / warm-up / off-the-record).
     private var netLine: String? {
         switch payload.outcome {
-        case .baseline, .warmup, .casual: return nil
+        // Holds/stalls carry their own status chip (+ retention on a cut) — no
+        // "NET −X" line, which would read as a penalty.
+        case .baseline, .warmup, .casual, .held, .heldUnderFire, .stalled: return nil
         default: break
         }
         guard let net = payload.readback.e1RMDeltaGrams else { return nil }
@@ -252,14 +308,19 @@ struct ReadbackBlock: View {
             EmptyView()
         case .warmup:
             chip(text: "WARM-UP", color: SettColor.ash)
-        default:
-            if payload.readback.isBaseline {
-                chip(text: "BASELINE SET", color: tier.color)
-            } else {
-                HStack(spacing: 8) {
-                    weightChip
-                    repsChip
-                }
+        case .baseline:
+            chip(text: "BASELINE SET", color: tier.color)
+        case .held:
+            chip(text: "CEILING HELD", color: SettColor.positive)
+        case .heldUnderFire:
+            chip(text: payload.phase == .cutting ? "CEILING DEFENDED" : "HELD UNDER FIRE",
+                 color: tier.color)
+        case .stalled:
+            chip(text: "PUSH — NOT ENOUGH", color: tier.color)
+        case .beat, .personalBest, .dropped:
+            HStack(spacing: 8) {
+                weightChip
+                repsChip
             }
         }
     }

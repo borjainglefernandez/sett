@@ -32,6 +32,43 @@ public enum Equipment: String, Codable, Sendable, CaseIterable {
     }
 }
 
+// MARK: - Training phase (cut / bulk / maintain)
+
+/// The lens the app scores a session through. It changes the reward FRAME, not the
+/// e1RM engine: a cut celebrates RETAINING strength (a realistic dip is not a
+/// failure), a bulk expects growth, maintenance targets the flat line. Stamped
+/// onto each Workout at start so history stays honestly phase-attributed.
+public enum TrainingPhase: String, Codable, Sendable, CaseIterable, Identifiable {
+    case cutting, bulking, maintaining
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .cutting: "Cutting"
+        case .bulking: "Bulking"
+        case .maintaining: "Maintaining"
+        }
+    }
+
+    /// The one-line creed shown on the phase badge / picker.
+    public var creed: String {
+        switch self {
+        case .cutting: "Defend the ceiling"
+        case .bulking: "Break the ceiling"
+        case .maintaining: "Hold at altitude"
+        }
+    }
+
+    public var symbolName: String {
+        switch self {
+        case .cutting: "arrow.down.right.circle.fill"
+        case .bulking: "arrow.up.right.circle.fill"
+        case .maintaining: "equal.circle.fill"
+        }
+    }
+}
+
 // MARK: - Goals
 
 public enum GoalKind: String, Codable, Sendable, CaseIterable {

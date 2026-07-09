@@ -74,6 +74,9 @@ public final class Workout {
     /// The Time Chamber realm this session runs in (ChamberBackground.rawValue),
     /// snapshotted from the routine at start; nil ⇒ the app's default realm.
     public var domainRaw: String? = nil
+    /// The training phase (TrainingPhase.rawValue) stamped at session start, so
+    /// scoring is reproducible on recompute; nil ⇒ maintaining. Migration-safe.
+    public var phaseRaw: String? = nil
     /// Loose gym reference, same pattern.
     public var gymID: UUID?
     public var gymNameSnapshot: String?
@@ -86,6 +89,9 @@ public final class Workout {
     public var exercises: [WorkoutExercise]
 
     public var isOngoing: Bool { endedAt == nil && deletedAt == nil }
+
+    /// The training lens this session was scored through (nil ⇒ maintaining).
+    public var phase: TrainingPhase { phaseRaw.flatMap(TrainingPhase.init) ?? .maintaining }
 
     public var orderedExercises: [WorkoutExercise] {
         exercises.filter { $0.deletedAt == nil }.sorted { $0.orderIndex < $1.orderIndex }

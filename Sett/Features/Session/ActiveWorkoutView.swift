@@ -487,10 +487,12 @@ struct ActiveWorkoutView: View {
     /// comparison per set — with a context-tuned motivational line.
     private func buildExerciseSummary(finished: WorkoutExercise, target: QueuePosition,
                                       exercises: [WorkoutExercise]) -> ExerciseSummaryData {
+        let phase = session.activeWorkout?.phase ?? .maintaining
         let ordered = finished.orderedSets
         let working = ordered.filter { !$0.isWarmup }
         let refs = session.previousSets(exerciseID: finished.exerciseID,
                                         excluding: session.activeWorkout?.id)
+        let refTopE1RM = refs.map { ProgressEngine.e1RMGrams(weightGrams: $0.weightGrams, reps: $0.reps) }.max() ?? 0
         var rows: [ExerciseSummaryData.SetRow] = []
         var topPower = 0
         var bestDelta: Int?
@@ -500,17 +502,28 @@ struct ActiveWorkoutView: View {
             let power = Int(Units.pounds(fromGrams: e1RM).rounded())
             topPower = max(topPower, power)
             var delta: Int?
+            var inBand = true
             if index < refs.count {
                 hasReference = true
                 let refE1RM = ProgressEngine.e1RMGrams(weightGrams: refs[index].weightGrams,
                                                        reps: refs[index].reps)
-                let d = Int(Units.pounds(fromGrams: e1RM - refE1RM).rounded())
-                delta = d
-                if bestDelta == nil || d > bestDelta! { bestDelta = d }
+                delta = Int(Units.pounds(fromGrams: e1RM - refE1RM).rounded())
+                if bestDelta == nil || delta! > bestDelta! { bestDelta = delta }
+                // In-band = not a genuine drop for this phase (so a cut dip isn't red).
+                let preview = SetReadback(weightDeltaGrams: nil, repsDelta: nil, isBaseline: false,
+                                          e1RMGrams: e1RM, referenceE1RMGrams: refE1RM,
+                                          e1RMDeltaGrams: e1RM - refE1RM, isPersonalBest: false)
+                inBand = LogOutcome.classify(readback: preview, phase: phase,
+                                             isWarmup: false, isCasual: false) != .dropped
             }
             rows.append(.init(number: index + 1, weightGrams: set.weightGrams,
-                              reps: set.reps, power: power, delta: delta))
+                              reps: set.reps, power: power, delta: delta, inBand: inBand))
         }
+        let retentionPct: Int? = {
+            guard phase == .cutting, refTopE1RM > 0 else { return nil }
+            let refTopLb = max(1, Int(Units.pounds(fromGrams: refTopE1RM).rounded()))
+            return Int((Double(topPower) / Double(refTopLb) * 100).rounded())
+        }()
         let quote = MotivationQuotes.line(for: session.motivationContext(),
                                           seed: abs(finished.orderIndex &+ finished.exerciseID.hashValue))
         let isFinal = target.exerciseIndex >= exercises.count
@@ -524,6 +537,8 @@ struct ActiveWorkoutView: View {
             topPower: topPower,
             bestDelta: bestDelta,
             hasReference: hasReference,
+            phase: phase,
+            retentionPct: retentionPct,
             quote: quote,
             nextLabel: nextLabel,
             isFinal: isFinal

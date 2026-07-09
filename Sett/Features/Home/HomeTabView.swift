@@ -98,6 +98,7 @@ struct HomeTabView: View {
             Text(greeting)
                 .font(.largeTitle.bold())
             Spacer()
+            phaseBadge
             if streakWeeks > 0 {
                 Label("\(streakWeeks) wk", systemImage: "flame.fill")
                     .font(.subheadline.weight(.semibold))
@@ -110,6 +111,34 @@ struct HomeTabView: View {
             }
         }
         .padding(.top, 8)
+    }
+
+    /// One-tap phase switch — the scoring lens every new workout is stamped with.
+    private var phaseBadge: some View {
+        Menu {
+            Picker("Training phase", selection: Binding(
+                get: { services.settings.phase },
+                set: { services.settings.trainingPhase = $0.rawValue
+                       services.settings.hasChosenPhase = true
+                       Haptics.selection() }
+            )) {
+                ForEach(TrainingPhase.allCases) { phase in
+                    Label(phase.title, systemImage: phase.symbolName).tag(phase)
+                }
+            }
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: services.settings.phase.symbolName)
+                Text(services.settings.phase.title.uppercased())
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .kerning(1)
+            }
+            .foregroundStyle(SettColor.heroCyan)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(SettColor.card, in: Capsule())
+        }
+        .accessibilityLabel("Training phase: \(services.settings.phase.title)")
     }
 
     private var greeting: String {

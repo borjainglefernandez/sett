@@ -6,7 +6,7 @@ import UIKit
 // The session used to be pure-black "incognito." It is now the Hyperbolic Time
 // Chamber reimagined as a cosmic training void: a deep-space backdrop, a scouter
 // HUD around the numbers, and an AURA that ignites and shifts color as you log —
-// the Super-Saiyan "transformation" ladder. Colour and motion live HERE (out in
+// the powering-up "transformation" ladder. Colour and motion live HERE (out in
 // the rest of the app the Dark Chamber rules still hold: gold = power level only).
 // Everything has a Reduce-Motion fallback; the numbers never lose legibility.
 
@@ -16,19 +16,20 @@ import UIKit
 /// reading. Drives the background tint, the aura ring, the ki field, and the
 /// transformation burst. Higher tiers = brighter, faster, more particles.
 enum AuraTier: Equatable {
-    case dormant   // resting / no reading yet — faint cyan embers
-    case base      // holding the line — steady ki cyan
-    case ascended  // beat the reference — gold ascension
-    case radiant   // personal best — white-gold zenith (the full transformation)
-    case fatigued  // output down — cool indigo, dimmed
-    case calm      // warm-up / off the record — quiet teal
+    case dormant   // resting / no reading yet — faint embers
+    case base      // holding the line (green win)
+    case ascended  // beat the reference — amber ascension
+    case radiant   // personal best — red overload (the full transformation)
+    case defended  // held under fire on a cut — warm amber, never cold
+    case fatigued  // output down — cool steel, dimmed
+    case calm      // warm-up / off the record / stalled — quiet
 
     /// Primary aura hue — the classic scouter ramp: green holding, amber when you
     /// beat last time, RED when you crack a ceiling (the scouter overloading).
     var color: Color {
         switch self {
         case .dormant, .base, .calm: TimeChamber.scouterGreen
-        case .ascended: TimeChamber.scouterAmber
+        case .ascended, .defended: TimeChamber.scouterAmber
         case .radiant: TimeChamber.scouterRed
         case .fatigued: TimeChamber.scouterSteel
         }
@@ -38,7 +39,7 @@ enum AuraTier: Equatable {
     var secondary: Color {
         switch self {
         case .dormant, .base, .calm: TimeChamber.scouterGreenPale
-        case .ascended: TimeChamber.scouterAmberPale
+        case .ascended, .defended: TimeChamber.scouterAmberPale
         case .radiant: TimeChamber.scouterRedPale
         case .fatigued: TimeChamber.iceBlue
         }
@@ -50,6 +51,7 @@ enum AuraTier: Equatable {
         case .dormant: 0.30
         case .calm: 0.38
         case .fatigued: 0.45
+        case .defended: 0.55
         case .base: 0.60
         case .ascended: 0.85
         case .radiant: 1.0
@@ -61,6 +63,7 @@ enum AuraTier: Equatable {
         switch self {
         case .dormant, .calm: 18
         case .fatigued: 22
+        case .defended: 30
         case .base: 34
         case .ascended: 58
         case .radiant: 84

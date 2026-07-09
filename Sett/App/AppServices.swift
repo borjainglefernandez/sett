@@ -44,6 +44,20 @@ public final class UserSettingsStore {
     public var chamberBackground: String {
         didSet { UserDefaults.standard.set(chamberBackground, forKey: "sett.chamberBackground") }
     }
+    /// The current training phase (`TrainingPhase.rawValue`) — the scoring lens
+    /// stamped onto each new workout.
+    public var trainingPhase: String {
+        didSet { UserDefaults.standard.set(trainingPhase, forKey: "sett.trainingPhase") }
+    }
+    /// Whether the user has picked a phase yet (drives the first-launch prompt).
+    public var hasChosenPhase: Bool {
+        didSet { UserDefaults.standard.set(hasChosenPhase, forKey: "sett.hasChosenPhase") }
+    }
+
+    /// Resolved current phase (defaults to maintaining).
+    public var phase: TrainingPhase {
+        TrainingPhase(rawValue: trainingPhase) ?? .maintaining
+    }
 
     public init() {
         let defaults = UserDefaults.standard
@@ -55,6 +69,8 @@ public final class UserSettingsStore {
         self.defaultRestSeconds = rest > 0 ? rest : 90
         self.hasOnboarded = defaults.bool(forKey: "sett.hasOnboarded")
         self.chamberBackground = defaults.string(forKey: "sett.chamberBackground") ?? "nebula"
+        self.trainingPhase = defaults.string(forKey: "sett.trainingPhase") ?? TrainingPhase.maintaining.rawValue
+        self.hasChosenPhase = defaults.bool(forKey: "sett.hasChosenPhase")
     }
 
     public func displayWeight(_ grams: Int) -> String {

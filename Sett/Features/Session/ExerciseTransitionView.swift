@@ -15,6 +15,8 @@ struct ExerciseSummaryData: Identifiable, Equatable {
     let topPower: Int           // best working-set e1RM, lb (unit-consistent)
     let bestDelta: Int?         // best set's Δ PWR vs last week (nil = no reference)
     let hasReference: Bool
+    let phase: TrainingPhase
+    let retentionPct: Int?      // top set as % of last week's (for the cut header)
     let quote: String
     let nextLabel: String       // next exercise name, or "" when this was the last
     let isFinal: Bool
@@ -26,6 +28,9 @@ struct ExerciseSummaryData: Identifiable, Equatable {
         let reps: Int
         let power: Int          // this set's e1RM, lb
         let delta: Int?         // vs last week's set at the same slot (lb)
+        /// This set held or beat the phase's success band (so a dip inside the cut
+        /// band is NOT drawn as a red loss).
+        let inBand: Bool
     }
 }
 
@@ -118,7 +123,8 @@ struct ExerciseTransitionView: View {
         }
     }
 
-    /// Top power reading + the best set's improvement over last week.
+    /// Top power reading + a phase-appropriate comparison to last week (retention
+    /// on a cut; best-set improvement otherwise).
     private var headline: some View {
         HStack(spacing: 8) {
             SettSigil(size: 13, color: tier.color)
@@ -126,10 +132,14 @@ struct ExerciseTransitionView: View {
                 .font(.system(size: 14, weight: .heavy, design: .monospaced))
                 .monospacedDigit()
                 .foregroundStyle(tier.color)
-            if let best = data.bestDelta {
-                Text("· \(deltaLabel(best)) VS LAST WEEK")
+            if data.phase == .cutting, let pct = data.retentionPct {
+                Text("· \(pct)% CEILING DEFENDED")
                     .font(.system(size: 11, weight: .bold, design: .monospaced))
-                    .foregroundStyle(deltaColor(best))
+                    .foregroundStyle(pct >= 94 ? SettColor.positive : tier.color)
+            } else if let best = data.bestDelta {
+                Text("· \(deltaLabel(best, inBand: false)) VS LAST WEEK")
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .foregroundStyle(deltaColor(best, inBand: false))
             }
         }
         .shadow(color: .black.opacity(0.6), radius: 3)
@@ -150,7 +160,8 @@ struct ExerciseTransitionView: View {
                     cell(liftText(row), .bone, leading: true)
                     cell("\(row.power)", .bone)
                     if let delta = row.delta {
-                        cell(deltaLabel(delta), nil, color: deltaColor(delta))
+                        cell(deltaLabel(delta, inBand: row.inBand), nil,
+                             color: deltaColor(delta, inBand: row.inBand))
                     } else {
                         cell("—", .iron)
                     }
@@ -181,13 +192,16 @@ struct ExerciseTransitionView: View {
         "\(WeightFormat.compactWithUnit(grams: row.weightGrams, unit: unit)) × \(row.reps)"
     }
 
-    private func deltaLabel(_ delta: Int) -> String {
+    private func deltaLabel(_ delta: Int, inBand: Bool) -> String {
         if delta > 0 { return "▲ +\(delta)" }
-        if delta < 0 { return "▼ \(delta)" }
-        return "= 0"
+        if delta == 0 { return "= 0" }
+        // A dip that stayed inside the phase's success band is "held", not a loss.
+        return inBand ? "◇ held" : "▼ \(delta)"
     }
 
-    private func deltaColor(_ delta: Int) -> Color {
-        delta > 0 ? SettColor.positive : (delta < 0 ? SettColor.negative : SettColor.ash)
+    private func deltaColor(_ delta: Int, inBand: Bool) -> Color {
+        if delta > 0 { return SettColor.positive }
+        if delta == 0 { return SettColor.ash }
+        return inBand ? TimeChamber.teal : SettColor.negative
     }
 }

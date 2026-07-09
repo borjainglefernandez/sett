@@ -12,7 +12,7 @@ struct OnboardingView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private enum Page: Int, Hashable, CaseIterable {
-        case invite, signIn, units, oura, rival
+        case invite, signIn, units, phase, oura, rival
     }
 
     @State private var page: Page = .invite
@@ -24,6 +24,7 @@ struct OnboardingView: View {
             invitePage.tag(Page.invite)
             signInPage.tag(Page.signIn)
             unitsPage.tag(Page.units)
+            phasePage.tag(Page.phase)
             ouraPage.tag(Page.oura)
             rivalPage.tag(Page.rival)
         }
@@ -46,7 +47,7 @@ struct OnboardingView: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
-            TextField("SAIYAN-XXXXXX", text: $inviteCode)
+            TextField("CHAMBER-XXXXXX", text: $inviteCode)
                 .font(.system(.title3, design: .monospaced))
                 .multilineTextAlignment(.center)
                 .textInputAutocapitalization(.characters)
@@ -140,7 +141,7 @@ struct OnboardingView: View {
                 .multilineTextAlignment(.center)
             Spacer()
             continueButton("Continue") {
-                advance(to: .oura)
+                advance(to: .phase)
             }
         }
         .padding(24)
@@ -148,6 +149,71 @@ struct OnboardingView: View {
             services.settings.incrementGrams = newUnit.defaultIncrementGrams
             Haptics.selection()
         }
+    }
+
+    // MARK: Page 3b — training phase
+
+    private var phasePage: some View {
+        VStack(spacing: 20) {
+            Spacer()
+            Image(systemName: "target")
+                .font(.system(size: 44))
+                .foregroundStyle(Aura.cyan)
+            Text("What are you training for?")
+                .font(.title2.bold())
+                .multilineTextAlignment(.center)
+            Text("This sets how the Scanner scores you — you can switch anytime.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            VStack(spacing: 10) {
+                ForEach(TrainingPhase.allCases) { phase in
+                    phaseChoice(phase)
+                }
+            }
+            Spacer()
+            continueButton("Continue", enabled: services.settings.hasChosenPhase) {
+                advance(to: .oura)
+            }
+        }
+        .padding(24)
+    }
+
+    private func phaseChoice(_ phase: TrainingPhase) -> some View {
+        let selected = services.settings.hasChosenPhase && services.settings.phase == phase
+        return Button {
+            services.settings.trainingPhase = phase.rawValue
+            services.settings.hasChosenPhase = true
+            Haptics.selection()
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: phase.symbolName)
+                    .font(.title2)
+                    .foregroundStyle(selected ? SettColor.heroCyan : SettColor.ash)
+                    .frame(width: 32)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(phase.title)
+                        .font(.headline)
+                        .foregroundStyle(SettColor.bone)
+                    Text(phase.creed)
+                        .font(.footnote)
+                        .foregroundStyle(SettColor.ash)
+                }
+                Spacer()
+                if selected {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(SettColor.heroCyan)
+                }
+            }
+            .padding(14)
+            .background(SettColor.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(selected ? SettColor.heroCyan : SettColor.cardBorder,
+                                  lineWidth: selected ? 2 : 1)
+            }
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: Page 4 — Oura pitch

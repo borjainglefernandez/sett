@@ -95,17 +95,24 @@ struct SetPlayerView: View {
     /// The aura tier for the CURRENT input, scored against last session's set at
     /// this slot and the all-time prior best — computed in-memory from the cached
     /// `reference`, so it updates instantly as the numbers change (no DB fetch).
+    /// The training lens this session scores through (cut/bulk/maintain).
+    private var activePhase: TrainingPhase { session.activeWorkout?.phase ?? .maintaining }
+
     private var liveTier: AuraTier {
         if isWarmup { return .calm }
         guard let ref = reference else { return .base }
         let e1RM = ProgressEngine.e1RMGrams(weightGrams: displayedWeightGrams, reps: displayedReps)
-        if ref.priorBestE1RMGrams > 0, e1RM > ref.priorBestE1RMGrams { return .radiant }
-        guard ref.hasReference, let rw = ref.weightGrams, let rr = ref.reps else { return .base }
-        let refE1RM = ProgressEngine.e1RMGrams(weightGrams: rw, reps: rr)
-        let delta = e1RM - refE1RM
-        if delta > 0 { return .ascended }
-        if delta == 0 { return .base }
-        return .fatigued
+        let isPB = ref.priorBestE1RMGrams > 0 && e1RM > ref.priorBestE1RMGrams
+        let refE1RM: Int? = (ref.hasReference && ref.weightGrams != nil && ref.reps != nil)
+            ? ProgressEngine.e1RMGrams(weightGrams: ref.weightGrams!, reps: ref.reps!) : nil
+        // Reuse the real classifier so the LIVE aura matches the logged verdict.
+        let preview = SetReadback(weightDeltaGrams: nil, repsDelta: nil,
+                                  isBaseline: refE1RM == nil,
+                                  e1RMGrams: e1RM, referenceE1RMGrams: refE1RM,
+                                  e1RMDeltaGrams: refE1RM.map { e1RM - $0 },
+                                  isPersonalBest: isPB)
+        return LogOutcome.classify(readback: preview, phase: activePhase,
+                                   isWarmup: false, isCasual: false).auraTier
     }
 
     // MARK: Acquisition (scanline sweep + deterministic digit scramble)
@@ -546,7 +553,8 @@ struct SetPlayerView: View {
         let isCasual = session.activeWorkout?.isCasual ?? false
         let readback = session.readback(for: workoutExercise, slot: index,
                                         weightGrams: weightGrams, reps: reps)
-        let outcome = LogOutcome.classify(readback: readback,
+        let phase = activePhase
+        let outcome = LogOutcome.classify(readback: readback, phase: phase,
                                           isWarmup: isWarmup, isCasual: isCasual)
 
         session.logSet(on: workoutExercise, weightGrams: weightGrams, reps: reps,
@@ -560,13 +568,19 @@ struct SetPlayerView: View {
         let message = ScannerMessages.line(for: outcome, loggedSetCount: loggedSetCount)
         session.lastReadback = LoggedReadback(weightGrams: weightGrams, reps: reps,
                                               readback: readback, outcome: outcome,
-                                              message: message)
+                                              message: message, phase: phase)
 
         let e1RMLb = Int(Units.pounds(fromGrams: readback.e1RMGrams).rounded())
         switch outcome {
         case .personalBest, .beat:
             let gainLb = Int(Units.pounds(fromGrams: readback.e1RMDeltaGrams ?? 0).rounded())
             combatText?.emit("+\(gainLb.formatted()) PWR", crit: outcome.isCrit)
+        case .held:
+            combatText?.emit("HELD", crit: false)
+        case .heldUnderFire:
+            combatText?.emit(phase == .cutting ? "DEFENDED" : "HELD", crit: false)
+        case .stalled:
+            combatText?.emit("PUSH", crit: false)
         default:
             combatText?.emit("OUTPUT \(e1RMLb.formatted())", crit: false)
         }

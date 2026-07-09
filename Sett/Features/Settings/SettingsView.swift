@@ -39,6 +39,30 @@ struct SettingsView: View {
                 .listRowSeparatorTint(SettColor.cardBorder)
 
                 Section {
+                    Picker("Phase", selection: phaseBinding) {
+                        ForEach(TrainingPhase.allCases) { phase in
+                            Text(phase.title).tag(phase)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    HStack(spacing: 8) {
+                        Image(systemName: settings.phase.symbolName)
+                            .foregroundStyle(SettColor.heroCyan)
+                        Text(settings.phase.creed)
+                            .font(.system(.footnote, design: .rounded).weight(.medium))
+                            .foregroundStyle(SettColor.bone)
+                    }
+                } header: {
+                    sectionHeader("TRAINING PHASE")
+                } footer: {
+                    Text(phaseFooter)
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(SettColor.iron)
+                }
+                .listRowBackground(SettColor.card)
+                .listRowSeparatorTint(SettColor.cardBorder)
+
+                Section {
                     ChamberDomainStrip(selection: Binding(
                         get: { settings.chamberBackground },
                         set: { if let value = $0 { settings.chamberBackground = value } }
@@ -142,8 +166,27 @@ struct SettingsView: View {
         "\(services.settings.defaultRestSeconds) s"
     }
 
+    private var phaseBinding: Binding<TrainingPhase> {
+        Binding(
+            get: { services.settings.phase },
+            set: {
+                services.settings.trainingPhase = $0.rawValue
+                services.settings.hasChosenPhase = true
+                Haptics.selection()
+            }
+        )
+    }
+
+    private var phaseFooter: String {
+        switch services.settings.phase {
+        case .cutting: "On a cut, holding your ceiling IS the win — a small dip is the toll for getting lean, not a failure. We track pound-for-pound so relative power can still climb."
+        case .bulking: "Fueled to grow — every session pushes for more. A flat set is a nudge to add a rep, not a loss."
+        case .maintaining: "Holding at altitude — steady strength is the target, and the flat line is a win."
+        }
+    }
+
     private var inviteMessage: String {
-        "Join me on sett — my invite code is SAIYAN-XXXXXX"
+        "Join me on sett — my invite code is CHAMBER-XXXXXX"
     }
 
     private var versionText: String {

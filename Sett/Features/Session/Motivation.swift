@@ -10,6 +10,7 @@ enum MotivationContext {
     case lowSleep   // ran on little sleep
     case offDay     // readiness down, or this session is underperforming
     case comeback   // first session back after a long layoff
+    case cutting    // training in a deficit — celebrate retention, not just growth
 }
 
 /// Deterministic quote pools (never `.random` — selection is seeded so the same
@@ -64,12 +65,26 @@ enum MotivationQuotes {
         "You're not behind — you're reloading. Rebuild the streak.",
     ]
 
+    /// Training in a deficit — hold the ceiling, climb pound-for-pound. A dip is
+    /// the toll for getting lean, never a failure.
+    static let cutting: [String] = [
+        "LIGHTER FRAME, SAME FIRE. The scouter still flags you as a threat.",
+        "You held the ceiling on an empty tank. That reading counts double.",
+        "Mass fell, power didn't — pound-for-pound, you just ascended.",
+        "A dip in the cut is toll paid on the road to lean, not ground lost.",
+        "Fuel runs low; output holds. THAT is discipline wearing a number.",
+        "Defend the line. Steel doesn't rust because the plates got lighter.",
+        "The bar stayed put while your bodyweight walked off. Math favors you.",
+        "Every held rep in a deficit is armor you keep when the tanks refill.",
+    ]
+
     private static func pool(for context: MotivationContext) -> [String] {
         switch context {
         case .push: push
         case .lowSleep: lowSleep
         case .offDay: offDay
         case .comeback: comeback
+        case .cutting: cutting
         }
     }
 
