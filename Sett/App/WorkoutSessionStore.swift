@@ -255,6 +255,62 @@ public final class WorkoutSessionStore {
         return best
     }
 
+    // MARK: Motivation context (between-exercise quotes)
+
+    /// Reads the lifter's situation for a between-exercise line: a long layoff,
+    /// short sleep, low readiness, or a session that's grinding — else just push.
+    func motivationContext() -> MotivationContext {
+        guard let workout = activeWorkout else { return .push }
+
+        // Comeback: > 14 days since the last finished, non-casual workout.
+        if let prevEnd = lastFinishedWorkoutEnd(before: workout),
+           workout.startedAt.timeIntervalSince(prevEnd) > 14 * 86_400 {
+            return .comeback
+        }
+
+        // Sleep / readiness (Oura), keyed to the workout's day.
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = .current
+        let key = cal.dateKey(for: workout.startedAt)
+        var descriptor = FetchDescriptor<SleepDay>(predicate: #Predicate { $0.dateKey == key })
+        descriptor.fetchLimit = 1
+        if let sleep = (try? context.fetch(descriptor))?.first {
+            if let score = sleep.sleepScore, score < 60 { return .lowSleep }
+            if let readiness = sleep.readinessScore, readiness < 60 { return .offDay }
+        }
+
+        // The session itself is grinding — majority of scored sets down vs last time.
+        if isSessionUnderperforming(workout) { return .offDay }
+        return .push
+    }
+
+    private func lastFinishedWorkoutEnd(before workout: Workout) -> Date? {
+        let descriptor = FetchDescriptor<Workout>(sortBy: [SortDescriptor(\.startedAt, order: .reverse)])
+        let workouts = (try? context.fetch(descriptor)) ?? []
+        for candidate in workouts
+        where candidate.deletedAt == nil && candidate.endedAt != nil && !candidate.isCasual
+            && candidate.id != workout.id && candidate.startedAt < workout.startedAt {
+            return candidate.endedAt
+        }
+        return nil
+    }
+
+    private func isSessionUnderperforming(_ workout: Workout) -> Bool {
+        var scored = 0, down = 0
+        for we in workout.orderedExercises {
+            let refs = previousSets(exerciseID: we.exerciseID, excluding: workout.id)
+            let working = we.orderedSets.filter { !$0.isWarmup }
+            for (index, set) in working.enumerated() where index < refs.count {
+                scored += 1
+                let e1RM = ProgressEngine.e1RMGrams(weightGrams: set.weightGrams, reps: set.reps)
+                let refE1RM = ProgressEngine.e1RMGrams(weightGrams: refs[index].weightGrams,
+                                                       reps: refs[index].reps)
+                if e1RM < refE1RM { down += 1 }
+            }
+        }
+        return scored >= 2 && down * 2 > scored
+    }
+
     // MARK: Off the record (item 6 — casual toggle)
 
     /// Flip the active workout's casual flag under the standard sync rules. Turning

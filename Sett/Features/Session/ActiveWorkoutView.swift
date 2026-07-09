@@ -31,6 +31,9 @@ struct ActiveWorkoutView: View {
     /// Zero-rest logs have no REST overlay to carry the readback, so it shows as a
     /// 1.2 s in-place overlay on the SET state before the cursor advances (item 4).
     @State private var isShowingInPlaceReadback = false
+    /// Set when finishing an exercise: shows the recap + motivation transition
+    /// INSTEAD of a rest countdown (no rest between different exercises).
+    @State private var exerciseSummary: ExerciseSummaryData?
 
     /// Ambient aura tier for the shared cosmic backdrop — normally `.base`, jumps
     /// to the last log's outcome tier so the whole chamber glows with the reading,
@@ -115,10 +118,9 @@ struct ActiveWorkoutView: View {
             ZStack {
                 pane(workout, exercises: exercises, position: position)
                     .transition(paneTransition)
-                    // Hide the SET pane while resting so the REST overlay's
-                    // translucent scrim reveals only the cosmic backdrop, not the
-                    // scouter behind it.
-                    .opacity(isRestOverlayVisible ? 0 : 1)
+                    // Hide the SET pane while resting or between exercises so the
+                    // overlay's translucent scrim reveals only the cosmic backdrop.
+                    .opacity(isRestOverlayVisible || exerciseSummary != nil ? 0 : 1)
                 if isShowingInPlaceReadback, let readback = session.lastReadback {
                     ReadbackBlock(payload: readback, unit: services.settings.unit)
                         .padding(.horizontal, 24)
@@ -129,9 +131,18 @@ struct ActiveWorkoutView: View {
                                     onAdvance: { advanceCursor() })
                         .transition(.opacity)
                 }
+                if let summary = exerciseSummary {
+                    ExerciseTransitionView(data: summary, unit: services.settings.unit,
+                                           tier: ambientTier) {
+                        exerciseSummary = nil
+                        advanceCursor()
+                    }
+                    .transition(.opacity)
+                }
             }
             .animation(.easeInOut(duration: 0.25), value: isRestOverlayVisible)
             .animation(.easeInOut(duration: 0.2), value: isShowingInPlaceReadback)
+            .animation(.easeInOut(duration: 0.3), value: exerciseSummary?.id)
             // `.gesture` (not `.simultaneousGesture`): descendant button taps take
             // priority, so LOG SET / numerals / chips receive taps; only a clearly
             // horizontal drag (gated in swipeGesture) falls through to page the queue.
@@ -429,6 +440,20 @@ struct ActiveWorkoutView: View {
             withAnimation(.easeInOut(duration: 1.2)) { ambientTier = .base }
         }
 
+        // Finished this exercise? Then the next set is a DIFFERENT exercise — no rest
+        // between them. Show a quick recap + a motivational line instead.
+        if let workout = session.activeWorkout {
+            let exercises = workout.orderedExercises
+            let pos = clamped(cursor, in: exercises)
+            let target = advanceTarget(from: pos, in: exercises)
+            if target.exerciseIndex != pos.exerciseIndex {
+                session.skipRest()   // cancel the auto-started rest
+                exerciseSummary = buildExerciseSummary(finished: exercise, target: target,
+                                                       exercises: exercises)
+                return
+            }
+        }
+
         let restSeconds = exercise.restSeconds ?? services.settings.defaultRestSeconds
         if restSeconds <= 0 {
             // No REST overlay: clear the zero-length timer logSet started, then run
@@ -448,6 +473,28 @@ struct ActiveWorkoutView: View {
                 isHoldingRestOverlay = false
             }
         }
+    }
+
+    /// Recap of the exercise just finished + a context-tuned motivational line.
+    private func buildExerciseSummary(finished: WorkoutExercise, target: QueuePosition,
+                                      exercises: [WorkoutExercise]) -> ExerciseSummaryData {
+        let ordered = finished.orderedSets
+        let working = ordered.filter { !$0.isWarmup }
+        let topGrams = working
+            .map { ProgressEngine.e1RMGrams(weightGrams: $0.weightGrams, reps: $0.reps) }
+            .max() ?? 0
+        let quote = MotivationQuotes.line(for: session.motivationContext(),
+                                          seed: abs(finished.orderIndex &+ finished.exerciseID.hashValue))
+        let isFinal = target.exerciseIndex >= exercises.count
+        let nextLabel = isFinal ? "" : exercises[target.exerciseIndex].exerciseNameSnapshot
+        return ExerciseSummaryData(
+            exerciseName: finished.exerciseNameSnapshot,
+            sets: ordered.map { .init(weightGrams: $0.weightGrams, reps: $0.reps, isWarmup: $0.isWarmup) },
+            topPower: Int(Units.pounds(fromGrams: topGrams).rounded()),
+            quote: quote,
+            nextLabel: nextLabel,
+            isFinal: isFinal
+        )
     }
 
     // MARK: NEXT preview (REST overlay caption)
@@ -472,7 +519,7 @@ struct ActiveWorkoutView: View {
     private func swipeGesture(_ exercises: [WorkoutExercise]) -> some Gesture {
         DragGesture(minimumDistance: 25)
             .onEnded { value in
-                guard session.restEndsAt == nil else { return }
+                guard session.restEndsAt == nil, exerciseSummary == nil else { return }
                 let dx = value.translation.width
                 let dy = value.translation.height
                 guard abs(dx) > 60, abs(dx) > abs(dy) * 1.4 else { return }

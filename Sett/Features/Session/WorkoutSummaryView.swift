@@ -95,7 +95,7 @@ struct WorkoutSummaryView: View {
             // leaking through. Non-interactive (CrackOverlay ignores hits), so
             // tap-to-skip keeps working underneath.
             if showCrack {
-                CrackOverlay(progress: crackProgress)
+                CrackOverlay(progress: crackProgress, color: summaryTier.color)
                     .opacity(crackOpacity)
                     .ignoresSafeArea()
             }

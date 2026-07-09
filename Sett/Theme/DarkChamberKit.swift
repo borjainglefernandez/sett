@@ -690,12 +690,16 @@ public extension View {
 /// cracks, just the simple flash.
 public struct CrackOverlay: View {
     let progress: Double
+    /// The light leaking through the fissures — gold by default; the Time Chamber
+    /// ceiling break passes the scouter overload red.
+    var color: Color = SettColor.saiyanGold
 
     @State private var flash: Double = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    public init(progress: Double) {
+    public init(progress: Double, color: Color = SettColor.saiyanGold) {
         self.progress = progress
+        self.color = color
     }
 
     public var body: some View {
@@ -737,10 +741,10 @@ public struct CrackOverlay: View {
                         path.addLine(to: point)
                     }
                 }
-                // Light leaks through the fissure: gold glow under, bone core over.
+                // Light leaks through the fissure: coloured glow under, bone core over.
                 context.drawLayer { layer in
                     layer.addFilter(.blur(radius: 2.5))
-                    layer.stroke(path, with: .color(SettColor.saiyanGold.opacity(0.7)), lineWidth: 2.5)
+                    layer.stroke(path, with: .color(color.opacity(0.7)), lineWidth: 2.5)
                 }
                 context.stroke(path, with: .color(SettColor.bone), lineWidth: 1.2)
             }
