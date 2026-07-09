@@ -71,7 +71,7 @@ struct RoutineEditorView: View {
             .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
 
             Section {
-                ChamberDomainStrip(selection: $domainRaw, allowsDefault: true)
+                ChamberDomainStrip(selection: $domainRaw, allowsDefault: true, circular: true)
             } header: {
                 sectionLabel("REALM")
             }
