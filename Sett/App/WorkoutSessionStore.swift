@@ -11,6 +11,9 @@ public final class WorkoutSessionStore {
     public private(set) var activeWorkout: Workout?
     public var isPresentingWorkout: Bool = false
     public var completedSummary: WorkoutSummaryData?
+    /// A SwiftData write on the session path failed — drives a diegetic "write fault"
+    /// banner so a lost set is visible, not silent. Cleared by the next good save.
+    public private(set) var saveFault = false
     /// The most recent log's readback payload, staged at LOG time for the REST
     /// overlay (or the zero-rest in-place overlay) to render. Internal — its type
     /// lives in the app module, not SettCore.
@@ -55,7 +58,7 @@ public final class WorkoutSessionStore {
             }
             ongoing.updatedAt = .now
             ongoing.needsPush = true
-            try? context.save()
+            persist()
             return
         }
         activeWorkout = ongoing
@@ -69,7 +72,7 @@ public final class WorkoutSessionStore {
         let workout = Workout(title: title)
         workout.phaseRaw = settings.trainingPhase
         context.insert(workout)
-        try? context.save()
+        persist()
         activeWorkout = workout
         isPresentingWorkout = true
         Haptics.medium()
@@ -91,7 +94,7 @@ public final class WorkoutSessionStore {
             workoutExercise.workout = workout
             context.insert(workoutExercise)
         }
-        try? context.save()
+        persist()
         activeWorkout = workout
         isPresentingWorkout = true
         Haptics.medium()
@@ -421,7 +424,7 @@ public final class WorkoutSessionStore {
                                 periodEnd: workout.endedAt ?? .now, workoutID: workout.id,
                                 body: commentary, source: source)
         context.insert(insight)
-        try? context.save()
+        persist()
 
         let duration = Int((workout.endedAt ?? .now).timeIntervalSince(workout.startedAt)) - workout.pausedSeconds
 
@@ -478,8 +481,29 @@ public final class WorkoutSessionStore {
     private func touchAndSave(_ workout: Workout) {
         workout.updatedAt = .now
         workout.needsPush = true
-        try? context.save()
+        persist()
     }
+
+    /// Save, surfacing failures instead of swallowing them (the old `try? save()` let
+    /// the rest timer start and the ceremony play while nothing persisted). Sets
+    /// `saveFault` on failure; a good save clears it. The banner offers a retry.
+    @discardableResult
+    private func persist() -> Bool {
+        do {
+            try context.save()
+            if saveFault { saveFault = false }
+            return true
+        } catch {
+            #if DEBUG
+            print("⚠️ SwiftData save failed:", error)
+            #endif
+            saveFault = true
+            return false
+        }
+    }
+
+    /// Retry the last failed save (from the write-fault banner).
+    public func retrySave() { persist() }
 }
 
 // MARK: - Set readback payload

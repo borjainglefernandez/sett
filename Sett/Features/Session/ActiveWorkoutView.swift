@@ -157,7 +157,39 @@ struct ActiveWorkoutView: View {
             // simultaneousGesture here let the DragGesture swallow every tap.
             .gesture(swipeGesture(exercises))
         }
+        .overlay(alignment: .top) {
+            if session.saveFault { writeFaultBanner }
+        }
+        .animation(.snappy, value: session.saveFault)
         .onAppear { initializeCursorIfNeeded(exercises) }
+    }
+
+    /// Surfaced instead of silently losing data when a session write fails — the old
+    /// `try? save()` let the ceremony play over an unsaved set.
+    private var writeFaultBanner: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(TimeChamber.scouterRed)
+            Text("SCANNER WRITE FAULT — last change may not be saved")
+                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                .foregroundStyle(SettColor.bone)
+                .lineLimit(2)
+            Spacer(minLength: 8)
+            Button("RETRY") { session.retrySave() }
+                .font(.system(size: 11, weight: .heavy, design: .monospaced))
+                .foregroundStyle(TimeChamber.scouterRed)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background {
+            Capsule().fill(TimeChamber.void.opacity(0.92))
+            Capsule().strokeBorder(TimeChamber.scouterRed.opacity(0.6), lineWidth: 1)
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+        .transition(.move(edge: .top).combined(with: .opacity))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Write fault. Your last change may not be saved. Double-tap retry to save again.")
     }
 
     private var paneTransition: AnyTransition {
