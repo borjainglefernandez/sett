@@ -133,7 +133,7 @@ struct RoutineEditorView: View {
             }
         }
         .sheet(isPresented: $isShowingExercisePicker, onDismiss: { replacingDraftID = nil }) {
-            RoutineExercisePickerSheet { exercise in
+            RoutineExercisePickerSheet(allowsMultiple: replacingDraftID == nil) { exercise in
                 pick(exercise)
             }
         }

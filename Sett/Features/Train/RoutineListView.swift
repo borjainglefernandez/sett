@@ -34,6 +34,13 @@ struct RoutineListView: View {
                                     Label("Delete", systemImage: "trash")
                                 }
                             }
+                            .contextMenu {
+                                Button {
+                                    duplicate(routine)
+                                } label: {
+                                    Label("Duplicate", systemImage: "plus.square.on.square")
+                                }
+                            }
                     }
                 }
                 .listStyle(.plain)
@@ -152,6 +159,36 @@ struct RoutineListView: View {
         }
         .buttonStyle(.borderless)
         .accessibilityLabel("Start \(routine.name)")
+    }
+
+    // MARK: Duplicate (Push A → Push B without rebuilding)
+
+    /// Clone a routine and its exercises. The copy starts UNSCHEDULED (days cleared)
+    /// so two routines never fight over "today"; the user assigns days when ready.
+    private func duplicate(_ routine: Routine) {
+        let now = Date.now
+        let nextOrder = (routines.map(\.orderIndex).max() ?? -1) + 1
+        let copy = Routine(name: "\(routine.name) copy", daysOfWeekMask: 0,
+                           orderIndex: nextOrder, now: now)
+        copy.domainRaw = routine.domainRaw
+        copy.notes = routine.notes
+        modelContext.insert(copy)
+        for source in routine.orderedExercises {
+            guard let exercise = catalogExercise(id: source.exerciseID) else { continue }
+            let re = RoutineExercise(orderIndex: source.orderIndex, exercise: exercise,
+                                     setCount: source.plannedSetCount, now: now)
+            re.restSeconds = source.restSeconds
+            re.routine = copy
+            modelContext.insert(re)
+        }
+        try? modelContext.save()
+        Haptics.success()
+    }
+
+    private func catalogExercise(id: UUID) -> Exercise? {
+        var descriptor = FetchDescriptor<Exercise>(predicate: #Predicate { $0.id == id })
+        descriptor.fetchLimit = 1
+        return (try? modelContext.fetch(descriptor))?.first
     }
 
     // MARK: Soft delete (tombstone; history is untouched — loose refs only)

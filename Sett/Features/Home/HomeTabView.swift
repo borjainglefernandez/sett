@@ -185,6 +185,9 @@ struct HomeTabView: View {
 
     private var startCard: some View {
         VStack(spacing: 12) {
+            if services.progression.snapshot?.restedBonusActive == true {
+                restedChip
+            }
             Button {
                 if let routine = todaysRoutine {
                     session.start(routine: routine)
@@ -206,6 +209,22 @@ struct HomeTabView: View {
                 .font(.subheadline.weight(.semibold))
             }
         }
+    }
+
+    /// The rested-bonus mechanic was computed but never shown. Surface it: a full
+    /// rest day arms a 1.25× XP surge on the next workout. Cyan (ki), not gold.
+    private var restedChip: some View {
+        Label("SURGE ARMED · 1.25× XP", systemImage: "bolt.fill")
+            .font(.system(size: 11, weight: .bold, design: .monospaced))
+            .kerning(1)
+            .foregroundStyle(SettColor.heroCyan)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background {
+                Capsule().fill(SettColor.heroCyan.opacity(0.12))
+                Capsule().strokeBorder(SettColor.heroCyan.opacity(0.4), lineWidth: 1)
+            }
+            .accessibilityLabel("Rested surge armed. Your next workout earns 1.25 times XP.")
     }
 
     private var firstRunCard: some View {

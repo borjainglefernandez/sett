@@ -522,6 +522,18 @@ struct WorkoutSummaryView: View {
                     starButton(star)
                 }
             }
+            // One adjustable VoiceOver control (swipe up/down = ±½ star) instead of
+            // five onTapGesture halves VoiceOver can't reach.
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Workout rating")
+            .accessibilityValue(ratingValueText)
+            .accessibilityAdjustableAction { direction in
+                switch direction {
+                case .increment: setRating(halfStars: min(10, ratingHalfStars + 1))
+                case .decrement: setRating(halfStars: max(0, ratingHalfStars - 1))
+                @unknown default: break
+                }
+            }
         }
     }
 
@@ -541,7 +553,12 @@ struct WorkoutSummaryView: View {
                         .onTapGesture { setRating(halfStars: star * 2) }
                 }
             }
-            .accessibilityLabel("Rate \(star) stars")
+            .accessibilityHidden(true)   // the parent row is the adjustable a11y element
+    }
+
+    private var ratingValueText: String {
+        ratingHalfStars == 0 ? "Not rated"
+            : "\(String(format: "%.1f", Double(ratingHalfStars) / 2)) stars"
     }
 
     private func starSymbol(_ star: Int) -> String {
