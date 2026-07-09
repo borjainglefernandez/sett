@@ -2,6 +2,7 @@ import Foundation
 import SwiftData
 import SwiftUI
 import SettCore
+@preconcurrency import ActivityKit
 
 /// Owns the active workout lifecycle: start, log, rest timer, finish → Power Scan summary.
 /// Presented app-wide as a fullScreenCover so it survives tab switches.
@@ -26,6 +27,8 @@ public final class WorkoutSessionStore {
     /// The label carried into the rest-complete notification, kept so a ±time
     /// adjustment can reschedule the alert without the caller re-supplying it.
     private var restNextUp: String?
+    /// The live rest countdown on the Dynamic Island + lock screen (stage 2).
+    private var restActivity: Activity<RestActivityAttributes>?
 
     private let container: ModelContainer
     private let settings: UserSettingsStore
@@ -157,7 +160,29 @@ public final class WorkoutSessionStore {
         // rest ends. Auth is requested lazily here so the prompt lands in context.
         RestNotifier.requestAuthorizationIfNeeded()
         RestNotifier.scheduleRestComplete(at: ends, nextUp: nextUp)
+        startOrUpdateRestActivity(endsAt: ends, nextUp: nextUp)
         Haptics.rigid()
+    }
+
+    // MARK: Rest Live Activity (Dynamic Island + lock-screen countdown)
+
+    private func startOrUpdateRestActivity(endsAt: Date, nextUp: String?) {
+        guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
+        let content = ActivityContent(
+            state: RestActivityAttributes.ContentState(endsAt: endsAt, nextUp: nextUp),
+            staleDate: endsAt)
+        if let activity = restActivity {
+            Task { await activity.update(content) }
+        } else {
+            let attributes = RestActivityAttributes(workoutTitle: activeWorkout?.title ?? "Workout")
+            restActivity = try? Activity.request(attributes: attributes, content: content)
+        }
+    }
+
+    private func endRestActivity() {
+        guard let activity = restActivity else { return }
+        restActivity = nil
+        Task { await activity.end(nil, dismissalPolicy: .immediate) }
     }
 
     public func adjustRest(by delta: Int) {
@@ -166,12 +191,14 @@ public final class WorkoutSessionStore {
         restEndsAt = newEnds
         restTotalSeconds = max(0, restTotalSeconds + delta)
         RestNotifier.scheduleRestComplete(at: newEnds, nextUp: restNextUp)   // reschedule
+        startOrUpdateRestActivity(endsAt: newEnds, nextUp: restNextUp)
         Haptics.selection()
     }
 
     public func skipRest() {
         restEndsAt = nil
         RestNotifier.cancelRestComplete()
+        endRestActivity()
     }
 
     // MARK: Set Player queue support (v3.1 — all derived, nothing stored)
@@ -494,6 +521,7 @@ public final class WorkoutSessionStore {
         isPresentingWorkout = false
         restEndsAt = nil
         RestNotifier.cancelRestComplete()
+        endRestActivity()
         Haptics.success()
     }
 
@@ -505,6 +533,7 @@ public final class WorkoutSessionStore {
         isPresentingWorkout = false
         restEndsAt = nil
         RestNotifier.cancelRestComplete()
+        endRestActivity()
     }
 
     // MARK: Helpers

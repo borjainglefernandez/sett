@@ -13,8 +13,10 @@ targets:
     platform: iOS
     sources:
       - path: Sett
+      - path: Shared
     dependencies:
       - package: SettCore
+      - target: SettWidgets
     entitlements:
       path: Sett/Sett.entitlements
       properties:
@@ -31,6 +33,27 @@ targets:
         NSSupportsLiveActivities: true
         CFBundleURLTypes:
           - CFBundleURLSchemes: [sett]
+    settings:
+      base:
+        SWIFT_VERSION: "6.0"
+        TARGETED_DEVICE_FAMILY: "1"
+        SWIFT_STRICT_CONCURRENCY: minimal
+        CODE_SIGN_STYLE: Automatic
+        CURRENT_PROJECT_VERSION: 1
+        MARKETING_VERSION: 0.1.0
+        GENERATE_INFOPLIST_FILE: false
+  SettWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: SettWidgets
+      - path: Shared
+    info:
+      path: SettWidgets/Info.plist
+      properties:
+        CFBundleDisplayName: Sett Rest
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
     settings:
       base:
         SWIFT_VERSION: "6.0"
