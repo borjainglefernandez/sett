@@ -56,7 +56,7 @@ struct SetPlayerView: View {
     @State private var acquireTask: Task<Void, Never>?
 
     /// The app's largest numeral — the one fixed-size exception granted to the player.
-    @ScaledMetric(relativeTo: .largeTitle) private var numeralSize: CGFloat = 44
+    @ScaledMetric(relativeTo: .largeTitle) private var numeralSize: CGFloat = 40
 
     var body: some View {
         VStack(spacing: 0) {
@@ -226,80 +226,83 @@ struct SetPlayerView: View {
         (isGhost && !isCommitted) ? 0.72 : 1
     }
 
+    /// The scouter reads top-to-bottom: WEIGHT + its picker up top, the PWR power
+    /// level dead centre, REPS + its picker at the bottom.
     private var scouterCore: some View {
-        VStack(spacing: 16) {
-            ZStack {
-                ScouterLens(tier: isCommitted ? .base : liveTier, burstToken: burstToken)
-                    .frame(width: 344, height: 208)
-                    .animation(.easeInOut(duration: 0.35), value: liveTier)
-                reading
-                    .padding(.horizontal, 40)
+        ZStack {
+            ScouterLens(tier: isCommitted ? .base : liveTier, burstToken: burstToken)
+                .frame(width: 344, height: 236)
+                .animation(.easeInOut(duration: 0.35), value: liveTier)
+            VStack(spacing: 0) {
+                fieldRow(text: WeightFormat.compact(grams: displayedWeightGrams,
+                                                    unit: services.settings.unit),
+                         unit: services.settings.unit.symbol.uppercased(),
+                         field: .weight, salt: 0x11, accessibility: "Weight")
+                Spacer(minLength: 6)
+                powerReadout
+                Spacer(minLength: 6)
+                fieldRow(text: "\(displayedReps)", unit: "REPS",
+                         field: .reps, salt: 0x77, accessibility: "Reps")
             }
-            if !isCommitted {
-                adjustRow
-            }
+            .frame(width: 300, height: 150)
+            .overlay { acquisitionScanline }
         }
-        .frame(minHeight: 240)
+        .frame(minHeight: 248)
     }
 
-    /// Inside the lens: the scouter POWER readout (live e1RM) above weight × reps.
-    /// The two numbers sit on ONE baseline at ONE size so they never misalign.
-    private var reading: some View {
-        VStack(spacing: 5) {
-            powerReadout
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                numeralText(WeightFormat.compact(grams: displayedWeightGrams,
-                                                 unit: services.settings.unit),
-                            field: .weight, salt: 0x11, accessibility: "Weight")
-                unitCaption(services.settings.unit.symbol.uppercased())
-                Text("×")
-                    .font(.system(size: numeralSize * 0.5, weight: .heavy, design: .monospaced))
-                    .foregroundStyle(SettColor.ash)
-                    .padding(.horizontal, 3)
-                    .accessibilityHidden(true)
-                numeralText("\(displayedReps)", field: .reps, salt: 0x77, accessibility: "Reps")
-                unitCaption("REPS")
+    /// One half of the scouter: the big number (tap to type) flanked by − / + circle
+    /// pickers, with the unit inline. Committed slots show the number alone.
+    private func fieldRow(text: String, unit: String, field: NumericField,
+                          salt: UInt64, accessibility: String) -> some View {
+        HStack(spacing: 12) {
+            if !isCommitted { stepCircle("minus") { step(field, -1) } }
+            HStack(alignment: .firstTextBaseline, spacing: 5) {
+                numeralText(text, field: field, salt: salt, accessibility: accessibility)
+                unitCaption(unit)
             }
-            .lineLimit(1)
-        }
-        .overlay {
-            if acquiring {
-                GeometryReader { proxy in
-                    Rectangle()
-                        .fill(liveTier.secondary)
-                        .frame(height: 1.5)
-                        .offset(y: scanProgress * proxy.size.height)
-                        .opacity(0.85)
-                        .shadow(color: liveTier.color, radius: 4)
-                }
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
-            }
+            if !isCommitted { stepCircle("plus") { step(field, 1) } }
         }
     }
 
-    /// The scouter's power reading — this set's estimated output (e1RM) in the
-    /// display unit, rolling as you dial the numbers, in the live scouter hue.
+    @ViewBuilder
+    private var acquisitionScanline: some View {
+        if acquiring {
+            GeometryReader { proxy in
+                Rectangle()
+                    .fill(liveTier.secondary)
+                    .frame(height: 1.5)
+                    .offset(y: scanProgress * proxy.size.height)
+                    .opacity(0.85)
+                    .shadow(color: liveTier.color, radius: 4)
+            }
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+        }
+    }
+
+    /// The scouter's power reading — this set's estimated output (e1RM), dead centre
+    /// of the lens, rolling as you dial the numbers, in the live scouter hue.
     private var powerReadout: some View {
-        HStack(spacing: 5) {
-            SettSigil(size: 11, color: liveTier.color)
+        HStack(spacing: 6) {
+            SettSigil(size: 13, color: liveTier.color)
             Text("PWR")
-                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .font(.system(size: 11, weight: .bold, design: .monospaced))
                 .kerning(2)
-                .foregroundStyle(liveTier.color.opacity(0.8))
+                .foregroundStyle(liveTier.color.opacity(0.85))
             Text("\(powerReading)")
-                .font(.system(size: 15, weight: .heavy, design: .monospaced))
+                .font(.system(size: 20, weight: .heavy, design: .monospaced))
                 .monospacedDigit()
                 .foregroundStyle(liveTier.color)
                 .contentTransition(.numericText(value: Double(powerReading)))
         }
-        .shadow(color: .black.opacity(0.8), radius: 3)
+        .shadow(color: .black.opacity(0.85), radius: 3)
         .animation(.snappy(duration: 0.2), value: powerReading)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Power reading \(powerReading)")
     }
 
-    /// This set's e1RM ("output") in the display unit — the scouter power level.
+    /// This set's e1RM ("output") — from canonical grams, so it's the SAME number
+    /// for the same lift regardless of the display unit.
     private var powerReading: Int {
         let grams = ProgressEngine.e1RMGrams(weightGrams: displayedWeightGrams, reps: displayedReps)
         return Int(Units.pounds(fromGrams: grams).rounded())
@@ -323,7 +326,7 @@ struct SetPlayerView: View {
             .opacity(numeralOpacity)
             .shadow(color: goldFlash ? SettColor.saiyanGold.opacity(0.7) : .black.opacity(0.85),
                     radius: goldFlash ? 12 : 6)
-            .fixedSize()  // both numbers stay full-size → shared baseline, no squeeze
+            .fixedSize()
             .contentShape(Rectangle())
             .onTapGesture {
                 guard !isCommitted else { return }
@@ -335,43 +338,17 @@ struct SetPlayerView: View {
             .accessibilityHint(isCommitted ? "" : "Tap to type, or use the − / + buttons")
     }
 
-    // MARK: Adjust (always-visible − / + steppers under the scouter)
-
-    private var adjustRow: some View {
-        HStack(spacing: 14) {
-            fieldStepper(label: services.settings.unit.symbol.uppercased(), field: .weight)
-            fieldStepper(label: "REPS", field: .reps)
-        }
-        .transition(.opacity)
-    }
-
-    private func fieldStepper(label: String, field: NumericField) -> some View {
-        HStack(spacing: 8) {
-            stepButton("minus") { step(field, -1) }
-            Text(label)
-                .font(.system(size: 10, weight: .bold, design: .monospaced))
-                .kerning(1)
-                .foregroundStyle(SettColor.ash)
-                .frame(minWidth: 30)
-            stepButton("plus") { step(field, 1) }
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 5)
-        .background {
-            Capsule().fill(TimeChamber.void.opacity(0.6))
-            Capsule().strokeBorder(liveTier.color.opacity(0.32), lineWidth: 1)
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel(field == .weight ? "Adjust weight" : "Adjust reps")
-    }
-
-    private func stepButton(_ symbol: String, action: @escaping () -> Void) -> some View {
+    private func stepCircle(_ symbol: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.subheadline.weight(.bold))
                 .foregroundStyle(SettColor.bone)
-                .frame(width: 40, height: 34)
-                .contentShape(Rectangle())
+                .frame(width: 36, height: 36)
+                .background {
+                    Circle().fill(TimeChamber.void.opacity(0.55))
+                    Circle().strokeBorder(liveTier.color.opacity(0.45), lineWidth: 1)
+                }
+                .contentShape(Circle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(symbol == "minus" ? "Decrease" : "Increase")

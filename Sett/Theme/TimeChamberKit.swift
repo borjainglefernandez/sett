@@ -380,7 +380,7 @@ struct AuraRing: View {
 /// it on log. Fills its frame — place numerals over it in a ZStack.
 struct ScouterLensShape: Shape {
     func path(in rect: CGRect) -> Path {
-        let cut = rect.height * 0.40   // angled left/right ends
+        let cut = rect.height * 0.32   // angled left/right ends (roomier top/bottom)
         var p = Path()
         p.move(to: CGPoint(x: rect.minX + cut, y: rect.minY))
         p.addLine(to: CGPoint(x: rect.maxX - cut, y: rect.minY))
@@ -504,7 +504,8 @@ struct ScouterLens: View {
             .padding(.vertical, 18)
     }
 
-    /// A blinking lock light + "LOCK" caption — the scouter has a target.
+    /// A blinking lock light + "LOCK" caption at the top of the lens — the scouter
+    /// has a target. Top-centre so it always sits fully inside the glass.
     private var lockIndicator: some View {
         GeometryReader { geo in
             HStack(spacing: 4) {
@@ -518,7 +519,7 @@ struct ScouterLens: View {
                     .kerning(1)
                     .foregroundStyle(tier.color.opacity(0.85))
             }
-            .position(x: geo.size.width - 66, y: 30)
+            .position(x: geo.size.width / 2, y: 16)
         }
     }
 
