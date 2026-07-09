@@ -240,10 +240,11 @@ struct SetPlayerView: View {
 
     private var header: some View {
         VStack(spacing: 8) {
-            Text(overCeiling ? "CEILING BROKEN" : "TARGET ACQUIRED")
+            Text(headerStatus)
                 .font(.system(size: 10, weight: .bold, design: .monospaced))
                 .kerning(3)
-                .foregroundStyle(overCeiling ? TimeChamber.scouterRed : liveTier.color)
+                .foregroundStyle(overCeiling ? TimeChamber.scouterRed
+                                 : (aheadOfLast ? SettColor.positive : liveTier.color))
                 .accessibilityHidden(true)
             HStack(spacing: 9) {
                 if let equipment = exercise?.equipment {
@@ -289,7 +290,8 @@ struct SetPlayerView: View {
     private var scouterCore: some View {
         ZStack {
             ScouterLens(tier: isCommitted ? .base : liveTier, burstToken: burstToken,
-                        charge: liveCharge, ceilingFrac: ceilingFrac, atCeiling: overCeiling,
+                        charge: liveCharge, ceilingFrac: ceilingFrac, lastWeekFrac: isCommitted ? -1 : lastWeekFrac,
+                        atCeiling: overCeiling,
                         acquiring: acquiring,
                         overload: isCommitted ? 0 : liveOverload, crackSeed: acquireSeed,
                         milestoneTick: milestoneTick, milestoneGlow: Double(milestoneGlow))
@@ -423,14 +425,29 @@ struct SetPlayerView: View {
                     .contentTransition(.numericText(value: Double(powerReading)))
                     .scaleEffect(pwrKick * pwrSurge * (1 + milestoneGlow * 0.05))
                     .brightness(Double(milestoneGlow) * 0.35)
+                // The NEAR win: your gain vs last week, the thing you actually move
+                // most sessions — a first-class number, not just an aura tint.
+                if let delta = vsLastDelta, delta != 0 {
+                    Text("\(delta > 0 ? "▲+" : (activePhase == .cutting ? "▽" : "▼"))\(abs(delta))")
+                        .font(.system(size: 13, weight: .heavy, design: .monospaced))
+                        .monospacedDigit()
+                        .foregroundStyle(vsLastColor)
+                        .contentTransition(.numericText(value: Double(delta)))
+                }
             }
-            // The ceiling you're chasing — a dim ghost that flips to OVER (in the
-            // live hue) the instant you dial past it.
+            // Two targets: LAST week (near, the gauge marker + the delta above) and the
+            // all-time CEILING (far) — the dim ghost that flips to OVER when you break it.
             if ceilingPwr > 0 {
-                Text(overCeiling ? "OVER \(ceilingPwr)" : "CEILING \(ceilingPwr)")
-                    .font(.system(size: 9, weight: .bold, design: .monospaced))
-                    .kerning(1.5)
-                    .foregroundStyle(overCeiling ? liveTier.color : SettColor.ash)
+                HStack(spacing: 8) {
+                    if lastWeekPwr > 0 {
+                        Text("LAST \(lastWeekPwr)")
+                            .foregroundStyle(SettColor.bone.opacity(0.7))
+                    }
+                    Text(overCeiling ? "OVER \(ceilingPwr)" : "CEILING \(ceilingPwr)")
+                        .foregroundStyle(overCeiling ? liveTier.color : SettColor.ash)
+                }
+                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .kerning(1.5)
             }
         }
         .shadow(color: .black.opacity(0.85), radius: 3)
@@ -465,6 +482,47 @@ struct SetPlayerView: View {
 
     /// Where the ceiling notch sits on the gauge (−1 = no ceiling → no notch).
     private var ceilingFrac: Double { ceilingPwr > 0 ? 0.82 : -1 }
+
+    /// Last week's output at this slot as a power level (0 = none) — the NEAR target.
+    /// Most sessions you beat THIS long before the all-time ceiling, so it's a
+    /// first-class marker + delta, not just an aura tint.
+    private var lastWeekPwr: Int {
+        guard let ref = reference, ref.hasReference,
+              let w = ref.weightGrams, let r = ref.reps else { return 0 }
+        return Int(Units.pounds(fromGrams: ProgressEngine.e1RMGrams(weightGrams: effectiveGrams(w), reps: r)).rounded())
+    }
+
+    /// This set's gain vs last week (nil when there's no reference at this slot).
+    private var vsLastDelta: Int? {
+        guard lastWeekPwr > 0 else { return nil }
+        return powerReading - lastWeekPwr
+    }
+
+    /// Where last week's reading sits on the gauge (−1 = none). Same 0.82 compression
+    /// as the ceiling, so LAST sits at or before the CEILING notch.
+    private var lastWeekFrac: Double {
+        guard ceilingPwr > 0, lastWeekPwr > 0 else { return -1 }
+        return min(0.82, Double(lastWeekPwr) / Double(ceilingPwr) * 0.82)
+    }
+
+    /// Colour for the vs-last delta: green ahead; on a cut a lighter week is neutral
+    /// (never penalised); otherwise a muted red behind.
+    private var vsLastColor: Color {
+        if overCeiling { return liveTier.color }   // subsumed by the red ceiling break — stay one colour
+        guard let d = vsLastDelta else { return SettColor.ash }
+        if d > 0 { return SettColor.positive }
+        if d < 0 { return activePhase == .cutting ? SettColor.ash : SettColor.negative }
+        return TimeChamber.teal
+    }
+
+    /// Ahead of last week but not yet at the all-time ceiling — the common weekly win.
+    private var aheadOfLast: Bool { !overCeiling && !isWarmup && (vsLastDelta ?? 0) > 0 }
+
+    private var headerStatus: String {
+        if overCeiling { return "CEILING BROKEN" }
+        if aheadOfLast { return "AHEAD OF LAST" }
+        return "TARGET ACQUIRED"
+    }
 
     /// Last session's output at this slot as a power level (0 = none) — the base of the
     /// phase "held" band; the glass only strains above this, toward the ceiling.

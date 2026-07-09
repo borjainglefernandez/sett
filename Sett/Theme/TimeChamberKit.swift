@@ -522,6 +522,9 @@ struct ScouterLens: View {
     var charge: Double = 1
     /// Where the ceiling notch sits on the strip (0…1); −1 hides it.
     var ceilingFrac: Double = -1
+    /// Where LAST WEEK's reading sits on the strip (0…1); −1 hides it. A nearer,
+    /// shorter marker than the ceiling — the target you actually beat most sessions.
+    var lastWeekFrac: Double = -1
     /// True when the live reading has crossed the ceiling — flips LOCK→PEAK and
     /// holds the indicator solid (the scouter has locked onto a record).
     var atCeiling: Bool = false
@@ -746,16 +749,19 @@ struct ScouterLens: View {
     /// watch the reading march toward it and, on a PR, sweep visibly past. Pure state.
     private func tickStrip(in size: CGSize) -> some View {
         let ceilingIndex = ceilingFrac >= 0 ? min(17, max(0, Int((ceilingFrac * 17).rounded()))) : -1
+        let lastIndex = lastWeekFrac >= 0 ? min(17, max(0, Int((lastWeekFrac * 17).rounded()))) : -1
         return HStack(spacing: 5) {
             ForEach(0 ..< 18, id: \.self) { i in
                 let lit = Double(i) / 17 <= charge
                 let isCeiling = i == ceilingIndex
+                let isLast = i == lastIndex && i != ceilingIndex   // ceiling wins a tie
                 let isMilestone = i == milestoneTick && milestoneGlow > 0
                 Rectangle()
                     .fill(isCeiling ? tier.secondary
+                          : isLast ? SettColor.bone                // last-week: a neutral bone marker
                           : (isMilestone ? tier.secondary : tier.color.opacity(lit ? 0.9 : 0.16)))
-                    .frame(width: isCeiling ? 2 : 1.5,
-                           height: (isCeiling ? 11 : (lit ? 8 : 4)) + (isMilestone ? CGFloat(5 * milestoneGlow) : 0))
+                    .frame(width: (isCeiling || isLast) ? 2 : 1.5,
+                           height: (isCeiling ? 11 : (isLast ? 9 : (lit ? 8 : 4))) + (isMilestone ? CGFloat(5 * milestoneGlow) : 0))
                     .brightness(isMilestone ? milestoneGlow * 0.3 : 0)
             }
         }

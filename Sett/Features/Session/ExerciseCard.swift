@@ -27,21 +27,19 @@ struct ExerciseCard: View {
             header
             machineSetupRow
             if isExpanded {
-                let logged = workoutExercise.orderedSets
-                let references = referenceSets
-                if !logged.isEmpty {
-                    VStack(spacing: 8) {
-                        ForEach(Array(logged.enumerated()), id: \.element.id) { index, set in
-                            confirmedChip(set: set,
-                                          reference: index < references.count ? references[index] : nil,
-                                          number: index + 1)
+                let pairs = setPairs
+                if !pairs.isEmpty {
+                    VStack(spacing: 6) {
+                        ForEach(Array(pairs.enumerated()), id: \.element.set.id) { index, pair in
+                            setRow(set: pair.set, reference: pair.reference, number: index + 1)
                         }
                     }
                 }
                 SetEntryRow(workoutExercise: workoutExercise)
             }
         }
-        .settCard()
+        .padding(14)
+        .background(cardBackground)
         .onAppear {
             if exercise == nil {
                 exercise = session.fetchExercise(id: workoutExercise.exerciseID)
@@ -60,35 +58,90 @@ struct ExerciseCard: View {
         }
     }
 
-    /// Same-exercise sets from the most recent finished workout, paired by index.
+    private var phase: TrainingPhase { session.activeWorkout?.phase ?? .maintaining }
+    private var unit: WeightUnit { services.settings.unit }
+
+    /// Same-exercise sets from the most recent finished workout (warm-ups already
+    /// excluded), paired to THIS session's working sets by working-set ordinal so a
+    /// warm-up never shifts a set onto the wrong reference.
     private var referenceSets: [SetEntry] {
         session.previousSets(exerciseID: workoutExercise.exerciseID,
                              excluding: workoutExercise.workout?.id)
     }
 
-    // MARK: Header
+    /// Each logged set paired with last week's set at the same working-set ordinal.
+    private var setPairs: [(set: SetEntry, reference: SetEntry?)] {
+        let refs = referenceSets
+        var working = 0
+        return workoutExercise.orderedSets.map { set in
+            if set.isWarmup { return (set, nil) }
+            let ref = working < refs.count ? refs[working] : nil
+            working += 1
+            return (set, ref)
+        }
+    }
+
+    // MARK: Effective output + per-set scoring (matches the scouter's green→amber→red)
+
+    private func e1RM(_ set: SetEntry) -> Int {
+        let eff = LoadMath.effectiveWeightGrams(
+            addedGrams: set.weightGrams, equipment: workoutExercise.equipment,
+            bodyweightGrams: workoutExercise.workout?.bodyweightGrams)
+        return ProgressEngine.e1RMGrams(weightGrams: eff, reps: set.reps)
+    }
+    private func pwr(_ set: SetEntry) -> Int { Int(Units.pounds(fromGrams: e1RM(set)).rounded()) }
+
+    /// This set's outcome tier vs last week — reusing the real classifier so a row's
+    /// colour is the SAME green/amber/red the scouter showed when it was logged.
+    private func setTier(_ set: SetEntry, reference: SetEntry?) -> AuraTier {
+        if set.isWarmup { return .calm }
+        guard let reference else { return .base }
+        let e = e1RM(set), r = e1RM(reference)
+        let preview = SetReadback(weightDeltaGrams: nil, repsDelta: nil, isBaseline: false,
+                                  e1RMGrams: e, referenceE1RMGrams: r,
+                                  e1RMDeltaGrams: e - r, isPersonalBest: false)
+        return LogOutcome.classify(readback: preview, phase: phase,
+                                   isWarmup: false, isCasual: false).auraTier
+    }
+
+    /// Rank the tiers so the card rim + top-PWR read the exercise's BEST set.
+    private static let tierRank: [AuraTier] = [.fatigued, .calm, .base, .defended, .ascended, .radiant]
+    private var topTier: AuraTier {
+        setPairs.filter { !$0.set.isWarmup }
+            .map { setTier($0.set, reference: $0.reference) }
+            .max { (Self.tierRank.firstIndex(of: $0) ?? 0) < (Self.tierRank.firstIndex(of: $1) ?? 0) } ?? .base
+    }
+    private var topPwr: Int {
+        workoutExercise.orderedSets.filter { !$0.isWarmup }.map { pwr($0) }.max() ?? 0
+    }
+
+    // MARK: Header — scouter language (equipment icon + mono name + top-PWR)
 
     private var header: some View {
         Button {
             withAnimation(.snappy) { isExpanded.toggle() }
         } label: {
             HStack(spacing: 12) {
-                Image(systemName: workoutExercise.muscle.sessionSymbolName)
-                    .font(.title3)
-                    .foregroundStyle(SettColor.heroCyan)
+                Image(systemName: workoutExercise.equipment.symbolName)
+                    .font(.system(.title3, design: .rounded).weight(.semibold))
+                    .foregroundStyle(topTier.color)
                     .frame(width: 28)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(workoutExercise.exerciseNameSnapshot)
-                        .font(.headline)
-                        .foregroundStyle(.primary)
-                    Text(setsLoggedLabel)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(workoutExercise.exerciseNameSnapshot.uppercased())
+                        .font(.system(.subheadline, design: .monospaced).weight(.bold))
+                        .kerning(1)
+                        .foregroundStyle(SettColor.bone)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                    Text(statLine)
+                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                        .kerning(1)
+                        .foregroundStyle(SettColor.ash)
                 }
                 Spacer()
                 Image(systemName: "chevron.down")
                     .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(SettColor.iron)
                     .rotationEffect(.degrees(isExpanded ? 0 : -90))
             }
             .contentShape(Rectangle())
@@ -96,9 +149,22 @@ struct ExerciseCard: View {
         .buttonStyle(.plain)
     }
 
-    private var setsLoggedLabel: String {
-        let count = workoutExercise.orderedSets.count
-        return count == 1 ? "1 set logged" : "\(count) sets logged"
+    private var statLine: String {
+        let count = workoutExercise.orderedSets.filter { !$0.isWarmup }.count
+        let sets = "\(count) SET\(count == 1 ? "" : "S")"
+        return topPwr > 0 ? "\(sets) · TOP \(topPwr) PWR" : sets
+    }
+
+    /// Void card with a scouter rim + corner reticle, tinted by the best set's tier.
+    private var cardBackground: some View {
+        let shape = RoundedRectangle(cornerRadius: 16, style: .continuous)
+        return ZStack {
+            shape.fill(TimeChamber.void.opacity(0.72))
+            shape.strokeBorder(topTier.color.opacity(0.32), lineWidth: 1)
+                .shadow(color: topTier.color.opacity(0.25), radius: 7)
+            CornerTicksShape(length: 6, inset: 7)
+                .stroke(topTier.color.opacity(0.4), lineWidth: 1)
+        }
     }
 
     // MARK: Machine setup (Exercise.instructions — what do I set the machine to)
@@ -144,43 +210,67 @@ struct ExerciseCard: View {
         }
     }
 
-    // MARK: Confirmed set chips
+    // MARK: Set row — a scouter reading per logged set
 
-    /// Tapping a committed chip opens the shared note sheet on that set.
-    private func confirmedChip(set: SetEntry, reference: SetEntry?, number: Int) -> some View {
-        Button {
+    /// A committed set rendered in the scouter language: a tier-coloured index badge +
+    /// a left accent bar, the lift, its PWR, and the vs-last delta (▲/◇/▼). Tap edits
+    /// the note; long-press fixes the values or deletes.
+    private func setRow(set: SetEntry, reference: SetEntry?, number: Int) -> some View {
+        let tier = setTier(set, reference: reference)
+        let delta = (set.isWarmup || reference == nil) ? nil : pwr(set) - pwr(reference!)
+        let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
+        return Button {
             editingSet = set
         } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(SettColor.heroCyan)
+            HStack(spacing: 10) {
                 Text("\(number)")
-                    .font(.footnote)
+                    .font(.system(size: 12, weight: .heavy, design: .monospaced))
                     .monospacedDigit()
-                    .foregroundStyle(.secondary)
-                Text("\(WeightFormat.compactWithUnit(grams: set.weightGrams, unit: services.settings.unit)) × \(set.reps)")
-                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(set.isWarmup ? SettColor.ash : tier.color)
+                    .frame(width: 24, height: 24)
+                    .background { Circle().strokeBorder(tier.color.opacity(0.5), lineWidth: 1) }
+                Text("\(WeightFormat.compactWithUnit(grams: set.weightGrams, unit: unit)) × \(set.reps)")
+                    .font(.system(size: 15, weight: .bold, design: .monospaced))
                     .monospacedDigit()
-                    .foregroundStyle(chipNumeralColor(set: set, reference: reference))
+                    .foregroundStyle(SettColor.bone)
                 if set.notes?.isEmpty == false {
-                    Image(systemName: "note.text")
+                    Image(systemName: "text.alignleft")
                         .font(.caption2)
                         .foregroundStyle(SettColor.ash)
                 }
-                Spacer()
-                if let chip = netChip(set: set, reference: reference) {
-                    Text(chip.text)
-                        .font(.system(.subheadline, design: .rounded, weight: .bold))
+                Spacer(minLength: 6)
+                if set.isWarmup {
+                    Text("WARM-UP")
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .kerning(1)
+                        .foregroundStyle(SettColor.ash)
+                } else {
+                    Text("PWR \(pwr(set))")
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
                         .monospacedDigit()
-                        .foregroundStyle(chip.color)
+                        .foregroundStyle(tier.color.opacity(0.9))
+                    if let delta, delta != 0 {
+                        Text(deltaLabel(delta))
+                            .font(.system(size: 11, weight: .heavy, design: .monospaced))
+                            .monospacedDigit()
+                            .foregroundStyle(deltaColor(delta))
+                    }
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(SettColor.cardNested, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .contentShape(Rectangle())
+            .padding(.horizontal, 10)
+            .padding(.vertical, 9)
+            .background {
+                shape.fill(TimeChamber.void.opacity(0.5))
+                HStack {
+                    RoundedRectangle(cornerRadius: 2).fill(tier.color).frame(width: 3)
+                    Spacer()
+                }
+                shape.strokeBorder(tier.color.opacity(0.18), lineWidth: 1)
+            }
+            .contentShape(shape)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("Set \(number), \(WeightFormat.compactWithUnit(grams: set.weightGrams, unit: unit)) by \(set.reps)")
         .accessibilityHint("Edits this set's note. Long-press to fix weight and reps or delete.")
         .contextMenu {
             Button {
@@ -195,6 +285,16 @@ struct ExerciseCard: View {
         }
     }
 
+    /// vs-last PWR delta: ▲ ahead, ▼ behind (◇ on a cut — a dip is not a failure).
+    private func deltaLabel(_ d: Int) -> String {
+        if d > 0 { return "▲+\(d)" }
+        return phase == .cutting ? "◇\(d)" : "▼\(d)"
+    }
+    private func deltaColor(_ d: Int) -> Color {
+        if d > 0 { return SettColor.positive }
+        return phase == .cutting ? TimeChamber.teal : SettColor.negative
+    }
+
     /// Mutation rules: updatedAt + needsPush + save on the SetEntry itself.
     private func saveNote(_ note: String?, on set: SetEntry) {
         set.notes = note
@@ -204,41 +304,6 @@ struct ExerciseCard: View {
         Haptics.selection()
     }
 
-    /// Numeral color as data (the FighterZ combo-counter rule): bone on pace,
-    /// GOLD when this set beat its reference set's weight (a reward pulse —
-    /// one of the few sanctioned gold uses), dim blue for warmups. No extra chips.
-    private func chipNumeralColor(set: SetEntry, reference: SetEntry?) -> Color {
-        if set.isWarmup { return SettColor.heroCyan.opacity(0.6) }
-        if let reference, set.weightGrams > reference.weightGrams {
-            return SettColor.saiyanGold
-        }
-        return SettColor.bone
-    }
-
-    private struct NetChip {
-        let text: String
-        let color: Color
-    }
-
-    /// Weight delta first ("+5 lb"); same weight → reps delta ("+2 reps"); identical → no chip.
-    /// No reference at this index (fresh territory) → no chip.
-    private func netChip(set: SetEntry, reference: SetEntry?) -> NetChip? {
-        guard let reference else { return nil }
-        let unit = services.settings.unit
-        let weightDelta = set.weightGrams - reference.weightGrams
-        if weightDelta != 0 {
-            let sign = weightDelta > 0 ? "+" : "−"
-            return NetChip(text: "\(sign)\(WeightFormat.compactWithUnit(grams: abs(weightDelta), unit: unit))",
-                           color: weightDelta > 0 ? SettColor.positive : SettColor.negative)
-        }
-        let repsDelta = set.reps - reference.reps
-        if repsDelta != 0 {
-            let sign = repsDelta > 0 ? "+" : "−"
-            return NetChip(text: "\(sign)\(abs(repsDelta)) reps",
-                           color: repsDelta > 0 ? SettColor.positive : SettColor.negative)
-        }
-        return nil
-    }
 }
 
 // MARK: - Set values edit sheet (fix a mis-logged weight / reps / warm-up)
