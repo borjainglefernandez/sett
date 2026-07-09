@@ -41,6 +41,9 @@ struct RoutineEditorView: View {
     @State private var drafts: [RoutineDraftExercise] = []
     /// One rest value applied to every exercise in the routine (QoL: a default rest).
     @State private var defaultRestSeconds = 90
+    /// The rest value the editor loaded with — lets save() tell an intentional rest
+    /// change (apply to all) from an untouched save (preserve each row's own rest).
+    @State private var loadedRestSeconds = 90
     @State private var isShowingExercisePicker = false
     /// When set, the picker replaces this draft instead of appending a new one.
     @State private var replacingDraftID: RoutineDraftExercise.ID?
@@ -411,6 +414,7 @@ struct RoutineEditorView: View {
         hasLoadedDraft = true
         guard let routine else {
             defaultRestSeconds = services.settings.defaultRestSeconds
+            loadedRestSeconds = defaultRestSeconds
             return
         }
         name = routine.name
@@ -431,6 +435,7 @@ struct RoutineEditorView: View {
         // Seed the default-rest control from the first override, else the app default.
         defaultRestSeconds = routine.orderedExercises.compactMap(\.restSeconds).first
             ?? services.settings.defaultRestSeconds
+        loadedRestSeconds = defaultRestSeconds
     }
 
     /// Fetch the catalog Exercise behind a loose `exerciseID` (equipment + machine
@@ -508,11 +513,17 @@ struct RoutineEditorView: View {
             re.updatedAt = now
             re.needsPush = true
         }
+        // Only push the routine default onto existing rows when the user actually
+        // CHANGED the rest control — otherwise preserve each exercise's own rest
+        // instead of flattening every row to one value on every save.
+        let restChanged = defaultRestSeconds != loadedRestSeconds
         for (index, draft) in drafts.enumerated() {
             if let existing = draft.existing {
                 var changed = false
                 if existing.orderIndex != index { existing.orderIndex = index; changed = true }
-                if existing.restSeconds != defaultRestSeconds { existing.restSeconds = defaultRestSeconds; changed = true }
+                if existing.restSeconds == nil || restChanged, existing.restSeconds != defaultRestSeconds {
+                    existing.restSeconds = defaultRestSeconds; changed = true
+                }
                 if existing.plannedSetCount != draft.setCount { existing.plannedSetCount = draft.setCount; changed = true }
                 if existing.exerciseID != draft.exerciseID {
                     existing.exerciseID = draft.exerciseID

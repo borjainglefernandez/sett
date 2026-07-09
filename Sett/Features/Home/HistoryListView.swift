@@ -138,7 +138,8 @@ struct HistoryListView: View {
                         .monospacedDigit()
                         .foregroundStyle(.secondary)
                     if !samples.isEmpty {
-                        netChip(ProgressEngine.workoutNet(samples: samples, workoutID: workout.id))
+                        netChip(ProgressEngine.workoutNet(samples: samples, workoutID: workout.id),
+                                phase: workout.phase)
                     }
                     if let count = badgeCounts[workout.id], count > 0 {
                         Label("\(count)", systemImage: "medal.fill")
@@ -159,8 +160,9 @@ struct HistoryListView: View {
         }
     }
 
-    /// Net vs previous same-exercise sessions: green up, red down, cyan NEW.
-    private func netChip(_ net: NetSummary) -> some View {
+    /// Net vs previous same-exercise sessions: green up, red down, cyan NEW. On a cut
+    /// workout a lighter session is expected — neutral ash, never red (the tenet).
+    private func netChip(_ net: NetSummary, phase: TrainingPhase) -> some View {
         Group {
             if net.isNew {
                 Text("NEW")
@@ -169,7 +171,8 @@ struct HistoryListView: View {
                     .padding(.vertical, 3)
                     .background(SettColor.heroCyan.opacity(0.15), in: Capsule())
             } else {
-                let color = net.volumeGrams >= 0 ? SettColor.positive : SettColor.negative
+                let negativeColor = phase == .cutting ? SettColor.ash : SettColor.negative
+                let color = net.volumeGrams >= 0 ? SettColor.positive : negativeColor
                 Text("\(net.volumeGrams >= 0 ? "+" : "")\(netDisplayValue(net.volumeGrams)) \(services.settings.unit.symbol)")
                     .foregroundStyle(color)
                     .padding(.horizontal, 8)

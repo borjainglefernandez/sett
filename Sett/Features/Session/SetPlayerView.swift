@@ -133,8 +133,9 @@ struct SetPlayerView: View {
     // MARK: Acquisition (scanline sweep + deterministic digit scramble)
 
     private var acquireSeed: UInt64 {
-        let base = UInt64(bitPattern: Int64(workoutExercise.exerciseID.hashValue))
-        return base &* 0x9E37_79B9_7F4A_7C15 &+ UInt64(bitPattern: Int64(slotIndex + 1))
+        // Stable across launches (exerciseID.hashValue is process-randomized) so the
+        // digit scramble + crack pattern for a given set are deterministic chrome.
+        workoutExercise.exerciseID.stableSeed64 &* 0x9E37_79B9_7F4A_7C15 &+ UInt64(slotIndex + 1)
     }
 
     /// Stable-per-slot seed for the inward ki-convergence ring, folded with `burstToken`
@@ -189,6 +190,15 @@ struct SetPlayerView: View {
     private var displayedReps: Int { committedSet?.reps ?? reps }
     private var isCommitted: Bool { committedSet != nil }
 
+    /// The reference index for THIS set: the count of non-warmup sets already logged
+    /// in this exercise. Previous-session references EXCLUDE warm-ups, so matching the
+    /// raw queue slot (which counts warm-ups) shifts every working set onto the wrong
+    /// reference — wrong ghost autofill and wrong crit/beat scoring. Align to the
+    /// working-set ordinal instead.
+    private var workingSlot: Int {
+        workoutExercise.orderedSets.filter { !$0.isWarmup }.count
+    }
+
     private func load() {
         if exercise == nil {
             exercise = session.fetchExercise(id: workoutExercise.exerciseID)
@@ -199,9 +209,9 @@ struct SetPlayerView: View {
             pendingSetting = committed.setting
             return
         }
-        let ref = session.slotReference(for: workoutExercise, slot: slotIndex)
+        let ref = session.slotReference(for: workoutExercise, slot: workingSlot)
         reference = ref
-        let ghost = session.ghostValues(for: workoutExercise, slot: slotIndex)
+        let ghost = session.ghostValues(for: workoutExercise, slot: workingSlot)
         weightGrams = ghost.weightGrams
         reps = ghost.reps
         isGhost = true
@@ -691,7 +701,10 @@ struct SetPlayerView: View {
     /// at the index it lands on. Celebration plays AFTER the write; the shell holds
     /// the REST transition for the gold flash.
     private func log() {
-        let index = workoutExercise.orderedSets.count
+        // Score against the reference at this WORKING-set ordinal (warm-ups excluded),
+        // matching previousSets — not the raw logged count, which warm-ups inflate.
+        // (A warm-up classifies as .warmup regardless, so its slot is immaterial.)
+        let index = workingSlot
         let isCasual = session.activeWorkout?.isCasual ?? false
         let readback = session.readback(for: workoutExercise, slot: index,
                                         weightGrams: weightGrams, reps: reps)

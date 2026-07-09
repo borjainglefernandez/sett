@@ -526,7 +526,7 @@ struct ActiveWorkoutView: View {
             return Int((Double(topPower) / Double(refTopLb) * 100).rounded())
         }()
         let quote = MotivationQuotes.line(for: session.motivationContext(),
-                                          seed: abs(finished.orderIndex &+ finished.exerciseID.hashValue))
+                                          seed: finished.orderIndex &+ finished.exerciseID.stableSeed)
         let isFinal = target.exerciseIndex >= exercises.count
         let nextLabel = isFinal ? "" : exercises[target.exerciseIndex].exerciseNameSnapshot
         let symbol = session.fetchExercise(id: finished.exerciseID)?.equipment.symbolName ?? "dumbbell.fill"

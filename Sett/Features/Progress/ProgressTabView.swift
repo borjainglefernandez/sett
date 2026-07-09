@@ -54,7 +54,8 @@ struct ProgressTabView: View {
                         chartsLockedCard
                     } else {
                         NetSummaryCard(samples: setSamples, period: period,
-                                       unit: unit, calendar: Self.isoCalendar)
+                                       unit: unit, calendar: Self.isoCalendar,
+                                       phase: services.settings.phase)
                         VolumeChartCard(samples: setSamples, period: period,
                                         unit: unit, calendar: Self.isoCalendar)
                         BodyweightCard(entries: bodyweightEntries, unit: unit)

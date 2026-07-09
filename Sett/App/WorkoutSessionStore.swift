@@ -38,13 +38,31 @@ public final class WorkoutSessionStore {
 
     private func resumeOngoingWorkoutIfAny() {
         let descriptor = FetchDescriptor<Workout>(predicate: #Predicate { $0.endedAt == nil && $0.deletedAt == nil })
-        if let ongoing = (try? context.fetch(descriptor))?.first {
-            activeWorkout = ongoing
-            isPresentingWorkout = true
+        guard let ongoing = (try? context.fetch(descriptor))?.first else { return }
+        // Abandoned? A workout with no activity for 6h+ was almost certainly left when
+        // the app was killed mid-session. Seal it at its last logged set (or discard if
+        // empty) instead of resuming a multi-day "session" that records a 72h duration.
+        let lastActivity = ongoing.orderedExercises.flatMap { $0.orderedSets }.map(\.completedAt).max()
+        let anchor = lastActivity ?? ongoing.startedAt
+        if Date.now.timeIntervalSince(anchor) > 6 * 3600 {
+            if lastActivity == nil {
+                ongoing.deletedAt = .now          // empty + abandoned → discard
+            } else {
+                ongoing.endedAt = anchor          // seal at the last real activity
+            }
+            ongoing.updatedAt = .now
+            ongoing.needsPush = true
+            try? context.save()
+            return
         }
+        activeWorkout = ongoing
+        isPresentingWorkout = true
     }
 
     public func quickStart(title: String = "Workout") {
+        // Never orphan an in-progress workout: if one is live, resume it rather than
+        // silently creating a second (which would vanish from every history query).
+        if activeWorkout != nil { isPresentingWorkout = true; Haptics.medium(); return }
         let workout = Workout(title: title)
         workout.phaseRaw = settings.trainingPhase
         context.insert(workout)
@@ -55,6 +73,7 @@ public final class WorkoutSessionStore {
     }
 
     public func start(routine: Routine) {
+        if activeWorkout != nil { isPresentingWorkout = true; Haptics.medium(); return }
         let workout = Workout(title: routine.name)
         workout.routineID = routine.id
         workout.routineNameSnapshot = routine.name

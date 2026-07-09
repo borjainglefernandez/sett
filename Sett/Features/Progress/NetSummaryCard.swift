@@ -9,6 +9,9 @@ struct NetSummaryCard: View {
     let period: Period
     let unit: WeightUnit
     let calendar: Calendar
+    /// The active training phase — on a cut, a negative net is neutral (retention),
+    /// never painted red (tenet: cutting is not penalized).
+    var phase: TrainingPhase = .maintaining
 
     private var net: NetSummary {
         ProgressEngine.netSummary(samples: samples, exerciseID: nil, period: period,
@@ -70,6 +73,7 @@ struct NetSummaryCard: View {
     }
 
     private func color(for value: Int) -> Color {
-        value >= 0 ? SettColor.positive : SettColor.negative
+        if value >= 0 { return SettColor.positive }
+        return phase == .cutting ? SettColor.ash : SettColor.negative
     }
 }

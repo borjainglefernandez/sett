@@ -205,6 +205,7 @@ private struct BurstReadyButton: View {
 /// voice. Level-up haptic on entry.
 struct BurstCeremonyView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppServices.self) private var services
 
     @Query private var weekWorkouts: [Workout]
     @Query private var weekAwards: [BadgeAward]
@@ -237,10 +238,12 @@ struct BurstCeremonyView: View {
         }
     }
 
-    /// Week volume (weight × reps) in whole pounds.
-    private var tonnageLb: Int {
+    /// Week volume (weight × reps) in the user's display unit — kg users saw an LB
+    /// number 2.2× too large on their most celebratory screen.
+    private var unitSymbol: String { services.settings.unit.symbol.uppercased() }
+    private var tonnageDisplay: Int {
         let grams = workingSets.reduce(0) { $0 + $1.weightGrams * $1.reps }
-        return Int((Double(grams) / WeightUnit.lb.gramsPerUnit).rounded())
+        return Int((Double(grams) / services.settings.unit.gramsPerUnit).rounded())
     }
 
     var body: some View {
@@ -251,15 +254,15 @@ struct BurstCeremonyView: View {
                 EmberHalo(intensity: 0.9)
                     .frame(width: 280, height: 190)
                 VStack(spacing: 8) {
-                    SacredNumberView(value: tonnageLb)
-                    Text("LB MOVED THIS WEEK")
+                    SacredNumberView(value: tonnageDisplay)
+                    Text("\(unitSymbol) MOVED THIS WEEK")
                         .font(.system(size: 11, weight: .semibold, design: .monospaced))
                         .kerning(2)
                         .foregroundStyle(SettColor.ash)
                 }
             }
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel("\(tonnageLb) pounds moved this week")
+            .accessibilityLabel("\(tonnageDisplay) \(services.settings.unit.symbol) moved this week")
 
             statRows
 
@@ -288,7 +291,7 @@ struct BurstCeremonyView: View {
         VStack(spacing: 10) {
             statRow("WORKOUTS", "\(weekWorkouts.count)")
             statRow("SETS", "\(workingSets.count)")
-            statRow("TONNAGE", "\(tonnageLb) LB")
+            statRow("TONNAGE", "\(tonnageDisplay) \(unitSymbol)")
             statRow("PRS THIS WEEK", "\(weekAwards.count)")
         }
         .settCard()

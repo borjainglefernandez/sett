@@ -233,7 +233,7 @@ func criteriaText(for key: String) -> String {
     case "walking_legend": "Reach 50 verified PRs"
     case "triple_threat": "Verified PRs in 3 muscle categories in one week"
     case "perfect_form": "Every exercise net-positive in a 4+ exercise workout"
-    case "scanner_breaker": "Push your power level over 9000"
+    case "scanner_breaker": "Push your power level past 9,000"
     // Barok — volume
     case "twenty_ton_day": "Lift 20,000 lb in a single workout"
     case "hundred_grand": "Reach 100,000 lb lifetime tonnage"

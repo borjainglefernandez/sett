@@ -12,6 +12,7 @@ import SettCore
 /// per appearance; numbers roll via numeric-text so tenet 3 holds.
 struct NetGlanceStrip: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(AppServices.self) private var services
 
     @State private var net = NetSummary(reps: 0, volumeGrams: 0, isNew: false)
 
@@ -22,8 +23,9 @@ struct NetGlanceStrip: View {
         return calendar
     }()
 
-    private var netVolumeLb: Int {
-        Int(Units.pounds(fromGrams: net.volumeGrams).rounded())
+    /// Net volume in the user's display unit — kg users saw a 2.2× wrong LB number.
+    private var netVolumeDisplay: Int {
+        Int((Double(net.volumeGrams) / services.settings.unit.gramsPerUnit).rounded())
     }
 
     var body: some View {
@@ -41,7 +43,7 @@ struct NetGlanceStrip: View {
             } else {
                 HStack(spacing: 12) {
                     stat(net.reps, suffix: "REPS")
-                    stat(netVolumeLb, suffix: "LB")
+                    stat(netVolumeDisplay, suffix: services.settings.unit.symbol.uppercased())
                 }
             }
         }
@@ -71,7 +73,9 @@ struct NetGlanceStrip: View {
 
     private func color(for value: Int) -> Color {
         if value > 0 { return SettColor.positive }
-        if value < 0 { return SettColor.negative }
+        // On a cut a lighter week is expected — never paint it as a loss (tenet:
+        // cutting is framed as retention, not penalized). Neutral ash instead of red.
+        if value < 0 { return services.settings.phase == .cutting ? SettColor.ash : SettColor.negative }
         return SettColor.ash
     }
 
@@ -112,6 +116,6 @@ struct NetGlanceStrip: View {
         if net.isNew {
             return "Net this week: new territory"
         }
-        return "Net this week: \(signed(net.reps)) reps, \(signed(netVolumeLb)) pounds"
+        return "Net this week: \(signed(net.reps)) reps, \(signed(netVolumeDisplay)) \(services.settings.unit.symbol)"
     }
 }

@@ -1,5 +1,20 @@
 import Foundation
 
+extension UUID {
+    /// A deterministic seed from the UUID's bytes — STABLE across process launches,
+    /// unlike `hashValue` (which Swift randomizes per process). Use for any seeded
+    /// visual chrome that must recompute identically every launch.
+    var stableSeed: Int {
+        withUnsafeBytes(of: uuid) { raw in raw.reduce(0) { ($0 &* 31) &+ Int($1) } }
+    }
+    /// FNV-1a fold of the UUID bytes — a stable 64-bit seed for the LCG generators.
+    var stableSeed64: UInt64 {
+        withUnsafeBytes(of: uuid) { raw in
+            raw.reduce(UInt64(14695981039346656037)) { ($0 ^ UInt64($1)) &* 1099511628211 }
+        }
+    }
+}
+
 // MARK: - Motivation (context-aware quotes between exercises)
 
 /// The situation the lifter is in right now — chosen from sleep, layoff, and how
@@ -68,7 +83,7 @@ enum MotivationQuotes {
     /// Training in a deficit — hold the ceiling, climb pound-for-pound. A dip is
     /// the toll for getting lean, never a failure.
     static let cutting: [String] = [
-        "LIGHTER FRAME, SAME FIRE. The scouter still flags you as a threat.",
+        "LIGHTER FRAME, SAME FIRE. The Scanner still flags you as a threat.",
         "You held the ceiling on an empty tank. That reading counts double.",
         "Mass fell, power didn't — pound-for-pound, you just ascended.",
         "A dip in the cut is toll paid on the road to lean, not ground lost.",
