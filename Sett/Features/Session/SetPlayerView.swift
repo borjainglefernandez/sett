@@ -58,7 +58,7 @@ struct SetPlayerView: View {
     @State private var acquireTask: Task<Void, Never>?
 
     /// The app's largest numeral — the one fixed-size exception granted to the player.
-    @ScaledMetric(relativeTo: .largeTitle) private var numeralSize: CGFloat = 60
+    @ScaledMetric(relativeTo: .largeTitle) private var numeralSize: CGFloat = 44
 
     var body: some View {
         VStack(spacing: 0) {
@@ -210,6 +210,8 @@ struct SetPlayerView: View {
                 .foregroundStyle(SettColor.ash)
         }
         .padding(.horizontal, 24)
+        // Keeps the header readable over bright realms (White Void, Sanctuary).
+        .shadow(color: .black.opacity(0.55), radius: 6)
     }
 
     // MARK: Scouter core (numerals inside the living aura ring)
@@ -225,48 +227,40 @@ struct SetPlayerView: View {
     }
 
     private var scouterCore: some View {
-        ZStack {
-            // Soft dark well so the numerals always read over the busy nebula,
-            // while the colourful void still glows outside the ring.
-            Circle()
-                .fill(RadialGradient(colors: [TimeChamber.void.opacity(0.6), .clear],
-                                     center: .center, startRadius: 0, endRadius: 155))
-                .frame(width: 320, height: 320)
-            AuraRing(tier: isCommitted ? .base : liveTier, burstToken: burstToken)
-                .frame(width: 300, height: 300)
-                .animation(.easeInOut(duration: 0.35), value: liveTier)
-            numerals
+        VStack(spacing: 14) {
+            ZStack {
+                ScouterLens(tier: isCommitted ? .base : liveTier, burstToken: burstToken)
+                    .frame(width: 344, height: 208)
+                    .animation(.easeInOut(duration: 0.35), value: liveTier)
+                reading
+                    .padding(.horizontal, 40)
+            }
+            if let field = activeStepper {
+                stepperCapsule(for: field)
+                    .transition(.opacity.combined(with: .scale(scale: 0.9)))
+            }
         }
-        .frame(height: 320)
+        .frame(minHeight: 240)
     }
 
-    private var numerals: some View {
-        HStack(alignment: .top, spacing: 10) {
-            numeralColumn(text: WeightFormat.compact(grams: displayedWeightGrams,
-                                                     unit: services.settings.unit),
-                          caption: services.settings.unit.symbol,
-                          field: .weight,
-                          salt: 0x11,
-                          accessibility: "Weight")
+    /// The reading: weight × reps on ONE baseline at ONE size (so they never
+    /// misalign), with small inline unit labels. Each number is tap-to-adjust /
+    /// long-press-for-keypad.
+    private var reading: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 5) {
+            numeralText(WeightFormat.compact(grams: displayedWeightGrams,
+                                             unit: services.settings.unit),
+                        field: .weight, salt: 0x11, accessibility: "Weight")
+            unitCaption(services.settings.unit.symbol.uppercased())
             Text("×")
-                .font(.system(size: numeralSize * 0.42, weight: .heavy, design: .monospaced))
+                .font(.system(size: numeralSize * 0.5, weight: .heavy, design: .monospaced))
                 .foregroundStyle(SettColor.ash)
-                .padding(.top, numeralSize * 0.28)
+                .padding(.horizontal, 4)
                 .accessibilityHidden(true)
-            numeralColumn(text: "\(displayedReps)",
-                          caption: "reps",
-                          field: .reps,
-                          salt: 0x77,
-                          accessibility: "Reps")
+            numeralText("\(displayedReps)", field: .reps, salt: 0x77, accessibility: "Reps")
+            unitCaption("REPS")
         }
-        .padding(.horizontal, 28)
-        .padding(.vertical, 14)
-        .overlay {
-            CornerReticle(arm: 16)
-                .stroke(liveTier.color.opacity(0.55), lineWidth: 1.5)
-                .padding(2)
-                .accessibilityHidden(true)
-        }
+        .lineLimit(1)
         .overlay {
             if acquiring {
                 GeometryReader { proxy in
@@ -281,46 +275,40 @@ struct SetPlayerView: View {
                 .accessibilityHidden(true)
             }
         }
-        .frame(maxWidth: 280)
     }
 
-    private func numeralColumn(text: String, caption: String,
-                               field: NumericField, salt: UInt64,
-                               accessibility: String) -> some View {
-        VStack(spacing: 6) {
-            Text(scanned(text, salt: salt))
-                .font(.system(size: numeralSize, weight: .heavy, design: .monospaced))
-                .monospacedDigit()
-                .foregroundStyle(numeralColor)
-                .opacity(numeralOpacity)
-                .shadow(color: goldFlash ? SettColor.saiyanGold.opacity(0.7) : .black.opacity(0.75),
-                        radius: goldFlash ? 12 : 8)
-                .lineLimit(1)
-                .minimumScaleFactor(0.35)
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    guard !isCommitted else { return }
-                    showStepper(for: field)
-                }
-                .onLongPressGesture(minimumDuration: 0.4) {
-                    guard !isCommitted else { return }
-                    stepperHideTask?.cancel()
-                    activeStepper = nil
-                    padField = field
-                }
-            Text(caption)
-                .font(.system(.caption, design: .monospaced))
-                .kerning(2)
-                .foregroundStyle(SettColor.iron)
-            if activeStepper == field {
-                stepperCapsule(for: field)
-                    .transition(.opacity.combined(with: .scale(scale: 0.9)))
+    private func unitCaption(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 12, weight: .semibold, design: .monospaced))
+            .kerning(1)
+            .foregroundStyle(SettColor.iron)
+            .accessibilityHidden(true)
+    }
+
+    private func numeralText(_ text: String, field: NumericField, salt: UInt64,
+                             accessibility: String) -> some View {
+        Text(scanned(text, salt: salt))
+            .font(.system(size: numeralSize, weight: .heavy, design: .monospaced))
+            .monospacedDigit()
+            .foregroundStyle(numeralColor)
+            .opacity(numeralOpacity)
+            .shadow(color: goldFlash ? SettColor.saiyanGold.opacity(0.7) : .black.opacity(0.85),
+                    radius: goldFlash ? 12 : 6)
+            .fixedSize()  // both numbers stay full-size → shared baseline, no squeeze
+            .contentShape(Rectangle())
+            .onTapGesture {
+                guard !isCommitted else { return }
+                showStepper(for: field)
             }
-        }
-        .frame(maxWidth: .infinity)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(accessibility) \(text)")
-        .accessibilityHint(isCommitted ? "" : "Tap to adjust, long press for keypad")
+            .onLongPressGesture(minimumDuration: 0.4) {
+                guard !isCommitted else { return }
+                stepperHideTask?.cancel()
+                activeStepper = nil
+                padField = field
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("\(accessibility) \(text)")
+            .accessibilityHint(isCommitted ? "" : "Tap to adjust, long press for keypad")
     }
 
     // MARK: Adjust (stepper capsule — materializes beneath, auto-hides after 4 s)
@@ -442,10 +430,10 @@ struct SetPlayerView: View {
             }
             .background {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(TimeChamber.void.opacity(0.5))
+                    .fill(TimeChamber.void.opacity(0.66))
                     .overlay {
                         RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .strokeBorder(liveTier.color.opacity(0.28), lineWidth: 1)
+                            .strokeBorder(liveTier.color.opacity(0.3), lineWidth: 1)
                     }
             }
         }

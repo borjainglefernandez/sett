@@ -40,6 +40,10 @@ public final class UserSettingsStore {
     public var hasOnboarded: Bool {
         didSet { UserDefaults.standard.set(hasOnboarded, forKey: "sett.hasOnboarded") }
     }
+    /// The selected Time Chamber backdrop (`ChamberBackground.rawValue`).
+    public var chamberBackground: String {
+        didSet { UserDefaults.standard.set(chamberBackground, forKey: "sett.chamberBackground") }
+    }
 
     public init() {
         let defaults = UserDefaults.standard
@@ -50,6 +54,7 @@ public final class UserSettingsStore {
         let rest = defaults.integer(forKey: "sett.defaultRest")
         self.defaultRestSeconds = rest > 0 ? rest : 90
         self.hasOnboarded = defaults.bool(forKey: "sett.hasOnboarded")
+        self.chamberBackground = defaults.string(forKey: "sett.chamberBackground") ?? "nebula"
     }
 
     public func displayWeight(_ grams: Int) -> String {

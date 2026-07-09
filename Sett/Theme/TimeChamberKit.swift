@@ -76,6 +76,42 @@ enum AuraTier: Equatable {
     var isTransformation: Bool { self == .ascended || self == .radiant }
 }
 
+// MARK: - Chamber backgrounds (pick your training realm)
+
+/// The selectable session backdrops — each a generated realm with its own vibe.
+/// Stored on `UserSettingsStore.chamberBackground` by `rawValue`.
+enum ChamberBackground: String, CaseIterable, Identifiable {
+    case nebula, white, volcanic, storm, aurora, sanctuary
+
+    var id: String { rawValue }
+
+    var assetName: String {
+        switch self {
+        case .nebula: "TimeChamberHero"
+        case .white: "ChamberWhite"
+        case .volcanic: "ChamberVolcanic"
+        case .storm: "ChamberStorm"
+        case .aurora: "ChamberAurora"
+        case .sanctuary: "ChamberSanctuary"
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .nebula: "Nebula Void"
+        case .white: "White Void"
+        case .volcanic: "Volcanic Forge"
+        case .storm: "Storm Realm"
+        case .aurora: "Aurora Tundra"
+        case .sanctuary: "Golden Sanctuary"
+        }
+    }
+
+    static func resolve(_ raw: String) -> ChamberBackground {
+        ChamberBackground(rawValue: raw) ?? .nebula
+    }
+}
+
 // MARK: - Cosmic palette (session only)
 
 enum TimeChamber {
@@ -99,6 +135,7 @@ enum TimeChamber {
 /// unbroken across SET ↔ REST.
 struct TimeChamberBackground: View {
     var tier: AuraTier = .dormant
+    var assetName: String = ChamberBackground.nebula.assetName
 
     @State private var drift = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -125,7 +162,7 @@ struct TimeChamberBackground: View {
     }
 
     private func heroImage(in size: CGSize) -> some View {
-        Image("TimeChamberHero")
+        Image(assetName)
             .resizable()
             .aspectRatio(contentMode: .fill)
             .frame(width: size.width, height: size.height)
@@ -320,6 +357,134 @@ struct AuraRing: View {
         }
         withAnimation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true)) {
             pulse = true
+        }
+    }
+}
+
+// MARK: - Scouter lens (the DBZ scouter HUD that frames the reading)
+
+/// The iconic scouter eyepiece, drawn as an elongated angular lens: aura-tinted
+/// glass (darkened in the middle so the numerals always read), a bright rim with
+/// a glow, horizontal scan lines, a triangular emitter tab on the left, corner
+/// target brackets, and a power-reading tick strip along the bottom. The rim/glass
+/// take the aura colour, so the scouter itself "transforms." `burstToken` flares
+/// it on log. Fills its frame — place numerals over it in a ZStack.
+struct ScouterLensShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        let cut = rect.height * 0.40   // angled left/right ends
+        var p = Path()
+        p.move(to: CGPoint(x: rect.minX + cut, y: rect.minY))
+        p.addLine(to: CGPoint(x: rect.maxX - cut, y: rect.minY))
+        p.addLine(to: CGPoint(x: rect.maxX, y: rect.midY))
+        p.addLine(to: CGPoint(x: rect.maxX - cut, y: rect.maxY))
+        p.addLine(to: CGPoint(x: rect.minX + cut, y: rect.maxY))
+        p.addLine(to: CGPoint(x: rect.minX, y: rect.midY))
+        p.closeSubpath()
+        return p
+    }
+}
+
+struct ScouterLens: View {
+    var tier: AuraTier
+    var burstToken: Int = 0
+
+    @State private var flare: CGFloat = 0
+    @State private var sweep = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        let shape = ScouterLensShape()
+        ZStack {
+            // Soft aura bloom behind the whole lens.
+            shape.fill(tier.color.opacity(0.16 * tier.intensity + Double(flare) * 0.25))
+                .blur(radius: 26)
+                .scaleEffect(1.06 + flare * 0.06)
+
+            // Glass: dark core (legibility) warming to the aura at the edges.
+            shape.fill(
+                RadialGradient(
+                    colors: [TimeChamber.void.opacity(0.82),
+                             TimeChamber.void.opacity(0.5),
+                             tier.color.opacity(0.16)],
+                    center: .center, startRadius: 6, endRadius: 240
+                )
+            )
+
+            scanLines.clipShape(shape)
+            GeometryReader { geo in tickStrip(in: geo.size) }.clipShape(shape)
+            targetBrackets
+
+            // Rim — bright aura, glowing, with an inner hairline.
+            shape.stroke(tier.gradient, style: StrokeStyle(lineWidth: 2.5 + flare * 2, lineJoin: .round))
+                .shadow(color: tier.color.opacity(0.7), radius: 8 + flare * 10)
+            shape.stroke(tier.color.opacity(0.35), lineWidth: 1).padding(5)
+
+            emitter
+        }
+        .scaleEffect(1 + flare * 0.03)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+        .onChange(of: burstToken) { _, _ in
+            guard !reduceMotion else { return }
+            flare = 1
+            withAnimation(.spring(response: 0.5, dampingFraction: 0.55)) { flare = 0 }
+        }
+    }
+
+    /// Three faint horizontal scan lines drifting slowly (Core-Animation offset).
+    private var scanLines: some View {
+        GeometryReader { geo in
+            let h = geo.size.height
+            ForEach(0 ..< 3, id: \.self) { i in
+                Rectangle()
+                    .fill(tier.color.opacity(0.12))
+                    .frame(height: 1)
+                    .offset(y: h * (0.3 + 0.2 * Double(i)))
+            }
+        }
+    }
+
+    /// Power-reading ticks along the bottom inner edge — the scouter scale.
+    private func tickStrip(in size: CGSize) -> some View {
+        HStack(spacing: 5) {
+            ForEach(0 ..< 18, id: \.self) { i in
+                Rectangle()
+                    .fill(tier.color.opacity(i.isMultiple(of: 3) ? 0.7 : 0.3))
+                    .frame(width: 1.5, height: i.isMultiple(of: 3) ? 8 : 4)
+            }
+        }
+        .frame(width: size.width * 0.62)
+        .frame(maxWidth: .infinity, alignment: .center)
+        .position(x: size.width / 2, y: size.height - 16)
+    }
+
+    /// Small corner target brackets inside the top corners — the reticle.
+    private var targetBrackets: some View {
+        CornerReticle(arm: 12)
+            .stroke(tier.color.opacity(0.5), lineWidth: 1.5)
+            .padding(.horizontal, 44)
+            .padding(.vertical, 18)
+    }
+
+    /// The scouter's characteristic side piece: a triangular emitter off the left
+    /// point with a small hinge dot — the bit that would clip over the ear.
+    private var emitter: some View {
+        GeometryReader { geo in
+            let midY = geo.size.height / 2
+            ZStack {
+                Path { p in
+                    p.move(to: CGPoint(x: 0, y: midY - 14))
+                    p.addLine(to: CGPoint(x: -14, y: midY))
+                    p.addLine(to: CGPoint(x: 0, y: midY + 14))
+                    p.closeSubpath()
+                }
+                .fill(tier.gradient)
+                .shadow(color: tier.color.opacity(0.7), radius: 5)
+                Circle()
+                    .fill(tier.secondary)
+                    .frame(width: 5, height: 5)
+                    .position(x: -8, y: midY)
+            }
         }
     }
 }

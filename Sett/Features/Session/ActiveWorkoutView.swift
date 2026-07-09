@@ -60,7 +60,7 @@ struct ActiveWorkoutView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(TimeChamberBackground(tier: ambientTier).animation(.easeInOut(duration: 0.6), value: ambientTier).allowsHitTesting(false))
+        .background(TimeChamberBackground(tier: ambientTier, assetName: ChamberBackground.resolve(services.settings.chamberBackground).assetName).animation(.easeInOut(duration: 0.6), value: ambientTier).allowsHitTesting(false))
         .overlay(TransformationBurst(tier: ambientTier, token: transformationToken).allowsHitTesting(false))
         .combatTextEmitter(combatText)
         .environment(combatText)
