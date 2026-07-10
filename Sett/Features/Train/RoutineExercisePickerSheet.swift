@@ -19,6 +19,7 @@ struct RoutineExercisePickerSheet: View {
 
     @State private var searchText = ""
     @State private var pickedIDs: [UUID] = []   // add order preserved
+    @State private var isCreating = false
 
     init(allowsMultiple: Bool = true, onPick: @escaping (Exercise) -> Void) {
         self.onPick = onPick
@@ -37,10 +38,35 @@ struct RoutineExercisePickerSheet: View {
                         }
                     }
                 }
+                Section {
+                    Button {
+                        isCreating = true
+                    } label: {
+                        HStack(spacing: 12) {
+                            ExerciseGlyphView(muscle: .other)
+                                .frame(width: 28, height: 28)
+                            Text("Create custom exercise")
+                                .foregroundStyle(SettColor.heroCyan)
+                            Spacer()
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.borderless)
+                }
             }
             .overlay {
                 if filtered.isEmpty && !searchText.isEmpty {
-                    ContentUnavailableView.search(text: searchText)
+                    ContentUnavailableView {
+                        Label("No exercise named “\(searchText)”", systemImage: "magnifyingglass")
+                    } actions: {
+                        Button {
+                            isCreating = true
+                        } label: {
+                            Label("Create “\(searchText)”", systemImage: "plus")
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
                 }
             }
             .searchable(text: $searchText, prompt: "Search exercises")
@@ -55,6 +81,18 @@ struct RoutineExercisePickerSheet: View {
                         Button(pickedIDs.isEmpty ? "Add" : "Add \(pickedIDs.count)") { commit() }
                             .fontWeight(.semibold)
                             .disabled(pickedIDs.isEmpty)
+                    }
+                }
+            }
+            .sheet(isPresented: $isCreating) {
+                // A routine-editor creation immediately joins the picked set (multi-add)
+                // or picks-and-dismisses (replace flow), matching the row behaviour.
+                CreateExerciseSheet(initialName: searchText) { exercise in
+                    if allowsMultiple {
+                        pickedIDs.append(exercise.id)
+                    } else {
+                        onPick(exercise)
+                        dismiss()
                     }
                 }
             }
@@ -107,9 +145,8 @@ struct RoutineExercisePickerSheet: View {
             }
         } label: {
             HStack(spacing: 12) {
-                Image(systemName: exercise.equipment.symbolName)
-                    .foregroundStyle(SettColor.heroCyan)
-                    .frame(width: 28)
+                ExerciseIcon(name: exercise.name, equipment: exercise.equipment,
+                             muscle: exercise.muscle, size: 28, color: SettColor.heroCyan)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(exercise.name)
                         .foregroundStyle(.primary)

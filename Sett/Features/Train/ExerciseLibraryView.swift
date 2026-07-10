@@ -166,9 +166,8 @@ struct ExerciseLibraryView: View {
             ExerciseDetailView(exercise: exercise)
         } label: {
             HStack(spacing: 12) {
-                Image(systemName: exercise.equipment.symbolName)
-                    .foregroundStyle(SettColor.heroCyan)
-                    .frame(width: 28)
+                ExerciseIcon(name: exercise.name, equipment: exercise.equipment,
+                             muscle: exercise.muscle, size: 28, color: SettColor.heroCyan)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(exercise.name)
                         .foregroundStyle(exercise.isArchived ? .secondary : .primary)
@@ -235,7 +234,10 @@ struct ExerciseLibraryView: View {
 
 // MARK: - Create custom exercise (duplicate name+muscle+equipment guard)
 
-private struct CreateExerciseSheet: View {
+struct CreateExerciseSheet: View {
+    /// Invoked with the newly created exercise — the in-session picker uses this to
+    /// drop the new lift straight into the active workout.
+    var onCreate: ((Exercise) -> Void)? = nil
     let initialName: String
 
     @Environment(\.modelContext) private var modelContext
@@ -243,8 +245,9 @@ private struct CreateExerciseSheet: View {
 
     @Query private var existing: [Exercise]
 
-    init(initialName: String) {
+    init(initialName: String, onCreate: ((Exercise) -> Void)? = nil) {
         self.initialName = initialName
+        self.onCreate = onCreate
         let existingFilter = #Predicate<Exercise> { $0.deletedAt == nil }
         _existing = Query(filter: existingFilter)
     }
@@ -262,6 +265,16 @@ private struct CreateExerciseSheet: View {
                         ForEach(Muscle.allCases, id: \.self) { muscle in
                             Text(muscle.rawValue.capitalized).tag(muscle)
                         }
+                    }
+                    // Custom lifts wear the muscle group's warrior emblem — show the
+                    // badge this exercise will carry, live with the picker.
+                    HStack(spacing: 12) {
+                        ExerciseGlyphView(muscle: muscle)
+                            .frame(width: 44, height: 44)
+                        Text("Battle emblem")
+                            .foregroundStyle(.secondary)
+                            .font(.footnote)
+                        Spacer()
                     }
                     Picker("Equipment", selection: $equipment) {
                         ForEach(Equipment.allCases, id: \.self) { equipment in
@@ -314,6 +327,7 @@ private struct CreateExerciseSheet: View {
         modelContext.insert(exercise)
         try? modelContext.save()
         Haptics.success()
+        onCreate?(exercise)
         dismiss()
     }
 }

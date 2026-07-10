@@ -11,6 +11,7 @@ struct ExercisePickerSheet: View {
     @Query private var exercises: [Exercise]
 
     @State private var searchText = ""
+    @State private var isCreating = false
 
     init() {
         let exerciseFilter = #Predicate<Exercise> { !$0.isArchived && $0.deletedAt == nil }
@@ -27,10 +28,23 @@ struct ExercisePickerSheet: View {
                         }
                     }
                 }
+                Section {
+                    createRow
+                }
             }
             .overlay {
                 if filtered.isEmpty && !searchText.isEmpty {
-                    ContentUnavailableView.search(text: searchText)
+                    // Not in the catalog? Forge it without leaving the workout.
+                    ContentUnavailableView {
+                        Label("No exercise named “\(searchText)”", systemImage: "magnifyingglass")
+                    } actions: {
+                        Button {
+                            isCreating = true
+                        } label: {
+                            Label("Create “\(searchText)”", systemImage: "plus")
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
                 }
             }
             .searchable(text: $searchText, prompt: "Search exercises")
@@ -41,7 +55,32 @@ struct ExercisePickerSheet: View {
                     Button("Cancel") { dismiss() }
                 }
             }
+            .sheet(isPresented: $isCreating) {
+                // Creating mid-workout adds the new lift straight to the session.
+                CreateExerciseSheet(initialName: searchText) { exercise in
+                    session.addExercise(exercise)
+                    Haptics.light()
+                    dismiss()
+                }
+            }
         }
+    }
+
+    private var createRow: some View {
+        Button {
+            isCreating = true
+        } label: {
+            HStack(spacing: 12) {
+                ExerciseGlyphView(muscle: .other)
+                    .frame(width: 28, height: 28)
+                Text("Create custom exercise")
+                    .foregroundStyle(SettColor.heroCyan)
+                Spacer()
+            }
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
     }
 
     // MARK: Grouping
@@ -68,9 +107,8 @@ struct ExercisePickerSheet: View {
             dismiss()
         } label: {
             HStack(spacing: 12) {
-                Image(systemName: exercise.equipment.symbolName)
-                    .foregroundStyle(SettColor.heroCyan)
-                    .frame(width: 28)
+                ExerciseIcon(name: exercise.name, equipment: exercise.equipment,
+                             muscle: exercise.muscle, size: 28, color: SettColor.heroCyan)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(exercise.name)
                         .foregroundStyle(.primary)
