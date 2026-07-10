@@ -1,4 +1,22 @@
 import SwiftUI
+import SettCore
+
+/// The ONE source of truth for a "vs last week" PWR delta's glyph + colour, so the
+/// scouter (SetPlayerView) and the overview rows (ExerciseCard) can never disagree
+/// about the same number: ▲ ahead (green), ▼ behind (red), and on a CUT a dip is
+/// neutral — ▽ in ash, never penalised.
+enum VsLast {
+    static func label(_ delta: Int, phase: TrainingPhase) -> String {
+        if delta > 0 { return "▲+\(delta)" }
+        if delta == 0 { return "◇0" }
+        return phase == .cutting ? "▽\(abs(delta))" : "▼\(abs(delta))"
+    }
+    static func color(_ delta: Int, phase: TrainingPhase) -> Color {
+        if delta > 0 { return SettColor.positive }
+        if delta == 0 { return TimeChamber.teal }
+        return phase == .cutting ? SettColor.ash : SettColor.negative
+    }
+}
 
 /// The single source of truth for the overview set-row column grid. Adopted by
 /// `ExerciseCard.setRow` (logged), `ExerciseCard.plannedRow` (planned), AND
@@ -22,7 +40,7 @@ enum SetRowGrid {
 /// Reserves BOTH stepper gutters as clear space so the `×` and both value edges sit at
 /// the exact same x as the active input row's real micro-steppers.
 @ViewBuilder
-func setValueColumns(weightText: String, reps: Int,
+func setValueColumns(weightText: String, repsText: String,
                      valueColor: Color, weight: Font.Weight) -> some View {
     Text(weightText)
         .font(.system(size: 15, weight: weight, design: .monospaced))
@@ -36,7 +54,7 @@ func setValueColumns(weightText: String, reps: Int,
         .font(.system(size: 13, weight: .semibold, design: .monospaced))
         .foregroundStyle(SettColor.iron)
         .frame(width: SetRowGrid.times)
-    Text("\(reps)")
+    Text(repsText)
         .font(.system(size: 15, weight: weight, design: .monospaced))
         .monospacedDigit()
         .foregroundStyle(valueColor)

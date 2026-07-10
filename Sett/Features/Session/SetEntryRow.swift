@@ -185,10 +185,19 @@ struct SetEntryRow: View {
         .accessibilityLabel("Log set")
     }
 
+    /// The reference index for THIS set: the count of non-warmup sets already logged.
+    /// previousSets / ghostValues are indexed by WORKING-set ordinal (warm-ups
+    /// excluded), so the raw queue count (which counts warm-ups) shifts every working
+    /// set onto the wrong reference — wrong ghost autofill + wrong crit. Mirrors
+    /// SetPlayerView.workingSlot.
+    private var workingSlot: Int {
+        workoutExercise.orderedSets.filter { !$0.isWarmup }.count
+    }
+
     private func commit() {
         // Crit when this set's weight beats the reference (ghost) set at the same
-        // index — resolved BEFORE logging so the index still points at this set.
-        let index = workoutExercise.orderedSets.count
+        // working-set ordinal — resolved BEFORE logging so the index still points here.
+        let index = workingSlot
         let references = session.previousSets(exerciseID: workoutExercise.exerciseID,
                                               excluding: workoutExercise.workout?.id)
         let beatReference = index < references.count && weightGrams > references[index].weightGrams
@@ -210,8 +219,7 @@ struct SetEntryRow: View {
     // MARK: Ghost autofill (shared resolution — WorkoutSessionStore.ghostValues)
 
     private func autofill() {
-        let ghost = session.ghostValues(for: workoutExercise,
-                                        slot: workoutExercise.orderedSets.count)
+        let ghost = session.ghostValues(for: workoutExercise, slot: workingSlot)
         weightGrams = ghost.weightGrams
         reps = ghost.reps
         isGhost = true

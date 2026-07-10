@@ -143,11 +143,11 @@ struct ExerciseCard: View {
                     .frame(width: 28)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(workoutExercise.exerciseNameSnapshot.uppercased())
-                        .font(.system(.subheadline, design: .monospaced).weight(.bold))
-                        .kerning(1)
+                        .font(.system(.callout, design: .monospaced).weight(.bold))
+                        .kerning(1.5)
                         .foregroundStyle(SettColor.bone)
                         .lineLimit(1)
-                        .minimumScaleFactor(0.7)
+                        .minimumScaleFactor(0.6)
                     Text(statLine)
                         .font(.system(size: 10, weight: .semibold, design: .monospaced))
                         .kerning(1)
@@ -165,9 +165,16 @@ struct ExerciseCard: View {
     }
 
     private var statLine: String {
-        let count = workoutExercise.orderedSets.filter { !$0.isWarmup }.count
-        let sets = "\(count) SET\(count == 1 ? "" : "S")"
-        return topPwr > 0 ? "\(sets) · TOP \(topPwr) PWR" : sets
+        let working = workoutExercise.orderedSets.filter { !$0.isWarmup }
+        var parts = ["\(working.count) SET\(working.count == 1 ? "" : "S")"]
+        if topPwr > 0 { parts.append("TOP \(topPwr) PWR") }
+        // Banked volume this session — "how much work have I done" at a glance.
+        let volGrams = working.reduce(0) { $0 + $1.weightGrams * $1.reps }
+        if volGrams > 0 {
+            let vol = Int((Double(volGrams) / unit.gramsPerUnit).rounded())
+            parts.append("\(vol.formatted()) \(unit.symbol.uppercased())")
+        }
+        return parts.joined(separator: " · ")
     }
 
     /// Void card with a scouter rim + corner reticle, tinted by the best set's tier.
@@ -246,7 +253,7 @@ struct ExerciseCard: View {
                     .background { Circle().strokeBorder(tier.color.opacity(0.5), lineWidth: 1) }
                 Spacer().frame(width: SetRowGrid.badgeGap)
                 setValueColumns(weightText: WeightFormat.compactWithUnit(grams: set.weightGrams, unit: unit),
-                                reps: set.reps, valueColor: SettColor.bone, weight: .bold)
+                                repsText: "\(set.reps)", valueColor: SettColor.bone, weight: .bold)
                 Spacer(minLength: 8)
                 HStack(spacing: 6) {
                     if set.notes?.isEmpty == false {
@@ -304,8 +311,17 @@ struct ExerciseCard: View {
     /// A still-to-do planned set: a dashed, dimmed placeholder showing the target (the
     /// ghost autofill) so the whole plan is visible from the start. The active input
     /// row above it is where the next set is actually logged.
+    /// Whether the planned rows have a real target to show (a last-week reference OR a
+    /// working set logged this session). Otherwise the ghost is the bare (0,10)
+    /// fallback — render "— × —" rather than a fake plan.
+    private var hasTarget: Bool {
+        !referenceSets.isEmpty || workoutExercise.orderedSets.contains { !$0.isWarmup }
+    }
+
     private func plannedRow(number: Int, slot: Int) -> some View {
         let ghost = session.ghostValues(for: workoutExercise, slot: slot)
+        let weightText = hasTarget ? WeightFormat.compactWithUnit(grams: ghost.weightGrams, unit: unit) : "—"
+        let repsText = hasTarget ? "\(ghost.reps)" : "—"
         let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
         return HStack(spacing: 0) {
             Text("\(number)")
@@ -318,8 +334,9 @@ struct ExerciseCard: View {
                                           style: StrokeStyle(lineWidth: 1, dash: [2.5, 2.5]))
                 }
             Spacer().frame(width: SetRowGrid.badgeGap)
-            setValueColumns(weightText: WeightFormat.compactWithUnit(grams: ghost.weightGrams, unit: unit),
-                            reps: ghost.reps, valueColor: SettColor.iron, weight: .semibold)
+            // Target numbers in ash (legible), not iron — they're the functional part.
+            setValueColumns(weightText: weightText, repsText: repsText,
+                            valueColor: SettColor.ash, weight: .semibold)
             Spacer(minLength: 8)
             Text("PLANNED")
                 .font(.system(size: 9, weight: .bold, design: .monospaced))
@@ -333,18 +350,13 @@ struct ExerciseCard: View {
                                style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Planned set \(number), target \(WeightFormat.compactWithUnit(grams: ghost.weightGrams, unit: unit)) by \(ghost.reps)")
+        .accessibilityLabel(hasTarget ? "Planned set \(number), target \(weightText) by \(repsText)"
+                                       : "Planned set \(number)")
     }
 
-    /// vs-last PWR delta: ▲ ahead, ▼ behind (◇ on a cut — a dip is not a failure).
-    private func deltaLabel(_ d: Int) -> String {
-        if d > 0 { return "▲+\(d)" }
-        return phase == .cutting ? "◇\(d)" : "▼\(d)"
-    }
-    private func deltaColor(_ d: Int) -> Color {
-        if d > 0 { return SettColor.positive }
-        return phase == .cutting ? TimeChamber.teal : SettColor.negative
-    }
+    /// vs-last PWR delta — the SAME glyph + colour the scouter showed (shared VsLast).
+    private func deltaLabel(_ d: Int) -> String { VsLast.label(d, phase: phase) }
+    private func deltaColor(_ d: Int) -> Color { VsLast.color(d, phase: phase) }
 
     /// Mutation rules: updatedAt + needsPush + save on the SetEntry itself.
     private func saveNote(_ note: String?, on set: SetEntry) {

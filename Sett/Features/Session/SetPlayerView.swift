@@ -428,7 +428,7 @@ struct SetPlayerView: View {
                 // The NEAR win: your gain vs last week, the thing you actually move
                 // most sessions — a first-class number, not just an aura tint.
                 if let delta = vsLastDelta, delta != 0 {
-                    Text("\(delta > 0 ? "▲+" : (activePhase == .cutting ? "▽" : "▼"))\(abs(delta))")
+                    Text(VsLast.label(delta, phase: activePhase))
                         .font(.system(size: 13, weight: .heavy, design: .monospaced))
                         .monospacedDigit()
                         .foregroundStyle(vsLastColor)
@@ -510,9 +510,7 @@ struct SetPlayerView: View {
     private var vsLastColor: Color {
         if overCeiling { return liveTier.color }   // subsumed by the red ceiling break — stay one colour
         guard let d = vsLastDelta else { return SettColor.ash }
-        if d > 0 { return SettColor.positive }
-        if d < 0 { return activePhase == .cutting ? SettColor.ash : SettColor.negative }
-        return TimeChamber.teal
+        return VsLast.color(d, phase: activePhase)
     }
 
     /// Ahead of last week but not yet at the all-time ceiling — the common weekly win.
