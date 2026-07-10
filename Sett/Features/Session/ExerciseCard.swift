@@ -162,6 +162,8 @@ struct ExerciseCard: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
+        .accessibilityHint("Collapses this exercise")
     }
 
     private var statLine: String {
@@ -242,7 +244,7 @@ struct ExerciseCard: View {
         let delta = (set.isWarmup || reference == nil) ? nil : pwr(set) - pwr(reference!)
         let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
         return Button {
-            editingSet = set
+            editingValues = set   // the toolbox's job is CORRECTING — tap fixes the values
         } label: {
             HStack(spacing: 0) {
                 Text(label)
@@ -294,7 +296,7 @@ struct ExerciseCard: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Set \(label), \(WeightFormat.compactWithUnit(grams: set.weightGrams, unit: unit)) by \(set.reps)")
-        .accessibilityHint("Edits this set's note. Long-press to fix weight and reps or delete.")
+        .accessibilityHint("Fixes this set's weight and reps. Long-press for note or delete.")
         .contextMenu {
             Button {
                 editingValues = set

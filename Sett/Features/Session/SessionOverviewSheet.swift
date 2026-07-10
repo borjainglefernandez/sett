@@ -24,6 +24,12 @@ struct SessionOverviewSheet: View {
                 }
             }
             .dungeonBackground()
+            // The rest clock lives full-screen in RestOverlayView BEHIND this sheet, so
+            // it vanishes exactly when you open the toolbox — usually DURING rest. Pin a
+            // slim rest strip up top so the one time-critical number is always here too.
+            .safeAreaInset(edge: .top, spacing: 0) {
+                if session.isResting { restStrip }
+            }
             .navigationTitle(session.activeWorkout?.title ?? "Workout")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -36,6 +42,60 @@ struct SessionOverviewSheet: View {
             }
         }
         .presentationDetents([.large])
+    }
+
+    // MARK: Rest strip — remaining time derived from restEndsAt (never accumulated)
+
+    @ViewBuilder
+    private var restStrip: some View {
+        TimelineView(.periodic(from: .now, by: 0.5)) { context in
+            let remaining = restRemaining(at: context.date)
+            HStack(spacing: 12) {
+                Image(systemName: "timer")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(TimeChamber.scouterGreen)
+                Text("REST")
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .kerning(2)
+                    .foregroundStyle(SettColor.ash)
+                Text(restTimeText(remaining))
+                    .font(.system(size: 22, weight: .heavy, design: .monospaced))
+                    .monospacedDigit()
+                    .foregroundStyle(SettColor.bone)
+                Spacer(minLength: 8)
+                restButton("−15") { session.adjustRest(by: -15) }
+                restButton("SKIP") { session.skipRest() }
+                restButton("+15") { session.adjustRest(by: 15) }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(alignment: .bottom) {
+                Rectangle().fill(TimeChamber.void.opacity(0.94)).ignoresSafeArea(edges: .top)
+                Rectangle().fill(TimeChamber.scouterGreen.opacity(0.4)).frame(height: 1)
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Rest, \(restTimeText(remaining)) remaining")
+        }
+    }
+
+    private func restButton(_ text: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(text)
+                .font(.system(size: 11, weight: .heavy, design: .monospaced))
+                .foregroundStyle(TimeChamber.scouterGreen)
+                .frame(minWidth: 42, minHeight: 32)
+                .background { Capsule().strokeBorder(TimeChamber.scouterGreen.opacity(0.4), lineWidth: 1) }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func restRemaining(at date: Date) -> Int {
+        guard let ends = session.restEndsAt else { return 0 }
+        return max(0, Int(ends.timeIntervalSince(date).rounded(.up)))
+    }
+
+    private func restTimeText(_ remaining: Int) -> String {
+        String(format: "%d:%02d", remaining / 60, remaining % 60)
     }
 
     private func list(_ workout: Workout) -> some View {

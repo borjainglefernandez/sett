@@ -67,7 +67,7 @@ struct ActiveWorkoutView: View {
         .overlay(TransformationBurst(tier: ambientTier, token: transformationToken).allowsHitTesting(false))
         .combatTextEmitter(combatText)
         .environment(combatText)
-        .sheet(isPresented: $isShowingOverview) {
+        .sheet(isPresented: $isShowingOverview, onDismiss: reconcileCursor) {
             SessionOverviewSheet()
         }
         .confirmationDialog("Finish workout?",
@@ -370,6 +370,21 @@ struct ActiveWorkoutView: View {
 
     private func nextOpenSlot(of exercise: WorkoutExercise) -> Int {
         min(exercise.orderedSets.count, slotCount(for: exercise) - 1)
+    }
+
+    /// After logging/editing in the overview sheet, the shell cursor can point at a slot
+    /// that is now filled — advance it to the current exercise's next open slot so the
+    /// scouter doesn't reopen a committed set. (The overview logs via the store directly,
+    /// so it can't advance the cursor the way SetPlayerView's onLogged does.)
+    private func reconcileCursor() {
+        guard let workout = session.activeWorkout else { return }
+        let exercises = workout.orderedExercises
+        let pos = clamped(cursor, in: exercises)
+        guard pos.exerciseIndex < exercises.count else { return }
+        let open = nextOpenSlot(of: exercises[pos.exerciseIndex])
+        if open != pos.slotIndex {
+            cursor = QueuePosition(exerciseIndex: pos.exerciseIndex, slotIndex: open)
+        }
     }
 
     private func endPosition(_ exercises: [WorkoutExercise]) -> QueuePosition {

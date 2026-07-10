@@ -41,7 +41,8 @@ struct SetEntryRow: View {
 
             // WEIGHT — shared right-aligned cell, tap → keypad; a hairline ± in the gutter.
             valueButton(text: valueText(weightValueText, unit: services.settings.unit.symbol),
-                        width: SetRowGrid.weightCell, align: .trailing) { editingField = .weight }
+                        width: SetRowGrid.weightCell, align: .trailing,
+                        label: "Weight", adjust: { stepWeight($0) }) { editingField = .weight }
             compactStepper(dec: { stepWeight(-1) }, inc: { stepWeight(1) })
 
             Text("×")
@@ -50,7 +51,8 @@ struct SetEntryRow: View {
                 .frame(width: SetRowGrid.times)
 
             // REPS — shared left-aligned cell.
-            valueButton(text: "\(reps)", width: SetRowGrid.repsCell, align: .leading) { editingField = .reps }
+            valueButton(text: "\(reps)", width: SetRowGrid.repsCell, align: .leading,
+                        label: "Reps", adjust: { stepReps($0) }) { editingField = .reps }
             compactStepper(dec: { stepReps(-1) }, inc: { stepReps(1) })
 
             Spacer(minLength: 8)
@@ -69,8 +71,12 @@ struct SetEntryRow: View {
     private func valueText(_ value: String, unit: String) -> String { "\(value)\u{2009}\(unit)" }
 
     /// The value as the primary editable target — the whole 44 pt-tall cell taps to the
-    /// keypad. Ghost pre-fill renders tertiary; an edit flips it to cyan.
+    /// keypad. A hairline cyan baseline signals "tap to type" (otherwise it reads as a
+    /// plain number the steppers upstage). Ghost pre-fill renders tertiary; an edit
+    /// flips it to cyan. VoiceOver: label + value + swipe-up/down = ± (the tiny glyph
+    /// steppers are hidden from VO), activate = keypad.
     private func valueButton(text: String, width: CGFloat, align: Alignment,
+                             label: String, adjust: @escaping (Int) -> Void,
                              tap: @escaping () -> Void) -> some View {
         Button(action: tap) {
             Text(text)
@@ -80,9 +86,24 @@ struct SetEntryRow: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
                 .frame(width: width, height: SetRowGrid.rowHeight, alignment: align)
+                .overlay(alignment: .bottom) {
+                    Rectangle().fill(SettColor.heroCyan.opacity(0.45))
+                        .frame(height: 1)
+                        .padding(.horizontal, 3)
+                        .padding(.bottom, 7)
+                }
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(label)
+        .accessibilityValue(text)
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment: adjust(1)
+            case .decrement: adjust(-1)
+            @unknown default: break
+            }
+        }
     }
 
     // MARK: Sleek picker — a borderless hairline vertical ± in the reserved gutter
@@ -182,7 +203,7 @@ struct SetEntryRow: View {
         }
         .buttonStyle(.plain)
         .disabled(reps <= 0)
-        .accessibilityLabel("Log set")
+        .accessibilityLabel(setNumber.map { "Log set \($0)" } ?? "Log set")
     }
 
     /// The reference index for THIS set: the count of non-warmup sets already logged.
