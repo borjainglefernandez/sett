@@ -70,6 +70,13 @@ struct ActiveWorkoutView: View {
         .sheet(isPresented: $isShowingOverview, onDismiss: reconcileCursor) {
             SessionOverviewSheet()
         }
+        .onAppear {
+            #if DEBUG
+            if ProcessInfo.processInfo.environment["SETT_DEBUG_OVERVIEW"] == "1" {
+                isShowingOverview = true
+            }
+            #endif
+        }
         .confirmationDialog("Finish workout?",
                             isPresented: $isConfirmingFinish,
                             titleVisibility: .visible) {

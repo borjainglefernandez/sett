@@ -21,6 +21,8 @@ struct ExerciseCard: View {
     @State private var editingValues: SetEntry?
     /// Exercise whose machine setup is being edited in `MachineSetupSheet`.
     @State private var setupTarget: Exercise?
+    /// The one logged row currently swiped open (only one at a time per card).
+    @State private var openSwipeRowID: UUID?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -31,7 +33,11 @@ struct ExerciseCard: View {
                     // Logged sets (filled), the active next-set input, then every set
                     // still planned as a dimmed placeholder — the whole plan up front.
                     ForEach(setPairs, id: \.set.id) { pair in
-                        setRow(set: pair.set, reference: pair.reference, label: pair.label)
+                        SwipeableSetRow(rowID: pair.set.id, openRowID: $openSwipeRowID,
+                                        onDuplicate: { session.duplicateSet(pair.set) },
+                                        onDelete: { session.deleteSet(pair.set) }) {
+                            setRow(set: pair.set, reference: pair.reference, label: pair.label)
+                        }
                     }
                     SetEntryRow(workoutExercise: workoutExercise, setNumber: workingLoggedCount + 1)
                     ForEach(pendingSlots, id: \.self) { ordinal in
@@ -137,10 +143,10 @@ struct ExerciseCard: View {
             withAnimation(.snappy) { isExpanded.toggle() }
         } label: {
             HStack(spacing: 12) {
-                Image(systemName: workoutExercise.equipment.symbolName)
-                    .font(.system(.title3, design: .rounded).weight(.semibold))
-                    .foregroundStyle(topTier.color)
-                    .frame(width: 28)
+                ExerciseIcon(name: workoutExercise.exerciseNameSnapshot,
+                             equipment: workoutExercise.equipment,
+                             muscle: workoutExercise.muscle,
+                             size: 30, color: topTier.color)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(workoutExercise.exerciseNameSnapshot.uppercased())
                         .font(.system(.callout, design: .monospaced).weight(.bold))
@@ -194,7 +200,8 @@ struct ExerciseCard: View {
     // MARK: Machine setup (Exercise.instructions — what do I set the machine to)
 
     /// Ash mono caption under the name while a setup exists; a quiet ghost
-    /// "Add setup" for machines/cables when empty; hidden for free weights.
+    /// "Add setup" when empty. Shown for EVERY exercise — a free-weight lift has a
+    /// setup worth noting too (bench angle, grip width, pin height, cable position).
     @ViewBuilder
     private var machineSetupRow: some View {
         if let exercise {
@@ -213,9 +220,9 @@ struct ExerciseCard: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Machine setup: \(setup)")
-                .accessibilityHint("Edits the machine setup")
-            } else if exercise.equipment == .machine || exercise.equipment == .cable {
+                .accessibilityLabel("Setup: \(setup)")
+                .accessibilityHint("Edits the setup")
+            } else {
                 Button {
                     setupTarget = exercise
                 } label: {
@@ -229,7 +236,7 @@ struct ExerciseCard: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Add machine setup")
+                .accessibilityLabel("Add setup")
             }
         }
     }
@@ -237,77 +244,136 @@ struct ExerciseCard: View {
     // MARK: Set row — a scouter reading per logged set
 
     /// A committed set rendered in the scouter language: a tier-coloured index badge +
-    /// a left accent bar, the lift, its PWR, and the vs-last delta (▲/◇/▼). Tap edits
-    /// the note; long-press fixes the values or deletes.
+    /// a left accent bar, the lift, its PWR, and the vs-last delta (▲/◇/▼). Tap fixes
+    /// the values; a note button opens the note (its text reads as a sub-line below);
+    /// long-press fixes the values or deletes.
     private func setRow(set: SetEntry, reference: SetEntry?, label: String) -> some View {
         let tier = setTier(set, reference: reference)
         let delta = (set.isWarmup || reference == nil) ? nil : pwr(set) - pwr(reference!)
         let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
-        return Button {
-            editingValues = set   // the toolbox's job is CORRECTING — tap fixes the values
-        } label: {
-            HStack(spacing: 0) {
-                Text(label)
-                    .font(.system(size: 12, weight: .heavy, design: .monospaced))
-                    .monospacedDigit()
-                    .foregroundStyle(set.isWarmup ? SettColor.ash : tier.color)
-                    .frame(width: SetRowGrid.badge, height: SetRowGrid.badge)
-                    .background { Circle().strokeBorder(tier.color.opacity(0.5), lineWidth: 1) }
-                Spacer().frame(width: SetRowGrid.badgeGap)
-                setValueColumns(weightText: WeightFormat.compactWithUnit(grams: set.weightGrams, unit: unit),
-                                repsText: "\(set.reps)", valueColor: SettColor.bone, weight: .bold)
-                Spacer(minLength: 8)
-                HStack(spacing: 6) {
-                    if set.notes?.isEmpty == false {
-                        Image(systemName: "text.alignleft")
-                            .font(.caption2)
-                            .foregroundStyle(SettColor.ash)
-                    }
-                    if set.isWarmup {
-                        Text("WARM-UP")
-                            .font(.system(size: 9, weight: .bold, design: .monospaced))
-                            .kerning(1)
-                            .foregroundStyle(SettColor.ash)
-                    } else {
-                        Text("PWR \(pwr(set))")
-                            .font(.system(size: 11, weight: .bold, design: .monospaced))
-                            .monospacedDigit()
-                            .foregroundStyle(tier.color.opacity(0.9))
-                        if let delta, delta != 0 {
-                            Text(deltaLabel(delta))
-                                .font(.system(size: 11, weight: .heavy, design: .monospaced))
-                                .monospacedDigit()
-                                .foregroundStyle(deltaColor(delta))
+        let note = set.notes?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return VStack(spacing: 0) {
+            Button {
+                editingValues = set   // the toolbox's job is CORRECTING — tap fixes the values
+            } label: {
+                HStack(spacing: 0) {
+                    SetIndexBadge(label: label, charge: set.isWarmup ? .warmup : .earned(tier))
+                    Spacer().frame(width: SetRowGrid.badgeGap)
+                    setValueColumns(weightText: WeightFormat.compactWithUnit(grams: set.weightGrams, unit: unit),
+                                    repsText: "\(set.reps)", valueColor: SettColor.bone, weight: .bold)
+                    Spacer(minLength: 6)
+                    // Trailing cluster: the PWR reading + its vs-last trend held as one
+                    // unit (6pt), the delta on a steady min-width seat so ▽/▲/▼ never
+                    // crowd PWR or jitter the note's x, then a clean 8pt gap to the note.
+                    HStack(spacing: 8) {
+                        if set.isWarmup {
+                            Text("WARM-UP")
+                                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                .kerning(1)
+                                .foregroundStyle(SettColor.ash)
+                        } else {
+                            HStack(spacing: 6) {
+                                Text("PWR \(pwr(set))")
+                                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                    .monospacedDigit()
+                                    .foregroundStyle(tier.color.opacity(0.9))
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.7)
+                                if let delta, delta != 0 {
+                                    Text(deltaLabel(delta))
+                                        .font(.system(size: 11, weight: .heavy, design: .monospaced))
+                                        .monospacedDigit()
+                                        .foregroundStyle(deltaColor(delta))
+                                        .frame(minWidth: 28, alignment: .leading)
+                                }
+                            }
                         }
+                        noteButton(for: set, hasNote: !note.isEmpty)
                     }
                 }
+                .padding(.horizontal, SetRowGrid.hPad)
+                .frame(height: SetRowGrid.rowHeight)
+                .contentShape(Rectangle())
             }
-            .padding(.horizontal, SetRowGrid.hPad)
-            .frame(height: SetRowGrid.rowHeight)
-            .background {
-                shape.fill(TimeChamber.void.opacity(0.5))
-                HStack {
-                    RoundedRectangle(cornerRadius: 2).fill(tier.color).frame(width: 3)
-                    Spacer()
-                }
-                shape.strokeBorder(tier.color.opacity(0.18), lineWidth: 1)
-            }
-            .contentShape(shape)
+            .buttonStyle(.plain)
+            .accessibilityLabel("Set \(label), \(WeightFormat.compactWithUnit(grams: set.weightGrams, unit: unit)) by \(set.reps)")
+            .accessibilityHint("Fixes this set's weight and reps. Long-press for note or delete.")
+
+            if !note.isEmpty { noteLine(note, on: set) }
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Set \(label), \(WeightFormat.compactWithUnit(grams: set.weightGrams, unit: unit)) by \(set.reps)")
-        .accessibilityHint("Fixes this set's weight and reps. Long-press for note or delete.")
+        .background {
+            shape.fill(TimeChamber.void.opacity(0.5))
+            HStack {
+                RoundedRectangle(cornerRadius: 2).fill(tier.color).frame(width: 3)
+                Spacer()
+            }
+            shape.strokeBorder(tier.color.opacity(0.18), lineWidth: 1)
+        }
+        .contentShape(shape)
         .contextMenu {
             Button {
                 editingValues = set
             } label: { Label("Fix weight & reps", systemImage: "pencil") }
             Button {
                 editingSet = set
-            } label: { Label("Edit note", systemImage: "note.text") }
+            } label: { Label(note.isEmpty ? "Add note" : "Edit note", systemImage: "note.text") }
+            Button {
+                session.duplicateSet(set)
+            } label: { Label("Duplicate set", systemImage: "plus.square.on.square") }
             Button(role: .destructive) {
                 session.deleteSet(set)
             } label: { Label("Delete set", systemImage: "trash") }
         }
+    }
+
+    /// The note affordance on a logged set — mirrors the active row's note button so
+    /// prior sets get notes too. Cyan (with a dot) when a note exists, quiet iron when
+    /// empty but still a one-tap add. Its text reads in full on the sub-line below.
+    private func noteButton(for set: SetEntry, hasNote: Bool) -> some View {
+        Button {
+            editingSet = set
+        } label: {
+            Image(systemName: "note.text")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(hasNote ? SettColor.heroCyan : SettColor.iron)
+                .frame(width: 22, height: SetRowGrid.rowHeight)
+                .overlay(alignment: .topTrailing) {
+                    if hasNote {
+                        Circle().fill(SettColor.heroCyan).frame(width: 5, height: 5).offset(x: -3, y: 12)
+                    }
+                }
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(hasNote ? "Edit set note" : "Add set note")
+    }
+
+    /// The note text under a logged set — readable in full, tappable to edit.
+    private func noteLine(_ note: String, on set: SetEntry) -> some View {
+        Button {
+            editingSet = set
+        } label: {
+            HStack(alignment: .top, spacing: 6) {
+                Image(systemName: "text.alignleft")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(SettColor.iron)
+                    .padding(.top, 1)
+                Text(note)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(SettColor.ash)
+                    .multilineTextAlignment(.leading)
+                    .lineLimit(3)
+                Spacer(minLength: 0)
+            }
+            .padding(.leading, SetRowGrid.hPad + SetRowGrid.badge + SetRowGrid.badgeGap)
+            .padding(.trailing, SetRowGrid.hPad)
+            .padding(.bottom, 8)
+            .padding(.top, 1)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Note: \(note)")
+        .accessibilityHint("Edits this set's note")
     }
 
     /// A still-to-do planned set: a dashed, dimmed placeholder showing the target (the
@@ -326,15 +392,7 @@ struct ExerciseCard: View {
         let repsText = hasTarget ? "\(ghost.reps)" : "—"
         let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
         return HStack(spacing: 0) {
-            Text("\(number)")
-                .font(.system(size: 12, weight: .heavy, design: .monospaced))
-                .monospacedDigit()
-                .foregroundStyle(SettColor.iron)
-                .frame(width: SetRowGrid.badge, height: SetRowGrid.badge)
-                .background {
-                    Circle().strokeBorder(SettColor.iron.opacity(0.6),
-                                          style: StrokeStyle(lineWidth: 1, dash: [2.5, 2.5]))
-                }
+            SetIndexBadge(label: "\(number)", charge: .unearned)
             Spacer().frame(width: SetRowGrid.badgeGap)
             // Target numbers in ash (legible), not iron — they're the functional part.
             setValueColumns(weightText: weightText, repsText: repsText,
@@ -369,6 +427,125 @@ struct ExerciseCard: View {
         Haptics.selection()
     }
 
+}
+
+// MARK: - Swipeable set row (left → delete, right → duplicate)
+
+/// Wraps a LOGGED set row with a custom horizontal swipe — there is no List cell in
+/// the card ScrollView to hang `.swipeActions` on. Right-swipe reveals a cyan duplicate
+/// icon; left-swipe a red trash. Both icons grow in with the drag. A decisive swipe past
+/// `commit` fires; a lighter swipe rests at the `reveal` detent where the icon is a
+/// tappable button; tapping the row (or opening another) closes it. Vertical drags bail
+/// on the first sample so the ScrollView keeps the pan; taps (translation < 8) reach the
+/// row's own tap-to-fix. VoiceOver reaches both actions via the row's contextMenu +
+/// accessibility actions, since it can't swipe.
+struct SwipeableSetRow<Content: View>: View {
+    let rowID: UUID
+    @Binding var openRowID: UUID?
+    let onDuplicate: () -> Void
+    let onDelete: () -> Void
+    @ViewBuilder var content: () -> Content
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var offset: CGFloat = 0
+    @State private var base: CGFloat = 0
+    @State private var axis: Axis?
+
+    private let reveal: CGFloat = 76
+    private let commit: CGFloat = 120
+    private var shape: RoundedRectangle { RoundedRectangle(cornerRadius: 10, style: .continuous) }
+    private var isOpen: Bool { openRowID == rowID }
+    private var progress: CGFloat { min(1, abs(offset) / reveal) }
+
+    var body: some View {
+        ZStack {
+            actionTrack
+            content()
+                .background(TimeChamber.void, in: shape)   // opaque so the track hides when closed
+                .overlay {
+                    if isOpen {   // tap the row body to close it (its own Fix button is disabled)
+                        Color.clear.contentShape(Rectangle()).onTapGesture { close() }
+                    }
+                }
+                .disabled(isOpen)
+                .offset(x: offset)
+        }
+        .clipShape(shape)
+        // Simultaneous (not high-priority): a vertical drag bails on the first sample so
+        // the ScrollView keeps its pan; only a horizontal drag moves the offset.
+        .simultaneousGesture(dragGesture)
+        .onChange(of: openRowID) { _, id in
+            if id != rowID && offset != 0 { close() }
+        }
+        .accessibilityAction(named: "Duplicate set") { onDuplicate() }
+        .accessibilityAction(named: "Delete set") { onDelete() }
+    }
+
+    private var actionTrack: some View {
+        HStack(spacing: 0) {
+            actionIcon("plus.square.on.square", tint: SettColor.heroCyan, active: offset > 0) { fire(onDuplicate) }
+            Spacer(minLength: 0)
+            actionIcon("trash", tint: SettColor.negative, active: offset < 0) { fire(onDelete) }
+        }
+        .padding(.horizontal, 26)
+    }
+
+    private func actionIcon(_ name: String, tint: Color, active: Bool, tap: @escaping () -> Void) -> some View {
+        Button(action: tap) {
+            Image(systemName: name)
+                .font(.system(size: 18, weight: .bold))
+                .foregroundStyle(tint)
+                .scaleEffect(0.7 + 0.3 * progress)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .opacity(active ? progress : 0)
+        .allowsHitTesting(isOpen && active)
+    }
+
+    private var dragGesture: some Gesture {
+        DragGesture(minimumDistance: 8)
+            .onChanged { value in
+                if axis == nil {
+                    base = offset
+                    axis = abs(value.translation.width) > abs(value.translation.height) ? .horizontal : .vertical
+                }
+                guard axis == .horizontal else { return }
+                var next = base + value.translation.width
+                if abs(next) > reveal {   // rubber-band past the detent
+                    let over = abs(next) - reveal
+                    next = (next < 0 ? -1 : 1) * (reveal + over * 0.35)
+                }
+                offset = next
+            }
+            .onEnded { value in
+                defer { axis = nil }
+                guard axis == .horizontal else { offset = base; return }
+                let final = base + value.translation.width
+                if final <= -commit { fire(onDelete) }
+                else if final >= commit { fire(onDuplicate) }
+                else if final <= -reveal * 0.6 { snapOpen(-reveal) }
+                else if final >= reveal * 0.6 { snapOpen(reveal) }
+                else { close() }
+            }
+    }
+
+    private func snapOpen(_ x: CGFloat) {
+        openRowID = rowID
+        withAnimation(reduceMotion ? nil : .snappy(duration: 0.25)) { offset = x }
+        Haptics.selection()
+    }
+
+    private func close() {
+        if openRowID == rowID { openRowID = nil }
+        withAnimation(reduceMotion ? nil : .snappy(duration: 0.25)) { offset = 0 }
+    }
+
+    private func fire(_ action: @escaping () -> Void) {
+        if openRowID == rowID { openRowID = nil }
+        withAnimation(reduceMotion ? nil : .snappy(duration: 0.2)) { offset = 0 }
+        action()   // delete removes the row from orderedSets; duplicate inserts the clone
+    }
 }
 
 // MARK: - Set values edit sheet (fix a mis-logged weight / reps / warm-up)

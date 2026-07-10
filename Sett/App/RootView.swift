@@ -32,5 +32,20 @@ struct RootView: View {
         .sheet(item: $session.completedSummary) { summary in
             WorkoutSummaryView(summary: summary)
         }
+        .onAppear {
+            #if DEBUG
+            // "1" → demo workout + overview sheet; "player" → demo workout, scouter only.
+            if let flag = ProcessInfo.processInfo.environment["SETT_DEBUG_OVERVIEW"], !flag.isEmpty {
+                session.debugStartOverviewDemo()
+            }
+            #endif
+        }
+        #if DEBUG
+        .overlay {
+            if let flag = ProcessInfo.processInfo.environment["SETT_DEBUG_GLYPHS"], !flag.isEmpty {
+                ExerciseGlyphContactSheet()
+            }
+        }
+        #endif
     }
 }

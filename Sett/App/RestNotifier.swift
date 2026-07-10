@@ -15,6 +15,10 @@ enum RestNotifier {
     /// Ask once; the system only ever prompts the first time. Called lazily when the
     /// first rest starts, so the prompt lands in context (not during onboarding).
     static func requestAuthorizationIfNeeded() {
+        #if DEBUG
+        // Debug overview screenshots start rest synthetically; don't pop the auth prompt.
+        if ProcessInfo.processInfo.environment["SETT_DEBUG_OVERVIEW"] == "1" { return }
+        #endif
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
     }
 

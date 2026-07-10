@@ -247,12 +247,11 @@ struct SetPlayerView: View {
                                  : (aheadOfLast ? SettColor.positive : liveTier.color))
                 .accessibilityHidden(true)
             HStack(spacing: 9) {
-                if let equipment = exercise?.equipment {
-                    Image(systemName: equipment.symbolName)
-                        .font(.system(.title3, design: .rounded).weight(.semibold))
-                        .foregroundStyle(liveTier.color)
-                        .accessibilityHidden(true)
-                }
+                ExerciseIcon(name: workoutExercise.exerciseNameSnapshot,
+                             equipment: exercise?.equipment ?? .barbell,
+                             muscle: workoutExercise.muscle,
+                             size: 28, color: liveTier.color)
+                    .accessibilityHidden(true)
                 Text(workoutExercise.exerciseNameSnapshot.uppercased())
                     .font(.system(.title3, design: .monospaced).weight(.bold))
                     .kerning(2)

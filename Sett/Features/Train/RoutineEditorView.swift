@@ -241,10 +241,9 @@ struct RoutineEditorView: View {
 
     private func exerciseRow(_ draft: Binding<RoutineDraftExercise>) -> some View {
         HStack(spacing: 12) {
-            Image(systemName: draft.wrappedValue.equipment.symbolName)
-                .font(.body)
-                .foregroundStyle(SettColor.heroCyan)
-                .frame(width: 26)
+            ExerciseIcon(name: draft.wrappedValue.name, equipment: draft.wrappedValue.equipment,
+                         muscle: Muscle(rawValue: draft.wrappedValue.muscleRaw) ?? .other,
+                         size: 26, color: SettColor.heroCyan)
             VStack(alignment: .leading, spacing: 2) {
                 Text(draft.wrappedValue.name)
                     .font(.system(.subheadline, design: .rounded).weight(.semibold))

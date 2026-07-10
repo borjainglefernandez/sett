@@ -19,41 +19,56 @@ struct SetEntryRow: View {
     /// row still works if presented outside an active-session context.
     @Environment(CombatTextEmitter.self) private var combatText: CombatTextEmitter?
 
-    @State private var weightGrams = 0
-    @State private var reps = 0
+    /// The values are edited INLINE as text (no modal pad) — the strings are the source
+    /// of truth while the row is active; grams/reps are parsed from them.
+    @State private var weightText = "0"
+    @State private var repsText = "0"
     @State private var isGhost = true
-    @State private var editingField: NumericField?
+    @FocusState private var focused: NumericField?
     /// Note staged for the NEXT commit — travels into `logSet` with the checkmark.
     @State private var pendingNote: String?
     @State private var isEditingNote = false
 
+    private var weightGrams: Int {
+        Units.grams(fromDisplay: Double(weightText.replacingOccurrences(of: ",", with: ".")) ?? 0,
+                    unit: services.settings.unit)
+    }
+    private var repsValue: Int { max(0, Int(repsText) ?? 0) }
+    private func weightString(grams: Int) -> String {
+        WeightFormat.compact(grams: grams, unit: services.settings.unit)
+    }
+
     var body: some View {
         HStack(spacing: 0) {
-            Text(setNumber.map(String.init) ?? "")
-                .font(.system(size: 12, weight: .heavy, design: .monospaced))
-                .monospacedDigit()
-                .foregroundStyle(SettColor.heroCyan)
-                .frame(width: SetRowGrid.badge, height: SetRowGrid.badge)
-                .background { Circle().strokeBorder(SettColor.heroCyan.opacity(0.6), lineWidth: 1) }
+            SetIndexBadge(label: setNumber.map(String.init) ?? "", charge: .active)
                 .opacity(setNumber == nil ? 0 : 1)
                 .accessibilityHidden(true)
             Spacer().frame(width: SetRowGrid.badgeGap)
 
-            // WEIGHT — shared right-aligned cell, tap → keypad; a hairline ± in the gutter.
-            valueButton(text: valueText(weightValueText, unit: services.settings.unit.symbol),
-                        width: SetRowGrid.weightCell, align: .trailing,
-                        label: "Weight", adjust: { stepWeight($0) }) { editingField = .weight }
-            compactStepper(dec: { stepWeight(-1) }, inc: { stepWeight(1) })
+            // WEIGHT — a hairline − left of the value, the inline editable field + unit
+            // caption right-aligned in the shared cell, a hairline + right of it.
+            stepButton("minus", label: "Decrease weight") { stepWeight(-1) }
+            HStack(spacing: 3) {
+                editField(text: $weightText, field: .weight, align: .trailing, label: "Weight")
+                Text(services.settings.unit.symbol)
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .foregroundStyle(SettColor.iron)
+            }
+            .padding(.trailing, SetRowGrid.valueInset)
+            .frame(width: SetRowGrid.weightCell, height: SetRowGrid.rowHeight, alignment: .trailing)
+            stepButton("plus", label: "Increase weight") { stepWeight(1) }
 
             Text("×")
                 .font(.system(size: 13, weight: .semibold, design: .monospaced))
                 .foregroundStyle(SettColor.iron)
                 .frame(width: SetRowGrid.times)
 
-            // REPS — shared left-aligned cell.
-            valueButton(text: "\(reps)", width: SetRowGrid.repsCell, align: .leading,
-                        label: "Reps", adjust: { stepReps($0) }) { editingField = .reps }
-            compactStepper(dec: { stepReps(-1) }, inc: { stepReps(1) })
+            // REPS — a hairline − left, the inline field, a hairline + right.
+            stepButton("minus", label: "Decrease reps") { stepReps(-1) }
+            editField(text: $repsText, field: .reps, align: .leading, label: "Reps")
+                .padding(.leading, SetRowGrid.valueInset)
+                .frame(width: SetRowGrid.repsCell, height: SetRowGrid.rowHeight, alignment: .leading)
+            stepButton("plus", label: "Increase reps") { stepReps(1) }
 
             Spacer(minLength: 8)
             noteButton
@@ -63,76 +78,58 @@ struct SetEntryRow: View {
         .padding(.horizontal, SetRowGrid.hPad)
         .background(activeBackground)
         .onAppear { autofill() }
-        .sheet(item: $editingField) { field in
-            numericPad(for: field)
-        }
-    }
-
-    private func valueText(_ value: String, unit: String) -> String { "\(value)\u{2009}\(unit)" }
-
-    /// The value as the primary editable target — the whole 44 pt-tall cell taps to the
-    /// keypad. A hairline cyan baseline signals "tap to type" (otherwise it reads as a
-    /// plain number the steppers upstage). Ghost pre-fill renders tertiary; an edit
-    /// flips it to cyan. VoiceOver: label + value + swipe-up/down = ± (the tiny glyph
-    /// steppers are hidden from VO), activate = keypad.
-    private func valueButton(text: String, width: CGFloat, align: Alignment,
-                             label: String, adjust: @escaping (Int) -> Void,
-                             tap: @escaping () -> Void) -> some View {
-        Button(action: tap) {
-            Text(text)
-                .font(.system(size: 15, weight: .bold, design: .monospaced))
-                .monospacedDigit()
-                .foregroundStyle(isGhost ? Color(uiColor: .tertiaryLabel) : SettColor.heroCyan)
-                .lineLimit(1)
-                .minimumScaleFactor(0.6)
-                .frame(width: width, height: SetRowGrid.rowHeight, alignment: align)
-                .overlay(alignment: .bottom) {
-                    Rectangle().fill(SettColor.heroCyan.opacity(0.45))
-                        .frame(height: 1)
-                        .padding(.horizontal, 3)
-                        .padding(.bottom, 7)
-                }
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(label)
-        .accessibilityValue(text)
-        .accessibilityAdjustableAction { direction in
-            switch direction {
-            case .increment: adjust(1)
-            case .decrement: adjust(-1)
-            @unknown default: break
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") { focused = nil }
+                    .font(.headline)
+                    .foregroundStyle(SettColor.heroCyan)
             }
         }
     }
 
-    // MARK: Sleek picker — a borderless hairline vertical ± in the reserved gutter
-
-    private func compactStepper(dec: @escaping () -> Void, inc: @escaping () -> Void) -> some View {
-        VStack(spacing: 0) {
-            stepGlyph("plus", action: inc)     // + on top (up = increase)
-            Rectangle().fill(SettColor.heroCyan.opacity(0.25)).frame(height: 1)
-            stepGlyph("minus", action: dec)    // − on bottom
-        }
-        .frame(width: SetRowGrid.stepperGutter)
-        .background(TimeChamber.void.opacity(0.6),
-                    in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .strokeBorder(SettColor.heroCyan.opacity(0.4), lineWidth: 1)
-        }
-        .accessibilityHidden(true)   // the value cell is the accessible keypad edit path
+    /// The value as an INLINE editable text box — tap to focus, type on the numeric
+    /// keypad (decimal for weight, whole for reps), updating the number in place with no
+    /// modal pad. `.fixedSize` sizes the field to its content so the cyan underline hugs
+    /// the actual number (not the whole cell) and the weight/reps underlines stay
+    /// consistent. Ghost pre-fill renders tertiary; focusing flips it to cyan.
+    private func editField(text: Binding<String>, field: NumericField,
+                           align: TextAlignment, label: String) -> some View {
+        TextField("", text: text)
+            .keyboardType(field == .weight ? .decimalPad : .numberPad)
+            .focused($focused, equals: field)
+            .multilineTextAlignment(align)
+            .font(.system(size: 15, weight: .bold, design: .monospaced))
+            .monospacedDigit()
+            .foregroundStyle(isGhost ? Color(uiColor: .tertiaryLabel) : SettColor.heroCyan)
+            .fixedSize()
+            .overlay(alignment: .bottom) {
+                Rectangle()
+                    .fill(focused == field ? SettColor.heroCyan : SettColor.heroCyan.opacity(0.45))
+                    .frame(height: focused == field ? 1.5 : 1)
+                    .offset(y: 5)
+            }
+            .onChange(of: focused) { _, now in if now == field { isGhost = false } }
+            .accessibilityLabel(label)
     }
 
-    private func stepGlyph(_ symbol: String, action: @escaping () -> Void) -> some View {
+    // MARK: Stepper — a borderless hairline − / + flanking each value (no chunky box)
+
+    /// One flanking step glyph: a bare cyan − or + (no fill, no border — that chrome was
+    /// the "clunk"), floating next to the value like the unit caption. The 14pt layout
+    /// column keeps the value cells on their shared x; the 44pt height gives a full-row
+    /// hit target. A plain Button (not a drag) so it never competes with the ScrollView
+    /// pan; big jumps are one tap on the value to type them.
+    private func stepButton(_ symbol: String, label: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: 10, weight: .bold))
-                .foregroundStyle(SettColor.heroCyan)
-                .frame(width: SetRowGrid.stepperGutter, height: 19)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(SettColor.heroCyan.opacity(0.9))
+                .frame(width: SetRowGrid.stepFlank, height: SetRowGrid.rowHeight)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(label)
     }
 
     /// The active row wears the logged rows' void card + a solid cyan accent bar so it
@@ -147,13 +144,14 @@ struct SetEntryRow: View {
     }
 
     private func stepWeight(_ direction: Int) {
-        weightGrams = max(0, weightGrams + direction * services.settings.incrementGrams)
+        let grams = max(0, weightGrams + direction * services.settings.incrementGrams)
+        weightText = weightString(grams: grams)
         isGhost = false
         Haptics.selection()
     }
 
     private func stepReps(_ direction: Int) {
-        reps = max(0, reps + direction)
+        repsText = "\(max(0, repsValue + direction))"
         isGhost = false
         Haptics.selection()
     }
@@ -193,16 +191,17 @@ struct SetEntryRow: View {
 
     private var commitButton: some View {
         Button {
+            focused = nil
             commit()
         } label: {
             Image(systemName: "checkmark")
-                .font(.headline.weight(.bold))
+                .font(.system(size: 15, weight: .heavy))
                 .foregroundStyle(.white)
-                .frame(width: 44, height: 44)
+                .frame(width: 34, height: 34)
                 .background(SettColor.heroCyan, in: Circle())
         }
         .buttonStyle(.plain)
-        .disabled(reps <= 0)
+        .disabled(repsValue <= 0)
         .accessibilityLabel(setNumber.map { "Log set \($0)" } ?? "Log set")
     }
 
@@ -216,21 +215,23 @@ struct SetEntryRow: View {
     }
 
     private func commit() {
+        let grams = weightGrams
+        let reps = repsValue
         // Crit when this set's weight beats the reference (ghost) set at the same
         // working-set ordinal — resolved BEFORE logging so the index still points here.
         let index = workingSlot
         let references = session.previousSets(exerciseID: workoutExercise.exerciseID,
                                               excluding: workoutExercise.workout?.id)
-        let beatReference = index < references.count && weightGrams > references[index].weightGrams
+        let beatReference = index < references.count && grams > references[index].weightGrams
 
-        session.logSet(on: workoutExercise, weightGrams: weightGrams, reps: reps,
+        session.logSet(on: workoutExercise, weightGrams: grams, reps: reps,
                        notes: pendingNote)
         pendingNote = nil
 
         // Floating combat text: +N PWR, N = this set's volume load in whole pounds.
-        // weightGrams * reps is gram-reps volume; pounds(fromGrams:) converts it
-        // to pound-reps. Celebration plays AFTER the write — latency is sacred.
-        let volumeLb = Int(Units.pounds(fromGrams: weightGrams * reps).rounded())
+        // grams * reps is gram-reps volume; pounds(fromGrams:) converts it to
+        // pound-reps. Celebration plays AFTER the write — latency is sacred.
+        let volumeLb = Int(Units.pounds(fromGrams: grams * reps).rounded())
         combatText?.emit("+\(volumeLb.formatted()) PWR", crit: beatReference)
         if beatReference { Haptics.prSignature() } // crit haptic is the caller's job
 
@@ -241,47 +242,9 @@ struct SetEntryRow: View {
 
     private func autofill() {
         let ghost = session.ghostValues(for: workoutExercise, slot: workingSlot)
-        weightGrams = ghost.weightGrams
-        reps = ghost.reps
+        weightText = weightString(grams: ghost.weightGrams)
+        repsText = "\(ghost.reps)"
         isGhost = true
-    }
-
-    // MARK: Numeric pad sheet
-
-    private var weightValueText: String {
-        let value = Units.displayValue(grams: weightGrams, unit: services.settings.unit)
-        // Compact: "62.5" / "140", never "62.50" — the stepper column is narrow.
-        var text = String(format: "%.2f", value)
-        while text.hasSuffix("0") { text.removeLast() }
-        if text.hasSuffix(".") { text.removeLast() }
-        return text
-    }
-
-    private func numericPad(for field: NumericField) -> some View {
-        let unit = services.settings.unit
-        switch field {
-        case .weight:
-            return NumericPadSheet(
-                title: "Weight (\(unit.symbol))",
-                initialText: weightValueText,
-                keyboard: .decimalPad
-            ) { text in
-                guard let value = Double(text.replacingOccurrences(of: ",", with: ".")),
-                      value >= 0 else { return }
-                weightGrams = Units.grams(fromDisplay: value, unit: unit)
-                isGhost = false
-            }
-        case .reps:
-            return NumericPadSheet(
-                title: "Reps",
-                initialText: "\(reps)",
-                keyboard: .numberPad
-            ) { text in
-                guard let value = Int(text), value >= 0 else { return }
-                reps = value
-                isGhost = false
-            }
-        }
     }
 }
 
@@ -360,7 +323,7 @@ enum NumericField: String, Identifiable {
     var id: String { rawValue }
 }
 
-// MARK: - Numeric pad sheet (shared: SetEntryRow taps + Set Player long-press)
+// MARK: - Numeric pad sheet (Set Player long-press keypad)
 
 struct NumericPadSheet: View {
     let title: String

@@ -103,6 +103,35 @@ public final class WorkoutSessionStore {
         Haptics.medium()
     }
 
+    #if DEBUG
+    /// DEBUG hook (env `SETT_DEBUG_OVERVIEW=1`): start the first routine and log a
+    /// couple of sets — one noted — so the overview shows logged + planned + note rows
+    /// for screenshotting. No-op if a workout is already live.
+    public func debugStartOverviewDemo() {
+        guard activeWorkout == nil else { isPresentingWorkout = true; return }
+        let routines = (try? context.fetch(
+            FetchDescriptor<Routine>(predicate: #Predicate { $0.deletedAt == nil }))) ?? []
+        guard let routine = routines.first else { return }
+        start(routine: routine)
+        // Insert directly (not logSet) so no rest timer / notification prompt fires.
+        if let first = activeWorkout?.orderedExercises.first {
+            let grams = Units.grams(fromDisplay: 135, unit: settings.unit)
+            debugInsertSet(on: first, grams: grams, reps: 10, notes: "felt heavy, left side weaker")
+            debugInsertSet(on: first, grams: grams, reps: 8, notes: nil)
+            if let workout = activeWorkout { touchAndSave(workout) }
+        }
+    }
+
+    private func debugInsertSet(on workoutExercise: WorkoutExercise, grams: Int, reps: Int, notes: String?) {
+        let index = (workoutExercise.orderedSets.last?.orderIndex ?? -1) + 1
+        let set = SetEntry(orderIndex: index, weightGrams: grams,
+                           entryUnit: settings.unit, reps: reps, isWarmup: false)
+        set.notes = notes
+        set.workoutExercise = workoutExercise
+        context.insert(set)
+    }
+    #endif
+
     public func addExercise(_ exercise: Exercise) {
         guard let workout = activeWorkout else { return }
         let index = (workout.orderedExercises.last?.orderIndex ?? -1) + 1
@@ -149,6 +178,59 @@ public final class WorkoutSessionStore {
         set.needsPush = true
         if let workout = set.workoutExercise?.workout ?? activeWorkout { touchAndSave(workout) }
         Haptics.medium()
+    }
+
+    /// Duplicate a logged set (right-swipe / "Duplicate set"): clone it into the slot
+    /// right after the original. Opens the slot FIRST — every sibling at or past the
+    /// clone's index shifts +1 — so the clone and its old neighbour never collide, and
+    /// `logSet`'s `last.orderIndex + 1` next-set assumption still holds after a
+    /// mid-exercise copy. Clones `entryUnit` (NOT settings.unit — that would relabel an
+    /// old kg set as lb), plus notes/setting/warm-up.
+    public func duplicateSet(_ set: SetEntry) {
+        guard let we = set.workoutExercise else { return }
+        let insertIndex = set.orderIndex + 1
+        for sibling in we.orderedSets where sibling.orderIndex >= insertIndex {
+            sibling.orderIndex += 1
+            sibling.updatedAt = .now
+            sibling.needsPush = true
+        }
+        let copy = SetEntry(orderIndex: insertIndex, weightGrams: set.weightGrams,
+                            entryUnit: set.entryUnit, reps: set.reps, isWarmup: set.isWarmup)
+        copy.notes = set.notes
+        copy.setting = set.setting
+        copy.workoutExercise = we
+        context.insert(copy)
+        if let workout = we.workout ?? activeWorkout { touchAndSave(workout) }
+        Haptics.medium()
+    }
+
+    /// Reorder sets WITHIN an exercise (`.onMove`). Densifies `orderIndex` 0..<n over the
+    /// filtered/sorted `orderedSets`, stamping only rows whose index actually moved
+    /// (which also self-heals any prior gaps).
+    public func moveSet(in workoutExercise: WorkoutExercise, from source: IndexSet, to destination: Int) {
+        var ordered = workoutExercise.orderedSets
+        ordered.move(fromOffsets: source, toOffset: destination)
+        for (index, set) in ordered.enumerated() where set.orderIndex != index {
+            set.orderIndex = index
+            set.updatedAt = .now
+            set.needsPush = true
+        }
+        if let workout = workoutExercise.workout ?? activeWorkout { touchAndSave(workout) }
+        Haptics.selection()
+    }
+
+    /// Reorder the exercise cards (`.onMove`). Same densify-and-stamp discipline over
+    /// `orderedExercises`.
+    public func moveExercise(in workout: Workout, from source: IndexSet, to destination: Int) {
+        var ordered = workout.orderedExercises
+        ordered.move(fromOffsets: source, toOffset: destination)
+        for (index, exercise) in ordered.enumerated() where exercise.orderIndex != index {
+            exercise.orderIndex = index
+            exercise.updatedAt = .now
+            exercise.needsPush = true
+        }
+        touchAndSave(workout)
+        Haptics.selection()
     }
 
     public func startRest(seconds: Int, nextUp: String? = nil) {
