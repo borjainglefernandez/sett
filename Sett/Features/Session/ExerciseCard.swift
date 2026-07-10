@@ -237,43 +237,44 @@ struct ExerciseCard: View {
         return Button {
             editingSet = set
         } label: {
-            HStack(spacing: 10) {
+            HStack(spacing: 0) {
                 Text(label)
                     .font(.system(size: 12, weight: .heavy, design: .monospaced))
                     .monospacedDigit()
                     .foregroundStyle(set.isWarmup ? SettColor.ash : tier.color)
-                    .frame(width: 24, height: 24)
+                    .frame(width: SetRowGrid.badge, height: SetRowGrid.badge)
                     .background { Circle().strokeBorder(tier.color.opacity(0.5), lineWidth: 1) }
-                Text("\(WeightFormat.compactWithUnit(grams: set.weightGrams, unit: unit)) × \(set.reps)")
-                    .font(.system(size: 15, weight: .bold, design: .monospaced))
-                    .monospacedDigit()
-                    .foregroundStyle(SettColor.bone)
-                if set.notes?.isEmpty == false {
-                    Image(systemName: "text.alignleft")
-                        .font(.caption2)
-                        .foregroundStyle(SettColor.ash)
-                }
-                Spacer(minLength: 6)
-                if set.isWarmup {
-                    Text("WARM-UP")
-                        .font(.system(size: 9, weight: .bold, design: .monospaced))
-                        .kerning(1)
-                        .foregroundStyle(SettColor.ash)
-                } else {
-                    Text("PWR \(pwr(set))")
-                        .font(.system(size: 11, weight: .bold, design: .monospaced))
-                        .monospacedDigit()
-                        .foregroundStyle(tier.color.opacity(0.9))
-                    if let delta, delta != 0 {
-                        Text(deltaLabel(delta))
-                            .font(.system(size: 11, weight: .heavy, design: .monospaced))
+                Spacer().frame(width: SetRowGrid.badgeGap)
+                setValueColumns(weightText: WeightFormat.compactWithUnit(grams: set.weightGrams, unit: unit),
+                                reps: set.reps, valueColor: SettColor.bone, weight: .bold)
+                Spacer(minLength: 8)
+                HStack(spacing: 6) {
+                    if set.notes?.isEmpty == false {
+                        Image(systemName: "text.alignleft")
+                            .font(.caption2)
+                            .foregroundStyle(SettColor.ash)
+                    }
+                    if set.isWarmup {
+                        Text("WARM-UP")
+                            .font(.system(size: 9, weight: .bold, design: .monospaced))
+                            .kerning(1)
+                            .foregroundStyle(SettColor.ash)
+                    } else {
+                        Text("PWR \(pwr(set))")
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
                             .monospacedDigit()
-                            .foregroundStyle(deltaColor(delta))
+                            .foregroundStyle(tier.color.opacity(0.9))
+                        if let delta, delta != 0 {
+                            Text(deltaLabel(delta))
+                                .font(.system(size: 11, weight: .heavy, design: .monospaced))
+                                .monospacedDigit()
+                                .foregroundStyle(deltaColor(delta))
+                        }
                     }
                 }
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 9)
+            .padding(.horizontal, SetRowGrid.hPad)
+            .frame(height: SetRowGrid.rowHeight)
             .background {
                 shape.fill(TimeChamber.void.opacity(0.5))
                 HStack {
@@ -306,28 +307,27 @@ struct ExerciseCard: View {
     private func plannedRow(number: Int, slot: Int) -> some View {
         let ghost = session.ghostValues(for: workoutExercise, slot: slot)
         let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
-        return HStack(spacing: 10) {
+        return HStack(spacing: 0) {
             Text("\(number)")
                 .font(.system(size: 12, weight: .heavy, design: .monospaced))
                 .monospacedDigit()
                 .foregroundStyle(SettColor.iron)
-                .frame(width: 24, height: 24)
+                .frame(width: SetRowGrid.badge, height: SetRowGrid.badge)
                 .background {
                     Circle().strokeBorder(SettColor.iron.opacity(0.6),
                                           style: StrokeStyle(lineWidth: 1, dash: [2.5, 2.5]))
                 }
-            Text("\(WeightFormat.compactWithUnit(grams: ghost.weightGrams, unit: unit)) × \(ghost.reps)")
-                .font(.system(size: 15, weight: .semibold, design: .monospaced))
-                .monospacedDigit()
-                .foregroundStyle(SettColor.iron)
-            Spacer(minLength: 6)
+            Spacer().frame(width: SetRowGrid.badgeGap)
+            setValueColumns(weightText: WeightFormat.compactWithUnit(grams: ghost.weightGrams, unit: unit),
+                            reps: ghost.reps, valueColor: SettColor.iron, weight: .semibold)
+            Spacer(minLength: 8)
             Text("PLANNED")
                 .font(.system(size: 9, weight: .bold, design: .monospaced))
                 .kerning(1)
                 .foregroundStyle(SettColor.iron)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 9)
+        .padding(.horizontal, SetRowGrid.hPad)
+        .frame(height: SetRowGrid.rowHeight)
         .background {
             shape.strokeBorder(SettColor.cardBorder.opacity(0.7),
                                style: StrokeStyle(lineWidth: 1, dash: [4, 3]))

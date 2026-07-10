@@ -28,77 +28,98 @@ struct SetEntryRow: View {
     @State private var isEditingNote = false
 
     var body: some View {
-        HStack(spacing: 8) {
-            if let setNumber {
-                Text("\(setNumber)")
-                    .font(.system(size: 12, weight: .heavy, design: .monospaced))
-                    .monospacedDigit()
-                    .foregroundStyle(SettColor.heroCyan)
-                    .frame(width: 22, height: 22)
-                    .background { Circle().strokeBorder(SettColor.heroCyan.opacity(0.6), lineWidth: 1) }
-                    .accessibilityHidden(true)
-            }
-            stepperCluster(valueText: weightValueText,
-                           caption: services.settings.unit.symbol,
-                           decrement: { stepWeight(-1) },
-                           increment: { stepWeight(1) },
-                           tapValue: { editingField = .weight })
-            stepperCluster(valueText: "\(reps)",
-                           caption: "reps",
-                           decrement: { stepReps(-1) },
-                           increment: { stepReps(1) },
-                           tapValue: { editingField = .reps })
-                .frame(width: 96) // fixed: 2 step buttons + room for 2 digits — never squeezed
+        HStack(spacing: 0) {
+            Text(setNumber.map(String.init) ?? "")
+                .font(.system(size: 12, weight: .heavy, design: .monospaced))
+                .monospacedDigit()
+                .foregroundStyle(SettColor.heroCyan)
+                .frame(width: SetRowGrid.badge, height: SetRowGrid.badge)
+                .background { Circle().strokeBorder(SettColor.heroCyan.opacity(0.6), lineWidth: 1) }
+                .opacity(setNumber == nil ? 0 : 1)
+                .accessibilityHidden(true)
+            Spacer().frame(width: SetRowGrid.badgeGap)
+
+            // WEIGHT — shared right-aligned cell, tap → keypad; a hairline ± in the gutter.
+            valueButton(text: valueText(weightValueText, unit: services.settings.unit.symbol),
+                        width: SetRowGrid.weightCell, align: .trailing) { editingField = .weight }
+            compactStepper(dec: { stepWeight(-1) }, inc: { stepWeight(1) })
+
+            Text("×")
+                .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                .foregroundStyle(SettColor.iron)
+                .frame(width: SetRowGrid.times)
+
+            // REPS — shared left-aligned cell.
+            valueButton(text: "\(reps)", width: SetRowGrid.repsCell, align: .leading) { editingField = .reps }
+            compactStepper(dec: { stepReps(-1) }, inc: { stepReps(1) })
+
+            Spacer(minLength: 8)
             noteButton
             commitButton
         }
-        .frame(minHeight: 60)
+        .frame(height: SetRowGrid.rowHeight)
+        .padding(.horizontal, SetRowGrid.hPad)
+        .background(activeBackground)
         .onAppear { autofill() }
         .sheet(item: $editingField) { field in
             numericPad(for: field)
         }
     }
 
-    // MARK: Stepper clusters
+    private func valueText(_ value: String, unit: String) -> String { "\(value)\u{2009}\(unit)" }
 
-    private func stepperCluster(valueText: String, caption: String,
-                                decrement: @escaping () -> Void,
-                                increment: @escaping () -> Void,
-                                tapValue: @escaping () -> Void) -> some View {
-        HStack(spacing: 0) {
-            stepButton("minus", action: decrement)
-            Button(action: tapValue) {
-                VStack(spacing: 0) {
-                    Text(valueText)
-                        .font(.title3.weight(.semibold))
-                        .monospacedDigit()
-                        .foregroundStyle(isGhost ? Color(uiColor: .tertiaryLabel) : Color.primary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.5)
-                        .allowsTightening(true)
-                    Text(caption)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity, minHeight: 44)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            stepButton("plus", action: increment)
-        }
-        .frame(maxWidth: .infinity)
-        .background(SettColor.cardNested, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-    }
-
-    private func stepButton(_ symbol: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: symbol)
-                .font(.body.weight(.semibold))
-                .foregroundStyle(SettColor.heroCyan)
-                .frame(width: 33, height: 44)
+    /// The value as the primary editable target — the whole 44 pt-tall cell taps to the
+    /// keypad. Ghost pre-fill renders tertiary; an edit flips it to cyan.
+    private func valueButton(text: String, width: CGFloat, align: Alignment,
+                             tap: @escaping () -> Void) -> some View {
+        Button(action: tap) {
+            Text(text)
+                .font(.system(size: 15, weight: .bold, design: .monospaced))
+                .monospacedDigit()
+                .foregroundStyle(isGhost ? Color(uiColor: .tertiaryLabel) : SettColor.heroCyan)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+                .frame(width: width, height: SetRowGrid.rowHeight, alignment: align)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+
+    // MARK: Sleek picker — a borderless hairline vertical ± in the reserved gutter
+
+    private func compactStepper(dec: @escaping () -> Void, inc: @escaping () -> Void) -> some View {
+        VStack(spacing: 0) {
+            stepGlyph("minus", action: dec)
+            stepGlyph("plus", action: inc)
+        }
+        .overlay { Rectangle().fill(SettColor.cardBorder).frame(width: 14, height: 1) }
+        .background {
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .strokeBorder(SettColor.cardBorder.opacity(0.6), lineWidth: 1)
+        }
+        .accessibilityHidden(true)   // the value cell is the accessible keypad edit path
+    }
+
+    private func stepGlyph(_ symbol: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(SettColor.heroCyan)
+                .frame(width: SetRowGrid.stepperGutter, height: SetRowGrid.rowHeight / 2)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// The active row wears the logged rows' void card + a solid cyan accent bar so it
+    /// reads as one item in the same list — illuminated and editable, not a control strip.
+    private var activeBackground: some View {
+        let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
+        return ZStack {
+            shape.fill(TimeChamber.void.opacity(0.5))
+            HStack { RoundedRectangle(cornerRadius: 2).fill(SettColor.heroCyan).frame(width: 3); Spacer() }
+            shape.strokeBorder(SettColor.heroCyan.opacity(0.35), lineWidth: 1)
+        }
     }
 
     private func stepWeight(_ direction: Int) {
@@ -126,14 +147,14 @@ struct SetEntryRow: View {
             Image(systemName: "note.text")
                 .font(.body.weight(.semibold))
                 .foregroundStyle(hasPendingNote ? SettColor.heroCyan : SettColor.ash)
-                .frame(width: 36, height: 52)
+                .frame(width: 36, height: 44)
                 .contentShape(Rectangle())
                 .overlay(alignment: .topTrailing) {
                     if hasPendingNote {
                         Circle()
                             .fill(SettColor.heroCyan)
                             .frame(width: 6, height: 6)
-                            .offset(x: -2, y: 10)
+                            .offset(x: -2, y: 8)
                     }
                 }
         }
@@ -151,9 +172,9 @@ struct SetEntryRow: View {
             commit()
         } label: {
             Image(systemName: "checkmark")
-                .font(.title3.weight(.bold))
+                .font(.headline.weight(.bold))
                 .foregroundStyle(.white)
-                .frame(width: 52, height: 52)
+                .frame(width: 44, height: 44)
                 .background(SettColor.heroCyan, in: Circle())
         }
         .buttonStyle(.plain)
