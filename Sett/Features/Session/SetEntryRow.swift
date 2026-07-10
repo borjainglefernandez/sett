@@ -89,13 +89,16 @@ struct SetEntryRow: View {
 
     private func compactStepper(dec: @escaping () -> Void, inc: @escaping () -> Void) -> some View {
         VStack(spacing: 0) {
-            stepGlyph("minus", action: dec)
-            stepGlyph("plus", action: inc)
+            stepGlyph("plus", action: inc)     // + on top (up = increase)
+            Rectangle().fill(SettColor.heroCyan.opacity(0.25)).frame(height: 1)
+            stepGlyph("minus", action: dec)    // − on bottom
         }
-        .overlay { Rectangle().fill(SettColor.cardBorder).frame(width: 14, height: 1) }
-        .background {
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .strokeBorder(SettColor.cardBorder.opacity(0.6), lineWidth: 1)
+        .frame(width: SetRowGrid.stepperGutter)
+        .background(TimeChamber.void.opacity(0.6),
+                    in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .strokeBorder(SettColor.heroCyan.opacity(0.4), lineWidth: 1)
         }
         .accessibilityHidden(true)   // the value cell is the accessible keypad edit path
     }
@@ -103,9 +106,9 @@ struct SetEntryRow: View {
     private func stepGlyph(_ symbol: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: 11, weight: .bold))
+                .font(.system(size: 10, weight: .bold))
                 .foregroundStyle(SettColor.heroCyan)
-                .frame(width: SetRowGrid.stepperGutter, height: SetRowGrid.rowHeight / 2)
+                .frame(width: SetRowGrid.stepperGutter, height: 19)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
