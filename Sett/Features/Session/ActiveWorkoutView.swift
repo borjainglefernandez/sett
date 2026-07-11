@@ -43,6 +43,7 @@ struct ActiveWorkoutView: View {
     @State private var ambientDecayTask: Task<Void, Never>?
 
     @State private var isShowingOverview = false
+    @State private var didHonorDefaultView = false
     @State private var isConfirmingFinish = false
     @State private var isConfirmingCancel = false
     @State private var isConfirmingCasual = false
@@ -72,10 +73,16 @@ struct ActiveWorkoutView: View {
         }
         .onAppear {
             #if DEBUG
-            if ProcessInfo.processInfo.environment["SETT_DEBUG_OVERVIEW"] == "1" {
-                isShowingOverview = true
+            if let f = ProcessInfo.processInfo.environment["SETT_DEBUG_OVERVIEW"], !f.isEmpty {
+                if f != "player" { isShowingOverview = true }
+                return
             }
             #endif
+            // Honor the default-view preference, once, when the workout opens.
+            if !didHonorDefaultView {
+                didHonorDefaultView = true
+                if services.settings.startsInList { isShowingOverview = true }
+            }
         }
         .confirmationDialog("Finish workout?",
                             isPresented: $isConfirmingFinish,

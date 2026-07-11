@@ -256,7 +256,7 @@ struct SetEntryRow: View {
 /// explicit nil save.
 struct SetNoteSheet: View {
     let initialText: String
-    var title = "SET NOTE"
+    var title = "Set Note"
     var placeholder = "felt heavy, left side weaker…"
     let onSave: (String?) -> Void
 
@@ -264,49 +264,57 @@ struct SetNoteSheet: View {
     @State private var text = ""
     @FocusState private var isFocused: Bool
 
+    // ONE commit path — the nav-bar Save. It sits above the keyboard so there is no
+    // need for a keyboard "Done" (a multi-line editor's Return inserts newlines).
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text(title)
-                .font(.system(size: 13, weight: .bold, design: .monospaced))
-                .kerning(3)
-                .foregroundStyle(SettColor.bone)
-            TextField(placeholder, text: $text)
-                .font(.subheadline)
-                .foregroundStyle(SettColor.bone)
-                .focused($isFocused)
-                .submitLabel(.done)
-                .onSubmit(save)
-                .padding(12)
-                .background(SettColor.cardNested, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-            HStack(spacing: 12) {
-                Button {
-                    onSave(nil)
-                    dismiss()
-                } label: {
-                    Text("Clear")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(SettColor.ash)
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                        .background(SettColor.cardNested, in: Capsule())
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 14) {
+                TextEditor(text: $text)
+                    .font(.subheadline)
+                    .foregroundStyle(SettColor.bone)
+                    .focused($isFocused)
+                    .scrollContentBackground(.hidden)
+                    .padding(8)
+                    .frame(minHeight: 150)
+                    .background(SettColor.cardNested, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .overlay(alignment: .topLeading) {
+                        if text.isEmpty {
+                            Text(placeholder)
+                                .font(.subheadline)
+                                .foregroundStyle(SettColor.ash)
+                                .padding(.horizontal, 13)
+                                .padding(.top, 16)
+                                .allowsHitTesting(false)
+                        }
+                    }
+                if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Button(role: .destructive) { text = "" } label: {
+                        Label("Clear note", systemImage: "trash")
+                            .font(.subheadline)
+                            .foregroundStyle(SettColor.ash)
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
-                Button(action: save) {
-                    Text("Save")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                        .background(Aura.cyan, in: Capsule())
+                Spacer(minLength: 0)
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
                 }
-                .buttonStyle(.plain)
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") { save() }.fontWeight(.semibold)
+                }
+            }
+            .onAppear {
+                text = initialText
+                isFocused = true
             }
         }
-        .padding(20)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .presentationDetents([.height(220)])
-        .onAppear {
-            text = initialText
-            isFocused = true
-        }
+        .presentationDetents([.medium, .large])
     }
 
     private func save() {

@@ -1,5 +1,36 @@
 import SwiftUI
 import SettCore
+import UniformTypeIdentifiers
+
+// MARK: - Live long-press-drag reordering (system drag interaction)
+
+/// `.onDrag` lifts a row/card on long-press; this delegate reorders the model live as
+/// the drag hovers each sibling, and the move commits through the store (persisted as
+/// you go, so releasing anywhere is safe). No edit mode, no handles — reorder from the
+/// get-go. `Item.ID` is the model's UUID.
+struct ReorderDropDelegate<Item: Identifiable>: DropDelegate where Item.ID: Equatable {
+    let target: Item
+    let items: [Item]
+    @Binding var dragging: Item?
+    let move: (IndexSet, Int) -> Void
+
+    func dropUpdated(info: DropInfo) -> DropProposal? { DropProposal(operation: .move) }
+
+    func dropEntered(info: DropInfo) {
+        guard let dragging, dragging.id != target.id,
+              let from = items.firstIndex(where: { $0.id == dragging.id }),
+              let to = items.firstIndex(where: { $0.id == target.id }) else { return }
+        withAnimation(.snappy(duration: 0.22)) {
+            move(IndexSet(integer: from), to > from ? to + 1 : to)
+        }
+        Haptics.selection()
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        dragging = nil
+        return true
+    }
+}
 
 /// The ONE source of truth for a "vs last week" PWR delta's glyph + colour, so the
 /// scouter (SetPlayerView) and the overview rows (ExerciseCard) can never disagree

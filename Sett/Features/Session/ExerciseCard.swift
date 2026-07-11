@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import SettCore
+import UniformTypeIdentifiers
 
 /// One collapsible card per exercise in the active workout: header (muscle icon, name,
 /// sets logged), the machine-setup line (visible WHILE training — that's the point),
@@ -23,6 +24,11 @@ struct ExerciseCard: View {
     @State private var setupTarget: Exercise?
     /// The one logged row currently swiped open (only one at a time per card).
     @State private var openSwipeRowID: UUID?
+    /// The logged row currently lifted for a long-press drag reorder.
+    @State private var draggingSet: SetEntry?
+    /// Set once the plan is met and the lifter taps "Add set" — reveals one more active
+    /// input row instead of auto-queuing sets forever. Reset after each logged set.
+    @State private var addingBonusSet = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -38,12 +44,29 @@ struct ExerciseCard: View {
                                         onDelete: { session.deleteSet(pair.set) }) {
                             setRow(set: pair.set, reference: pair.reference, label: pair.label)
                         }
+                        // Long-press to lift a logged row, drag to reorder sets live.
+                        .opacity(draggingSet?.id == pair.set.id ? 0.35 : 1)
+                        .onDrag {
+                            draggingSet = pair.set
+                            return NSItemProvider(object: pair.set.id.uuidString as NSString)
+                        }
+                        .onDrop(of: [.text], delegate: ReorderDropDelegate(
+                            target: pair.set, items: workoutExercise.orderedSets,
+                            dragging: $draggingSet,
+                            move: { session.moveSet(in: workoutExercise, from: $0, to: $1) }))
                     }
-                    SetEntryRow(workoutExercise: workoutExercise, setNumber: workingLoggedCount + 1)
+                    if showActiveRow {
+                        SetEntryRow(workoutExercise: workoutExercise, setNumber: workingLoggedCount + 1)
+                    } else {
+                        addSetButton
+                    }
                     ForEach(pendingSlots, id: \.self) { ordinal in
                         plannedRow(number: ordinal + 1, slot: ordinal)
                     }
                 }
+                // Once the plan is met, logging a bonus set returns to the "Add set"
+                // button rather than auto-opening the next input row.
+                .onChange(of: workingLoggedCount) { _, _ in addingBonusSet = false }
             }
         }
         .padding(14)
@@ -92,6 +115,33 @@ struct ExerciseCard: View {
 
     private var workingLoggedCount: Int { workoutExercise.orderedSets.filter { !$0.isWarmup }.count }
     private var plannedWorking: Int { session.plannedSetCount(for: workoutExercise) }
+
+    /// Every planned working set is logged (only meaningful when there IS a plan).
+    private var planComplete: Bool { plannedWorking > 0 && workingLoggedCount >= plannedWorking }
+    /// Show the active input row automatically while the plan is unmet (or there's no
+    /// plan); once the plan is met it takes an explicit "Add set" tap.
+    private var showActiveRow: Bool { !planComplete || addingBonusSet }
+
+    private var addSetButton: some View {
+        Button {
+            withAnimation(.snappy) { addingBonusSet = true }
+        } label: {
+            Label("Add set", systemImage: "plus")
+                .font(.system(size: 13, weight: .bold, design: .monospaced))
+                .kerning(0.5)
+                .foregroundStyle(SettColor.heroCyan)
+                .frame(maxWidth: .infinity)
+                .frame(height: SetRowGrid.rowHeight)
+                .background {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .strokeBorder(SettColor.heroCyan.opacity(0.5),
+                                      style: StrokeStyle(lineWidth: 1, dash: [5, 3]))
+                }
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Add another set")
+    }
 
     /// Working-set ordinals STILL planned after the active next-set input (which covers
     /// ordinal `workingLoggedCount`). Empty for a quick-start (no plan) or once the
@@ -361,8 +411,8 @@ struct ExerciseCard: View {
                 Text(note)
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundStyle(SettColor.ash)
-                    .multilineTextAlignment(.leading)
-                    .lineLimit(3)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
                 Spacer(minLength: 0)
             }
             .padding(.leading, SetRowGrid.hPad + SetRowGrid.badge + SetRowGrid.badgeGap)
