@@ -176,11 +176,9 @@ struct HomeTabView: View {
 
     // MARK: Start card
 
-    /// Today's routine per `daysOfWeekMask` (bit 0 = Monday … bit 6 = Sunday).
+    /// The routine you'd start now — today's weekday routine, or the rotation's next up.
     private var todaysRoutine: Routine? {
-        let weekday = Calendar.current.component(.weekday, from: .now) // 1 = Sunday … 7 = Saturday
-        let mondayIndex = (weekday + 5) % 7
-        return routines.first { ($0.daysOfWeekMask >> mondayIndex) & 1 == 1 }
+        Scheduling.nextRoutine(routines, settings: services.settings)
     }
 
     private var startCard: some View {

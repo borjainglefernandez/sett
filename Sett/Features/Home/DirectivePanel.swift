@@ -11,11 +11,13 @@ import SettCore
 /// day under `sett.directives.<yyyymmdd>`.
 struct DirectivePanel: View {
     @Environment(WorkoutSessionStore.self) private var session
+    @Environment(AppServices.self) private var services
 
     @Query private var todaysWorkouts: [Workout]
     @Query private var todaysBodyweight: [BodyweightEntry]
     @Query private var todaysSets: [SetEntry]
     @Query private var latestBodyweight: [BodyweightEntry]
+    @Query private var routines: [Routine]
 
     @State private var claimedKeys: Set<String>
     @State private var isLoggingBodyweight = false
@@ -56,7 +58,16 @@ struct DirectivePanel: View {
         latestDescriptor.fetchLimit = 1
         _latestBodyweight = Query(latestDescriptor)
 
+        let routineFilter = #Predicate<Routine> { $0.deletedAt == nil && !$0.isArchived }
+        _routines = Query(filter: routineFilter, sort: [SortDescriptor(\Routine.orderIndex)])
+
         _claimedKeys = State(initialValue: Self.loadClaims())
+    }
+
+    /// The routine you'd start now (weekday match or rotation next-up), so the chamber
+    /// directive starts the planned session instead of a blank one.
+    private var todaysRoutine: Routine? {
+        Scheduling.nextRoutine(routines, settings: services.settings)
     }
 
     // MARK: Claims (per local day)
@@ -87,7 +98,8 @@ struct DirectivePanel: View {
         let weighed = todaysBodyweight.isEmpty ? 0 : 1
         let setCount = min(todaysSets.count, 10)
         return [
-            Directive(key: DirectiveKey.chamber, title: "Enter the chamber",
+            Directive(key: DirectiveKey.chamber,
+                      title: todaysRoutine.map { "Start \($0.name)" } ?? "Enter the chamber",
                       progress: "\(trained)/1", isMet: trained == 1),
             Directive(key: DirectiveKey.bodyweight, title: "Log bodyweight",
                       progress: "\(weighed)/1", isMet: weighed == 1),
@@ -173,17 +185,27 @@ struct DirectivePanel: View {
     private func go(_ key: String) {
         switch key {
         case DirectiveKey.chamber:
-            session.quickStart()
+            startTodaysSession()
         case DirectiveKey.bodyweight:
             isLoggingBodyweight = true
         case DirectiveKey.scanner:
             if session.activeWorkout == nil {
-                session.quickStart()
+                startTodaysSession()
             } else {
                 session.isPresentingWorkout = true
             }
         default:
             break
+        }
+    }
+
+    /// Start today's scheduled routine if one exists (feeding its planned sets),
+    /// otherwise a blank quick-start.
+    private func startTodaysSession() {
+        if let routine = todaysRoutine {
+            session.start(routine: routine)
+        } else {
+            session.quickStart()
         }
     }
 

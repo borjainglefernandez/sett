@@ -34,6 +34,12 @@ struct RootView: View {
         }
         .onAppear {
             #if DEBUG
+            switch ProcessInfo.processInfo.environment["SETT_DEBUG_TAB"] {
+            case "train": selectedTab = .train
+            case "progress": selectedTab = .progress
+            case "power": selectedTab = .power
+            default: break
+            }
             // "1" → demo workout + overview sheet; "player" → demo workout, scouter only.
             if let flag = ProcessInfo.processInfo.environment["SETT_DEBUG_OVERVIEW"], !flag.isEmpty {
                 session.debugStartOverviewDemo()

@@ -1,6 +1,15 @@
 import SwiftUI
 import SwiftData
 import SettCore
+import UniformTypeIdentifiers
+
+private extension View {
+    /// Apply drag-reorder modifiers only while the rotation split is being ordered.
+    @ViewBuilder
+    func ifRotation<Content: View>(_ active: Bool, _ transform: (Self) -> Content) -> some View {
+        if active { transform(self) } else { self }
+    }
+}
 
 /// Routine cards: name, scheduled-day chips, exercise count, and a play button
 /// that starts the routine immediately. Tap a card to edit; swipe to soft-delete.
@@ -16,17 +25,50 @@ struct RoutineListView: View {
         _routines = Query(filter: routineFilter, sort: [SortDescriptor(\Routine.orderIndex)])
     }
 
+    /// The lifted routine card during a rotation-order drag.
+    @State private var draggingRoutine: Routine?
+
     var body: some View {
-        Group {
+        @Bindable var settings = services.settings
+        return Group {
             if routines.isEmpty {
                 emptyState
             } else {
                 List {
+                    Section {
+                        Picker("Schedule", selection: $settings.scheduleMode) {
+                            ForEach(ScheduleMode.allCases) { mode in
+                                Text(mode.title).tag(mode)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                    } footer: {
+                        if isRotation {
+                            Text("Your split, in order. Finishing the next-up routine advances the cycle — the day doesn't matter.")
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundStyle(SettColor.iron)
+                                .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 8, trailing: 16))
+                        }
+                    }
                     ForEach(routines) { routine in
                         row(routine)
                             .listRowBackground(Color.clear)
                             .listRowSeparator(.hidden)
                             .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                            .opacity(draggingRoutine?.id == routine.id ? 0.35 : 1)
+                            .ifRotation(isRotation) { view in
+                                view
+                                    .onDrag {
+                                        draggingRoutine = routine
+                                        return NSItemProvider(object: routine.id.uuidString as NSString)
+                                    }
+                                    .onDrop(of: [.text], delegate: ReorderDropDelegate(
+                                        target: routine, items: Scheduling.orderedActive(routines),
+                                        dragging: $draggingRoutine, move: moveRoutine))
+                            }
                             .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                                 Button(role: .destructive) {
                                     softDelete(routine)
@@ -45,6 +87,7 @@ struct RoutineListView: View {
                 }
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
+                .animation(.snappy, value: isRotation)
             }
         }
         .toolbar {
@@ -90,7 +133,11 @@ struct RoutineListView: View {
                             .lineLimit(1)
                             .minimumScaleFactor(0.7)
                             .shadow(color: .black.opacity(0.6), radius: 3)
-                        dayChips(mask: routine.daysOfWeekMask)
+                        if isRotation {
+                            rotationInfo(routine)
+                        } else {
+                            dayChips(mask: routine.daysOfWeekMask)
+                        }
                         Text(exerciseCountText(routine))
                             .font(.system(.caption, design: .rounded).weight(.medium))
                             .foregroundStyle(.white.opacity(0.8))
@@ -144,6 +191,50 @@ struct RoutineListView: View {
     private func exerciseCountText(_ routine: Routine) -> String {
         let count = routine.orderedExercises.count
         return count == 1 ? "1 exercise" : "\(count) exercises"
+    }
+
+    // MARK: Rotation ordering
+
+    private var isRotation: Bool { services.settings.scheduleMode == .rotation }
+    private var nextUpID: UUID? { Scheduling.nextRoutine(routines, settings: services.settings)?.id }
+
+    /// The split position + a NEXT-UP badge, in place of weekday chips.
+    @ViewBuilder
+    private func rotationInfo(_ routine: Routine) -> some View {
+        let order = Scheduling.orderedActive(routines)
+        let pos = (order.firstIndex { $0.id == routine.id } ?? 0) + 1
+        HStack(spacing: 8) {
+            Text("#\(pos)")
+                .font(.system(size: 12, weight: .bold, design: .rounded))
+                .monospacedDigit()
+                .foregroundStyle(.white.opacity(0.85))
+            if routine.id == nextUpID {
+                Text("NEXT UP")
+                    .font(.system(size: 10, weight: .heavy, design: .rounded))
+                    .kerning(1)
+                    .foregroundStyle(.black)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Aura.cyan, in: Capsule())
+            } else {
+                Text("in the cycle")
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.55))
+            }
+        }
+    }
+
+    /// Reorder the split (rotation order = `orderIndex`), densifying + stamping.
+    private func moveRoutine(from source: IndexSet, to destination: Int) {
+        var ordered = Scheduling.orderedActive(routines)
+        ordered.move(fromOffsets: source, toOffset: destination)
+        for (i, r) in ordered.enumerated() where r.orderIndex != i {
+            r.orderIndex = i
+            r.updatedAt = .now
+            r.needsPush = true
+        }
+        try? modelContext.save()
+        Haptics.selection()
     }
 
     private func playButton(_ routine: Routine) -> some View {

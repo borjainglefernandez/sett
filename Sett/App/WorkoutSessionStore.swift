@@ -509,6 +509,20 @@ public final class WorkoutSessionStore {
         Haptics.selection()
     }
 
+    /// In rotation mode, completing the routine that was "next up" advances the split
+    /// pointer to the next routine (day-agnostic). Off-rotation workouts don't advance.
+    private func advanceRotationIfNeeded(finished workout: Workout) {
+        guard settings.scheduleMode == .rotation, let routineID = workout.routineID else { return }
+        let all = (try? context.fetch(FetchDescriptor<Routine>(
+            predicate: #Predicate { $0.deletedAt == nil && !$0.isArchived }))) ?? []
+        let active = Scheduling.orderedActive(all)
+        guard !active.isEmpty else { return }
+        let i = ((settings.rotationIndex % active.count) + active.count) % active.count
+        if active[i].id == routineID {
+            settings.rotationIndex = i + 1
+        }
+    }
+
     public func finishWorkout() {
         guard let workout = activeWorkout else { return }
         // Prune exercises opened but never logged into — they'd clutter history and
@@ -522,6 +536,7 @@ public final class WorkoutSessionStore {
 
         workout.endedAt = .now
         touchAndSave(workout)
+        advanceRotationIfNeeded(finished: workout)
 
         // Transformation tier of the ACTIVE character: same before/after diff as
         // badges/XP — the summary's ceiling-break stage keys off this delta.

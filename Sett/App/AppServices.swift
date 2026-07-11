@@ -53,6 +53,21 @@ public final class UserSettingsStore {
     public var hasChosenPhase: Bool {
         didSet { UserDefaults.standard.set(hasChosenPhase, forKey: "sett.hasChosenPhase") }
     }
+    /// Which surface a workout opens on: the full-screen Scanner (false, default) or
+    /// the Overview list (true).
+    public var startsInList: Bool {
+        didSet { UserDefaults.standard.set(startsInList, forKey: "sett.startsInList") }
+    }
+    /// How routines are scheduled: `.weekday` (fixed days) or `.rotation` (an ordered
+    /// split that advances one step per completed workout, day-agnostic).
+    public var scheduleMode: ScheduleMode {
+        didSet { UserDefaults.standard.set(scheduleMode.rawValue, forKey: "sett.scheduleMode") }
+    }
+    /// The rotation pointer — index into the ordered routines; advances on each
+    /// completed rotation workout.
+    public var rotationIndex: Int {
+        didSet { UserDefaults.standard.set(rotationIndex, forKey: "sett.rotationIndex") }
+    }
 
     /// Resolved current phase (defaults to maintaining).
     public var phase: TrainingPhase {
@@ -71,10 +86,47 @@ public final class UserSettingsStore {
         self.chamberBackground = defaults.string(forKey: "sett.chamberBackground") ?? "nebula"
         self.trainingPhase = defaults.string(forKey: "sett.trainingPhase") ?? TrainingPhase.maintaining.rawValue
         self.hasChosenPhase = defaults.bool(forKey: "sett.hasChosenPhase")
+        self.startsInList = defaults.bool(forKey: "sett.startsInList")
+        self.scheduleMode = ScheduleMode(rawValue: defaults.string(forKey: "sett.scheduleMode") ?? "") ?? .weekday
+        self.rotationIndex = defaults.integer(forKey: "sett.rotationIndex")
     }
 
     public func displayWeight(_ grams: Int) -> String {
         WeightFormat.compactWithUnit(grams: grams, unit: unit)
+    }
+}
+
+// MARK: - Routine scheduling
+
+public enum ScheduleMode: String, CaseIterable, Identifiable, Sendable {
+    case weekday   // fixed days of the week (daysOfWeekMask)
+    case rotation  // an ordered split that advances one step per completed workout
+    public var id: String { rawValue }
+    public var title: String { self == .weekday ? "Weekday" : "Rotation" }
+}
+
+/// Resolves "the routine you'd start now" for both schedule modes, so Home, the
+/// directive panel, and the rotation advance can't disagree. `routines` should be the
+/// active set; ordering is by `orderIndex`.
+public enum Scheduling {
+    public static func orderedActive(_ routines: [Routine]) -> [Routine] {
+        routines.filter { $0.deletedAt == nil && !$0.isArchived }
+            .sorted { $0.orderIndex < $1.orderIndex }
+    }
+
+    @MainActor
+    public static func nextRoutine(_ routines: [Routine], settings: UserSettingsStore) -> Routine? {
+        let active = orderedActive(routines)
+        guard !active.isEmpty else { return nil }
+        switch settings.scheduleMode {
+        case .rotation:
+            let i = ((settings.rotationIndex % active.count) + active.count) % active.count
+            return active[i]
+        case .weekday:
+            let weekday = Calendar.current.component(.weekday, from: .now) // 1=Sun … 7=Sat
+            let mondayIndex = (weekday + 5) % 7                            // 0=Mon … 6=Sun
+            return active.first { ($0.daysOfWeekMask >> mondayIndex) & 1 == 1 }
+        }
     }
 }
 

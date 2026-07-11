@@ -23,8 +23,11 @@ struct HistoryListView: View {
 
     private enum HistorySort: String, CaseIterable, Identifiable {
         case date = "Date"
-        case rating = "Rating"
+        case volume = "Volume"
+        case power = "Power"
+        case sets = "Sets"
         case duration = "Duration"
+        case rating = "Rating"
         var id: String { rawValue }
     }
 
@@ -37,9 +40,17 @@ struct HistoryListView: View {
         List {
             if sort == .date {
                 ForEach(monthGroups, id: \.key) { group in
-                    Section(monthTitle(group.key)) {
+                    Section {
                         ForEach(group.workouts) { workout in
                             row(workout)
+                        }
+                    } header: {
+                        HStack {
+                            Text(monthTitle(group.key))
+                            Spacer()
+                            Text("\(group.workouts.count) workout\(group.workouts.count == 1 ? "" : "s")")
+                                .monospacedDigit()
+                                .foregroundStyle(.secondary)
                         }
                     }
                 }
@@ -83,7 +94,26 @@ struct HistoryListView: View {
             return result.sorted { ($0.ratingHalfStars ?? -1) > ($1.ratingHalfStars ?? -1) }
         case .duration:
             return result.sorted { $0.durationSeconds > $1.durationSeconds }
+        case .volume:
+            return result.sorted { workoutVolumeGrams($0) > workoutVolumeGrams($1) }
+        case .power:
+            return result.sorted { workoutTopE1RM($0) > workoutTopE1RM($1) }
+        case .sets:
+            return result.sorted { workoutSetCount($0) > workoutSetCount($1) }
         }
+    }
+
+    // MARK: Per-workout metrics (computed for sorting; history is small)
+
+    private func workingSets(_ w: Workout) -> [SetEntry] {
+        w.orderedExercises.flatMap { $0.orderedSets }.filter { !$0.isWarmup }
+    }
+    private func workoutVolumeGrams(_ w: Workout) -> Int {
+        workingSets(w).reduce(0) { $0 + $1.weightGrams * $1.reps }
+    }
+    private func workoutSetCount(_ w: Workout) -> Int { workingSets(w).count }
+    private func workoutTopE1RM(_ w: Workout) -> Int {
+        workingSets(w).map { ProgressEngine.e1RMGrams(weightGrams: $0.weightGrams, reps: $0.reps) }.max() ?? 0
     }
 
     private var monthGroups: [(key: Date, workouts: [Workout])] {
