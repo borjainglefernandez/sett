@@ -103,13 +103,15 @@ enum GlyphRig {
         CGPoint(x: mix(a.x, b.x, t), y: mix(a.y, b.y, t))
     }
 
-    /// The three fill layers of one glyph: the muscular BODY silhouette, the GEAR
-    /// (equipment, drawn behind at lower opacity), and the KI shards. Filled — not
-    /// stroked — so the warrior has real mass; the view adds a blurred aura beneath.
+    /// The fill layers of one glyph, logo-grade: the sculpted BODY silhouette, the
+    /// GEAR (heavy, unmissable equipment), the KI shards, and CUTS — negative-space
+    /// muscle definition punched OUT of the composite (pec line, abs, plate holes),
+    /// the signature of an emblem mark rather than a stick figure.
     struct Layers {
         var body = Path()
         var gear = Path()
         var ki = Path()
+        var cuts = Path()
         var combined: Path {
             var p = body; p.addPath(gear); p.addPath(ki); return p
         }
@@ -124,118 +126,165 @@ enum GlyphRig {
             let m = mix(pa, pb, t)
             return pt(r, m.x, m.y)
         }
-        /// A limb / torso segment as a FILLED capsule chain (fat stroke → outline).
-        func flesh(_ pts: [CGPoint], _ width: CGFloat, into path: inout Path) {
+        func flesh(_ pts: [CGPoint], _ width: CGFloat, into path: inout Path,
+                   cap: CGLineCap = .round) {
             guard pts.count > 1 else { return }
             var seg = Path()
             seg.move(to: pts[0])
             for q in pts.dropFirst() { seg.addLine(to: q) }
-            path.addPath(seg.strokedPath(StrokeStyle(lineWidth: width, lineCap: .round,
+            path.addPath(seg.strokedPath(StrokeStyle(lineWidth: width, lineCap: cap,
                                                      lineJoin: .round)))
         }
+        func disc(_ c: CGPoint, _ radius: CGFloat, into path: inout Path) {
+            path.addEllipse(in: CGRect(x: c.x - radius, y: c.y - radius,
+                                       width: radius * 2, height: radius * 2))
+        }
 
-        // — Body: tapering mass, thickest at the torso —
+        // — Skeleton anchors —
         let head = at(a.head, b.head)
         let neck = at(a.neck, b.neck)
         let hip  = at(a.hip, b.hip)
+        let arms = zip(a.arms, b.arms).filter { $0.0.count == 3 && $0.1.count == 3 }
+            .map { pair in (0..<3).map { at(pair.0[$0], pair.1[$0]) } }
+        let isFront = arms.count == 2   // symmetric front view → full torso sculpt
 
-        flesh([neck, hip], 0.105 * w, into: &out.body)                 // trunk
-        // chest plate — a disc 28% down the spine bulks the upper torso (the V)
-        let chest = CGPoint(x: neck.x + (hip.x - neck.x) * 0.28,
-                            y: neck.y + (hip.y - neck.y) * 0.28)
-        let cr = 0.062 * w
-        out.body.addEllipse(in: CGRect(x: chest.x - cr, y: chest.y - cr,
-                                       width: cr * 2, height: cr * 2))
-        // shoulder girdle across both shoulders (front views)
-        var shoulderPts: [CGPoint] = []
-        for (armA, armB) in zip(a.arms, b.arms) where armA.count == 3 && armB.count == 3 {
-            shoulderPts.append(at(armA[0], armB[0]))
+        // — Torso —
+        if isFront {
+            // Sculpted V-taper slab: wide shoulder line down to a narrow waist, like a
+            // logo mark — not a spine stroke. Corners rounded by the girdle strokes.
+            let sL = arms[0][0], sR = arms[1][0]
+            let dirX = sR.x - sL.x, dirY = sR.y - sL.y
+            let dl = max(0.001, sqrt(dirX * dirX + dirY * dirY))
+            let ux = dirX / dl, uy = dirY / dl                    // shoulder axis
+            let flare = 0.055 * w                                  // shoulders past the joints
+            let waist = 0.075 * w                                  // half waist width
+            var torso = Path()
+            torso.move(to: CGPoint(x: sL.x - ux * flare, y: sL.y - uy * flare))
+            torso.addLine(to: CGPoint(x: sR.x + ux * flare, y: sR.y + uy * flare))
+            torso.addLine(to: CGPoint(x: hip.x + ux * waist, y: hip.y + uy * waist))
+            torso.addLine(to: CGPoint(x: hip.x - ux * waist, y: hip.y - uy * waist))
+            torso.closeSubpath()
+            out.body.addPath(torso)
+            flesh([sL, sR], 0.10 * w, into: &out.body)             // rounded shoulder girdle
+            flesh([neck, hip], 0.09 * w, into: &out.body)
+            // Deltoid caps — the boulder shoulders of the mark.
+            disc(sL, 0.055 * w, into: &out.body)
+            disc(sR, 0.055 * w, into: &out.body)
+
+            // — Negative-space muscle cuts (the reference's signature) —
+            let midX = (sL.x + sR.x) / 2, shY = (sL.y + sR.y) / 2
+            let torsoH = max(0.001, hip.y - shY)
+            var pecs = Path()   // two arcs meeting at the sternum
+            pecs.move(to: CGPoint(x: midX - 0.115 * w, y: shY + torsoH * 0.18))
+            pecs.addQuadCurve(to: CGPoint(x: midX - 0.008 * w, y: shY + torsoH * 0.34),
+                              control: CGPoint(x: midX - 0.10 * w, y: shY + torsoH * 0.40))
+            pecs.move(to: CGPoint(x: midX + 0.115 * w, y: shY + torsoH * 0.18))
+            pecs.addQuadCurve(to: CGPoint(x: midX + 0.008 * w, y: shY + torsoH * 0.34),
+                              control: CGPoint(x: midX + 0.10 * w, y: shY + torsoH * 0.40))
+            out.cuts.addPath(pecs.strokedPath(StrokeStyle(lineWidth: 0.02 * w, lineCap: .round)))
+            var abs = Path()    // sternum line + two ab rows
+            abs.move(to: CGPoint(x: midX, y: shY + torsoH * 0.40))
+            abs.addLine(to: CGPoint(x: midX, y: hip.y - torsoH * 0.06))
+            abs.move(to: CGPoint(x: midX - 0.045 * w, y: shY + torsoH * 0.58))
+            abs.addLine(to: CGPoint(x: midX + 0.045 * w, y: shY + torsoH * 0.58))
+            abs.move(to: CGPoint(x: midX - 0.04 * w, y: shY + torsoH * 0.76))
+            abs.addLine(to: CGPoint(x: midX + 0.04 * w, y: shY + torsoH * 0.76))
+            out.cuts.addPath(abs.strokedPath(StrokeStyle(lineWidth: 0.016 * w, lineCap: .round)))
+        } else {
+            // Side view: a heavy trunk with a chest bulge — profile mass.
+            flesh([neck, hip], 0.115 * w, into: &out.body)
+            let chest = CGPoint(x: neck.x + (hip.x - neck.x) * 0.28,
+                                y: neck.y + (hip.y - neck.y) * 0.28)
+            disc(chest, 0.068 * w, into: &out.body)
         }
-        if shoulderPts.count == 2 { flesh(shoulderPts, 0.085 * w, into: &out.body) }
 
-        for (armA, armB) in zip(a.arms, b.arms) where armA.count == 3 && armB.count == 3 {
-            flesh([at(armA[0], armB[0]), at(armA[1], armB[1]), at(armA[2], armB[2])],
-                  0.058 * w, into: &out.body)
+        // — Limbs: tapered heavy mass (thick upper segment, leaner lower) + fists —
+        for arm in arms {
+            flesh([arm[0], arm[1]], 0.078 * w, into: &out.body)
+            flesh([arm[1], arm[2]], 0.055 * w, into: &out.body)
+            disc(arm[2], 0.034 * w, into: &out.body)               // fist
         }
         for (legA, legB) in zip(a.legs, b.legs) where legA.count == 3 && legB.count == 3 {
-            flesh([at(legA[0], legB[0]), at(legA[1], legB[1]), at(legA[2], legB[2])],
-                  0.072 * w, into: &out.body)
+            let hipJ = at(legA[0], legB[0]), knee = at(legA[1], legB[1]), ankle = at(legA[2], legB[2])
+            flesh([hipJ, knee], 0.088 * w, into: &out.body)        // thigh
+            flesh([knee, ankle], 0.06 * w, into: &out.body)        // shin
         }
 
-        // — Head + the flame crown (THE Saiyan signature) —
-        let hr = 0.072 * w
-        out.body.addEllipse(in: CGRect(x: head.x - hr, y: head.y - hr,
-                                       width: hr * 2, height: hr * 2))
-        var ux = head.x - neck.x, uy = head.y - neck.y
-        let ul = max(0.001, sqrt(ux * ux + uy * uy)); ux /= ul; uy /= ul
-        let crown = atan2(uy, ux)
-        // One closed spiky polygon: tips at 5 fan angles, valleys dipping back to the
-        // skull between them — a filled flame, not whisker strokes.
-        let tips: [(CGFloat, CGFloat)] = [(-1.0, 0.075), (-0.5, 0.105), (0.0, 0.125),
-                                          (0.5, 0.10), (1.0, 0.07)]
+        // — Head + the flame crown: BIG, the Saiyan crest —
+        let hr = 0.075 * w
+        disc(head, hr, into: &out.body)
+        var ux2 = head.x - neck.x, uy2 = head.y - neck.y
+        let ul2 = max(0.001, sqrt(ux2 * ux2 + uy2 * uy2)); ux2 /= ul2; uy2 /= ul2
+        let crown = atan2(uy2, ux2)
+        let tips: [(CGFloat, CGFloat)] = [(-1.15, 0.085), (-0.7, 0.14), (-0.25, 0.185),
+                                          (0.15, 0.165), (0.55, 0.12), (1.0, 0.075)]
         var hair = Path()
-        hair.move(to: CGPoint(x: head.x + cos(crown - 1.3) * hr * 0.9,
-                              y: head.y + sin(crown - 1.3) * hr * 0.9))
+        hair.move(to: CGPoint(x: head.x + cos(crown - 1.35) * hr * 0.85,
+                              y: head.y + sin(crown - 1.35) * hr * 0.85))
         for (i, tip) in tips.enumerated() {
             let (off, len) = tip
             hair.addLine(to: CGPoint(x: head.x + cos(crown + off) * (hr + len * w),
                                      y: head.y + sin(crown + off) * (hr + len * w)))
             let valley = i < tips.count - 1 ? (off + tips[i + 1].0) / 2 : 1.3
-            hair.addLine(to: CGPoint(x: head.x + cos(crown + valley) * hr * 0.9,
-                                     y: head.y + sin(crown + valley) * hr * 0.9))
+            hair.addLine(to: CGPoint(x: head.x + cos(crown + valley) * hr * 0.8,
+                                     y: head.y + sin(crown + valley) * hr * 0.8))
         }
         hair.closeSubpath()
         out.body.addPath(hair)
 
-        // — Gear (behind the body, slightly quieter) —
+        // — Gear: heavy and unmissable —
+        // Barbell: thick bar + STACKED slab plates per end (the logo read).
         if let barA = a.bar, let barB = b.bar, barA.count == 2, barB.count == 2 {
             let l = at(barA[0], barB[0]), rt = at(barA[1], barB[1])
-            flesh([l, rt], 0.032 * w, into: &out.gear)
+            flesh([l, rt], 0.045 * w, into: &out.gear)
             var dx = rt.x - l.x, dy = rt.y - l.y
             let dl = max(0.001, sqrt(dx * dx + dy * dy)); dx /= dl; dy /= dl
             let nx = -dy, ny = dx
+            // Two slabs per side: inner big, outer smaller — butt caps = sharp rects.
             for (end, dir) in [(l, 1.0), (rt, -1.0)] {
-                for (inset, half) in [(0.045, 0.085), (0.0, 0.06)] {
+                for (inset, half, thick) in [(0.035, 0.115, 0.055), (0.10, 0.08, 0.05)] {
                     let cx = end.x + dx * dir * inset * w
                     let cy = end.y + dy * dir * inset * w
                     flesh([CGPoint(x: cx + nx * half * w, y: cy + ny * half * w),
                            CGPoint(x: cx - nx * half * w, y: cy - ny * half * w)],
-                          0.05 * w, into: &out.gear)
+                          thick * w, into: &out.gear, cap: .butt)
                 }
             }
         }
+        // End-on plate discs: big, with a punched center hole (a real plate).
         for (dA, dB) in zip(a.discs, b.discs) {
             let c = at(dA, dB)
-            let dr = 0.058 * w
-            out.gear.addEllipse(in: CGRect(x: c.x - dr, y: c.y - dr,
-                                           width: dr * 2, height: dr * 2))
+            disc(c, 0.075 * w, into: &out.gear)
+            disc(c, 0.02 * w, into: &out.cuts)
         }
+        // Dumbbells: thick handle + chunky slab plates.
         for (dbA, dbB) in zip(a.dumbbells, b.dumbbells) {
             let c = at(dbA.c, dbB.c)
             let ang = mix(dbA.angle, dbB.angle, t)
             let hx = cos(ang), hy = sin(ang)
             let nx = -hy, ny = hx
-            let half = 0.085 * w
+            let half = 0.09 * w
             flesh([CGPoint(x: c.x - hx * half, y: c.y - hy * half),
-                   CGPoint(x: c.x + hx * half, y: c.y + hy * half)], 0.032 * w, into: &out.gear)
+                   CGPoint(x: c.x + hx * half, y: c.y + hy * half)], 0.04 * w, into: &out.gear)
             for dir in [-1.0, 1.0] {
-                let px = c.x + hx * dir * half * 0.75, py = c.y + hy * dir * half * 0.75
-                flesh([CGPoint(x: px + nx * 0.06 * w, y: py + ny * 0.06 * w),
-                       CGPoint(x: px - nx * 0.06 * w, y: py - ny * 0.06 * w)],
-                      0.045 * w, into: &out.gear)
+                let px = c.x + hx * dir * half * 0.72, py = c.y + hy * dir * half * 0.72
+                flesh([CGPoint(x: px + nx * 0.075 * w, y: py + ny * 0.075 * w),
+                       CGPoint(x: px - nx * 0.075 * w, y: py - ny * 0.075 * w)],
+                      0.055 * w, into: &out.gear, cap: .butt)
             }
         }
+        // Benches / seats / cables / frames: solid slabs, not hairlines.
         for (lnA, lnB) in zip(a.lines, b.lines) where lnA.count == 2 && lnB.count == 2 {
-            flesh([at(lnA[0], lnB[0]), at(lnA[1], lnB[1])], 0.03 * w, into: &out.gear)
+            flesh([at(lnA[0], lnB[0]), at(lnA[1], lnB[1])], 0.05 * w, into: &out.gear)
         }
 
-        // — Ki shards: filled energy slivers off the load at the peak —
+        // — Ki shards: bold energy slivers off the load at the peak —
         if let kA = a.ki ?? b.ki, let kB = b.ki ?? a.ki {
             let c = at(kA, kB)
-            for (ang, len) in [(-1.95, 0.10), (-1.32, 0.13), (-0.72, 0.085)] {
+            for (ang, len) in [(-1.95, 0.11), (-1.32, 0.145), (-0.72, 0.095)] {
                 let tipX = c.x + cos(ang) * len * w
                 let tipY = c.y + sin(ang) * len * w
-                let nx = -sin(ang) * 0.016 * w, ny = cos(ang) * 0.016 * w
+                let nx = -sin(ang) * 0.022 * w, ny = cos(ang) * 0.022 * w
                 var shard = Path()
                 shard.move(to: CGPoint(x: c.x + nx, y: c.y + ny))
                 shard.addLine(to: CGPoint(x: tipX, y: tipY))
@@ -396,24 +445,23 @@ enum Glyphs {
         // Lat pulldown — front view: seated warrior pulls the wide bar from overhead
         // to the collarbone; cable runs up to the anchor.
         .latPulldown: GlyphSpec(
-            a: GlyphPose(head: P(0.50, 0.28), neck: P(0.50, 0.35), hip: P(0.50, 0.62),
+            a: GlyphPose(head: P(0.5, 0.28), neck: P(0.5, 0.35), hip: P(0.5, 0.62),
                          arms: [[P(0.44, 0.36), P(0.38, 0.25), P(0.33, 0.15)],
                                 [P(0.56, 0.36), P(0.62, 0.25), P(0.67, 0.15)]],
-                         legs: [[P(0.50, 0.62), P(0.43, 0.72), P(0.43, 0.86)],
-                                [P(0.50, 0.62), P(0.57, 0.72), P(0.57, 0.86)]],
-                         bar: [P(0.25, 0.15), P(0.75, 0.15)],
-                         lines: [[P(0.50, 0.06), P(0.50, 0.15)],
+                         legs: [[P(0.5, 0.62), P(0.43, 0.72), P(0.43, 0.86)],
+                                [P(0.5, 0.62), P(0.57, 0.72), P(0.57, 0.86)]],
+                         lines: [[P(0.27, 0.15), P(0.73, 0.15)], [P(0.5, 0.06), P(0.5, 0.15)],
                                  [P(0.38, 0.68), P(0.62, 0.68)]],
-                         ki: P(0.50, 0.10)),
-            b: GlyphPose(head: P(0.50, 0.28), neck: P(0.50, 0.35), hip: P(0.50, 0.62),
+                         ki: P(0.5, 0.1)),
+            b: GlyphPose(head: P(0.5, 0.28), neck: P(0.5, 0.35), hip: P(0.5, 0.62),
                          arms: [[P(0.44, 0.36), P(0.37, 0.44), P(0.33, 0.47)],
                                 [P(0.56, 0.36), P(0.63, 0.44), P(0.67, 0.47)]],
-                         legs: [[P(0.50, 0.62), P(0.43, 0.72), P(0.43, 0.86)],
-                                [P(0.50, 0.62), P(0.57, 0.72), P(0.57, 0.86)]],
-                         bar: [P(0.25, 0.47), P(0.75, 0.47)],
-                         lines: [[P(0.50, 0.06), P(0.50, 0.47)],
+                         legs: [[P(0.5, 0.62), P(0.43, 0.72), P(0.43, 0.86)],
+                                [P(0.5, 0.62), P(0.57, 0.72), P(0.57, 0.86)]],
+                         lines: [[P(0.27, 0.47), P(0.73, 0.47)], [P(0.5, 0.06), P(0.5, 0.47)],
                                  [P(0.38, 0.68), P(0.62, 0.68)]],
-                         ki: P(0.50, 0.40))),
+                         ki: P(0.5, 0.4)),
+            readPhase: 0.75),
         // -- generated poses --
         .inclineBenchPress: GlyphSpec(
             a: GlyphPose(head: P(0.2, 0.54),
@@ -881,34 +929,21 @@ enum Glyphs {
                          ki: P(0.66, 0.24)),
             readPhase: 0.55),
         .pullUp: GlyphSpec(
-            a: GlyphPose(head: P(0.5, 0.33),
-                neck: P(0.5, 0.41),
-                hip: P(0.5, 0.66),
-                arms: [
-                    [P(0.44, 0.42), P(0.4, 0.32), P(0.36, 0.22)],
-                    [P(0.56, 0.42), P(0.6, 0.32), P(0.64, 0.22)]],
-                legs: [
-                    [P(0.5, 0.66), P(0.47, 0.77), P(0.43, 0.86)],
-                    [P(0.5, 0.66), P(0.53, 0.77), P(0.57, 0.86)]],
-                bar: [P(0.22, 0.22), P(0.78, 0.22)],
-                lines: [
-                    [P(0.22, 0.06), P(0.22, 0.22)],
-                    [P(0.78, 0.06), P(0.78, 0.22)]],
-                ki: P(0.5, 0.16)),
-            b: GlyphPose(head: P(0.5, 0.22),
-                neck: P(0.5, 0.29),
-                hip: P(0.5, 0.55),
-                arms: [
-                    [P(0.44, 0.3), P(0.39, 0.35), P(0.36, 0.22)],
-                    [P(0.56, 0.3), P(0.61, 0.35), P(0.64, 0.22)]],
-                legs: [
-                    [P(0.5, 0.55), P(0.47, 0.66), P(0.43, 0.75)],
-                    [P(0.5, 0.55), P(0.53, 0.66), P(0.57, 0.75)]],
-                bar: [P(0.22, 0.22), P(0.78, 0.22)],
-                lines: [
-                    [P(0.22, 0.06), P(0.22, 0.22)],
-                    [P(0.78, 0.06), P(0.78, 0.22)]],
-                ki: P(0.5, 0.1))),
+            a: GlyphPose(head: P(0.5, 0.36), neck: P(0.5, 0.43), hip: P(0.5, 0.66),
+                         arms: [[P(0.44, 0.44), P(0.38, 0.32), P(0.34, 0.2)],
+                                [P(0.56, 0.44), P(0.62, 0.32), P(0.66, 0.2)]],
+                         legs: [[P(0.5, 0.66), P(0.48, 0.78), P(0.4, 0.84)],
+                                [P(0.5, 0.66), P(0.52, 0.79), P(0.44, 0.86)]],
+                         lines: [[P(0.22, 0.2), P(0.78, 0.2)]],
+                         ki: P(0.5, 0.1)),
+            b: GlyphPose(head: P(0.5, 0.28), neck: P(0.5, 0.35), hip: P(0.5, 0.58),
+                         arms: [[P(0.44, 0.36), P(0.37, 0.28), P(0.34, 0.2)],
+                                [P(0.56, 0.36), P(0.63, 0.28), P(0.66, 0.2)]],
+                         legs: [[P(0.5, 0.58), P(0.48, 0.72), P(0.4, 0.78)],
+                                [P(0.5, 0.58), P(0.52, 0.73), P(0.44, 0.8)]],
+                         lines: [[P(0.22, 0.2), P(0.78, 0.2)]],
+                         ki: P(0.5, 0.1)),
+            readPhase: 0.8),
         .row: GlyphSpec(
             a: GlyphPose(head: P(0.54, 0.3),
                 neck: P(0.56, 0.38),
@@ -1218,11 +1253,17 @@ struct ExerciseGlyphView: View {
             // Aura — the whole figure bloomed beneath itself.
             ctx.drawLayer { aura in
                 aura.addFilter(.blur(radius: rect.width * 0.045))
-                aura.fill(layers.combined, with: .color(color.opacity(0.55)))
+                aura.fill(layers.combined, with: .color(color.opacity(0.5)))
             }
-            ctx.fill(layers.gear, with: .color(color.opacity(0.72)))
-            ctx.fill(layers.body, with: .color(color))
-            ctx.fill(layers.ki, with: .color(color.opacity(0.9)))
+            // The mark itself, with the muscle cuts / plate holes PUNCHED out of it —
+            // negative space is what turns a stick figure into an emblem.
+            ctx.drawLayer { mark in
+                mark.fill(layers.gear, with: .color(color.opacity(0.78)))
+                mark.fill(layers.body, with: .color(color))
+                mark.fill(layers.ki, with: .color(color.opacity(0.9)))
+                mark.blendMode = .destinationOut
+                mark.fill(layers.cuts, with: .color(.white))
+            }
         }
         .aspectRatio(1, contentMode: .fit)
     }
