@@ -1269,12 +1269,12 @@ struct ExerciseGlyphView: View {
     }
 }
 
-// MARK: - Exercise icon (movement glyph → muscle emblem fallback)
+// MARK: - Exercise icon (art → muscle art → vector glyph fallback)
 
-/// Drop-in exercise icon: the movement's warrior glyph when the name is in the
-/// catalog; for CUSTOM exercises, the muscle group's warrior emblem (double biceps,
-/// lat spread, squat stance…) so every exercise — including user-created ones —
-/// carries a Saiyan warrior.
+/// Drop-in exercise icon. Resolution order:
+/// 1. generated Saiyan ART for the movement (circular, tier-ringed),
+/// 2. generated art for the muscle group (custom exercises),
+/// 3. the vector warrior glyph / muscle emblem (never an empty icon).
 struct ExerciseIcon: View {
     let name: String
     let equipment: Equipment
@@ -1283,14 +1283,18 @@ struct ExerciseIcon: View {
     var color: Color = SettColor.heroCyan
 
     var body: some View {
-        Group {
-            if let key = ExerciseGlyphKey.forName(name) {
-                ExerciseGlyphView(key: key, color: color)
-            } else {
-                ExerciseGlyphView(muscle: muscle, color: color)
+        if let asset = ExerciseArt.movementAsset(for: name) ?? ExerciseArt.muscleAsset(for: muscle) {
+            ExerciseArtView(asset: asset, size: size, color: color)
+        } else {
+            Group {
+                if let key = ExerciseGlyphKey.forName(name) {
+                    ExerciseGlyphView(key: key, color: color)
+                } else {
+                    ExerciseGlyphView(muscle: muscle, color: color)
+                }
             }
+            .frame(width: size, height: size)
         }
-        .frame(width: size, height: size)
     }
 }
 
@@ -1301,10 +1305,47 @@ struct ExerciseGlyphContactSheet: View {
     /// SETT_DEBUG_GLYPHS=1 → first 24 movements; =2 → the rest + muscle emblems.
     var page = ProcessInfo.processInfo.environment["SETT_DEBUG_GLYPHS"] ?? "1"
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 6), count: 4)
+    /// Every movement name in the top-50 catalog (for the art QA page).
+    private var allMovementNames: [String] {
+        ExerciseGlyphKey.allCases.map(\.displayName) + [
+            "Lunges", "Leg Press", "Shrugs", "Upright Row", "Front Raise",
+            "Back Extension", "Crunches", "Plank", "Hanging Leg Raise",
+            "Russian Twist", "Farmers Carry",
+        ]
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 12) {
-                if page == "2" {
+                if page == "3" {
+                    // Generated-art QA: icons resolve art-first (vector fallback).
+                    LazyVGrid(columns: columns, spacing: 10) {
+                        ForEach(allMovementNames, id: \.self) { name in
+                            VStack(spacing: 3) {
+                                ExerciseIcon(name: name, equipment: .barbell, size: 62)
+                                Text(name)
+                                    .font(.system(size: 8, weight: .semibold, design: .monospaced))
+                                    .foregroundStyle(SettColor.ash)
+                                    .lineLimit(2)
+                                    .multilineTextAlignment(.center)
+                            }
+                        }
+                    }
+                    Text("MUSCLE ART (custom-exercise defaults)")
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .kerning(1.5)
+                        .foregroundStyle(SettColor.ash)
+                    LazyVGrid(columns: columns, spacing: 10) {
+                        ForEach(Muscle.allCases, id: \.self) { muscle in
+                            VStack(spacing: 3) {
+                                ExerciseIcon(name: "?", equipment: .bodyweight, muscle: muscle, size: 62)
+                                Text(muscle.rawValue.capitalized)
+                                    .font(.system(size: 8, weight: .semibold, design: .monospaced))
+                                    .foregroundStyle(SettColor.ash)
+                            }
+                        }
+                    }
+                } else if page == "2" {
                     LazyVGrid(columns: columns, spacing: 10) {
                         ForEach(ExerciseGlyphKey.allCases.dropFirst(24), id: \.self) { key in
                             tile(ExerciseGlyphView(key: key), label: key.displayName)

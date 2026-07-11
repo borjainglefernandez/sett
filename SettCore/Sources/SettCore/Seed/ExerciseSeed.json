@@ -400,5 +400,89 @@
     "name": "Kickbacks",
     "muscle": "legs",
     "equipment": "cable"
+  },
+  {
+    "id": "39EBC74F-81C9-5FCB-8C68-D3FABB32E426",
+    "name": "Lunges",
+    "muscle": "legs",
+    "equipment": "dumbbell"
+  },
+  {
+    "id": "741980AC-7B79-5EF9-AA54-EA840F6598B1",
+    "name": "Lunges",
+    "muscle": "legs",
+    "equipment": "barbell"
+  },
+  {
+    "id": "563B381E-0AE4-5E72-9FB3-67CE596526F7",
+    "name": "Leg Press",
+    "muscle": "legs",
+    "equipment": "machine"
+  },
+  {
+    "id": "E56A7846-D82B-5A2B-BC9D-F34029DC1900",
+    "name": "Shrugs",
+    "muscle": "shoulders",
+    "equipment": "dumbbell"
+  },
+  {
+    "id": "57EEE2D1-20B6-567D-A644-D7303AD6D073",
+    "name": "Shrugs",
+    "muscle": "shoulders",
+    "equipment": "barbell"
+  },
+  {
+    "id": "4693ECC7-ADEC-5E48-8E40-DD64F25B14A4",
+    "name": "Upright Row",
+    "muscle": "shoulders",
+    "equipment": "barbell"
+  },
+  {
+    "id": "AF664BA2-BE3A-5CEB-91D5-3BC96C739DE8",
+    "name": "Upright Row",
+    "muscle": "shoulders",
+    "equipment": "cable"
+  },
+  {
+    "id": "0EE528CB-0B6E-5CA6-91AD-E6B507BBE710",
+    "name": "Front Raise",
+    "muscle": "shoulders",
+    "equipment": "dumbbell"
+  },
+  {
+    "id": "8856AC31-91BE-504E-8757-BECF11CD93EF",
+    "name": "Back Extension",
+    "muscle": "back",
+    "equipment": "bodyweight"
+  },
+  {
+    "id": "ECF26E2D-8353-5CA8-A374-1B154BE24ACC",
+    "name": "Crunches",
+    "muscle": "core",
+    "equipment": "bodyweight"
+  },
+  {
+    "id": "ADBBC5BE-AC83-5B82-A745-496F6B95D011",
+    "name": "Plank",
+    "muscle": "core",
+    "equipment": "bodyweight"
+  },
+  {
+    "id": "2C963AB7-6295-589D-AB6B-0A4C3F33C76E",
+    "name": "Hanging Leg Raise",
+    "muscle": "core",
+    "equipment": "bodyweight"
+  },
+  {
+    "id": "C5649C9D-4DDE-53D6-AF95-8D39D882784F",
+    "name": "Russian Twist",
+    "muscle": "core",
+    "equipment": "bodyweight"
+  },
+  {
+    "id": "D69F80A7-9B73-50BD-ACC7-9EE18920227A",
+    "name": "Farmers Carry",
+    "muscle": "other",
+    "equipment": "dumbbell"
   }
 ]

@@ -250,7 +250,7 @@ struct SetPlayerView: View {
                 ExerciseIcon(name: workoutExercise.exerciseNameSnapshot,
                              equipment: exercise?.equipment ?? .barbell,
                              muscle: workoutExercise.muscle,
-                             size: 28, color: liveTier.color)
+                             size: 34, color: liveTier.color)
                     .accessibilityHidden(true)
                 Text(workoutExercise.exerciseNameSnapshot.uppercased())
                     .font(.system(.title3, design: .monospaced).weight(.bold))
