@@ -147,12 +147,12 @@ struct RestOverlayView: View {
 
     private var quietRow: some View {
         HStack(spacing: 8) {
-            quietButton("−15") { session.adjustRest(by: -15) }
+            quietButton("−5") { session.adjustRest(by: -5) }
             quietButton("skip") {
                 session.skipRest()
                 onAdvance()
             }
-            quietButton("+15") { session.adjustRest(by: 15) }
+            quietButton("+5") { session.adjustRest(by: 5) }
         }
     }
 

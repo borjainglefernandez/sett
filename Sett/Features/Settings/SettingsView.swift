@@ -29,11 +29,20 @@ struct SettingsView: View {
                             Text(settings.displayWeight(grams)).tag(grams)
                         }
                     }
-                    Stepper(value: $settings.defaultRestSeconds, in: 30...300, step: 15) {
+                    Stepper(value: $settings.defaultRestSeconds, in: 30...300, step: 5) {
                         LabeledContent("Default rest", value: restText)
                     }
+                    Picker("Workout view", selection: $settings.startsInList) {
+                        Text("Scanner").tag(false)
+                        Text("List").tag(true)
+                    }
+                    .pickerStyle(.segmented)
                 } header: {
                     sectionHeader("UNITS")
+                } footer: {
+                    Text("Scanner is the full-screen scouter; List is the overview of every set.")
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(SettColor.iron)
                 }
                 .listRowBackground(SettColor.card)
                 .listRowSeparatorTint(SettColor.cardBorder)

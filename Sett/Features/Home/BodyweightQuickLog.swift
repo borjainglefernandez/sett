@@ -90,8 +90,8 @@ struct BodyweightLogSheet: View {
 
     private var unit: WeightUnit { services.settings.unit }
 
-    /// 0.1 kg or 0.2 lb per tap, expressed in grams.
-    private var stepGrams: Int { unit == .kg ? 100 : 91 }
+    /// 0.1 kg or 0.1 lb per tap, expressed in grams.
+    private var stepGrams: Int { unit == .kg ? 100 : 45 }
 
     var body: some View {
         VStack(spacing: 20) {

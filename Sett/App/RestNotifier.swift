@@ -17,7 +17,7 @@ enum RestNotifier {
     static func requestAuthorizationIfNeeded() {
         #if DEBUG
         // Debug overview screenshots start rest synthetically; don't pop the auth prompt.
-        if ProcessInfo.processInfo.environment["SETT_DEBUG_OVERVIEW"] == "1" { return }
+        if let f = ProcessInfo.processInfo.environment["SETT_DEBUG_OVERVIEW"], !f.isEmpty { return }
         #endif
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
     }
@@ -32,9 +32,13 @@ enum RestNotifier {
 
         let content = UNMutableNotificationContent()
         content.title = "REST COMPLETE"
-        content.body = nextUp.map { "Next: \($0). The Chamber is ready." }
-            ?? "The Chamber is ready. Log your next set."
+        content.body = nextUp.map { "Next: \($0) — tap to return and log your set." }
+            ?? "The Chamber is ready — tap to return and log your next set."
         content.sound = .default
+        // Time-sensitive so it breaks through Focus / the notification summary — the
+        // whole point is to pull the lifter back for the next set (degrades to a normal
+        // alert without the entitlement).
+        content.interruptionLevel = .timeSensitive
 
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: interval, repeats: false)
         center.add(UNNotificationRequest(identifier: restID, content: content, trigger: trigger))

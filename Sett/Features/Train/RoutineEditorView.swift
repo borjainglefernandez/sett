@@ -147,11 +147,11 @@ struct RoutineEditorView: View {
 
     private var nameField: some View {
         TextField("", text: $name, prompt: Text("Routine name").foregroundStyle(SettColor.iron))
-            .font(.system(.title3, design: .rounded, weight: .bold))
+            .font(.system(.headline, design: .rounded, weight: .bold))
             .foregroundStyle(SettColor.bone)
             .textInputAutocapitalization(.words)
-            .padding(.horizontal, 16)
-            .frame(minHeight: 52)
+            .padding(.horizontal, 14)
+            .frame(height: 44)
             .settCard()
     }
 

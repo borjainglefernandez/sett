@@ -1,5 +1,6 @@
 import SwiftUI
 import SettCore
+import UniformTypeIdentifiers
 
 /// Overview state (v3.1): the old exercise-card list survives as a sheet — the
 /// toolbox, not the workspace. Add exercises, review every logged set, edit notes
@@ -15,6 +16,8 @@ struct SessionOverviewSheet: View {
     /// with a scope toggle — the one place `List`/`.onMove` shines (dedicated, un-nested).
     @State private var isReordering = false
     @State private var reorderScope: ReorderScope = .exercises
+    /// The exercise card currently lifted for a long-press drag reorder.
+    @State private var draggingExercise: WorkoutExercise?
     /// The sheet gets its own emitter so combat text from SetEntryRow commits rises
     /// over the sheet, not under it on the player root.
     @State private var combatText = CombatTextEmitter()
@@ -215,9 +218,9 @@ struct SessionOverviewSheet: View {
                     .monospacedDigit()
                     .foregroundStyle(SettColor.bone)
                 Spacer(minLength: 8)
-                restButton("−15") { session.adjustRest(by: -15) }
+                restButton("−5") { session.adjustRest(by: -5) }
                 restButton("SKIP") { session.skipRest() }
-                restButton("+15") { session.adjustRest(by: 15) }
+                restButton("+5") { session.adjustRest(by: 5) }
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
@@ -255,6 +258,16 @@ struct SessionOverviewSheet: View {
             VStack(alignment: .leading, spacing: 12) {
                 ForEach(workout.orderedExercises) { workoutExercise in
                     ExerciseCard(workoutExercise: workoutExercise)
+                        // Long-press to lift a card, drag to reorder exercises live.
+                        .opacity(draggingExercise?.id == workoutExercise.id ? 0.35 : 1)
+                        .onDrag {
+                            draggingExercise = workoutExercise
+                            return NSItemProvider(object: workoutExercise.id.uuidString as NSString)
+                        }
+                        .onDrop(of: [.text], delegate: ReorderDropDelegate(
+                            target: workoutExercise, items: workout.orderedExercises,
+                            dragging: $draggingExercise,
+                            move: { session.moveExercise(in: workout, from: $0, to: $1) }))
                 }
                 Button {
                     isShowingExercisePicker = true
