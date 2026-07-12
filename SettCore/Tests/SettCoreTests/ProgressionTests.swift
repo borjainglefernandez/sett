@@ -228,6 +228,45 @@ struct PRPipelineTests {
         // SS now uses the verified 163,333 g = 360 lb.
         #expect(afterConfirm.strengthScore == 360)
     }
+
+    @Test("A provisional mis-log doesn't inflate weekly volume (or PL) until verified")
+    func misLogQuarantinedFromVolume() throws {
+        let config = try loadConfig()
+        let cal = madridCalendar()
+
+        // Three distinct legit days of bench, 100 kg × 5 × 3.
+        func legit() -> ([WorkoutSample], [SetSample]) {
+            var w: [WorkoutSample] = []
+            var s: [SetSample] = []
+            for day in 2...4 {
+                let wk = workout(UUID(), start: date(2025, 6, day, 18))
+                w.append(wk)
+                s += sets(benchID, muscle: .chest, grams: 100_000, reps: 5, count: 3, workout: wk)
+            }
+            return (w, s)
+        }
+
+        let (cw, cs) = legit()
+        let control = ProgressionEngine.compute(
+            input: input(workouts: cw, sets: cs),
+            config: config, calendar: cal, asOf: date(2025, 6, 4, 20))
+
+        // Same history plus a fat-fingered 500 kg × 5 on day 4 — a huge single-day
+        // outlier that never gets confirmed, so it stays provisional (verifiedAt nil).
+        var (mw, ms) = legit()
+        let misDay = workout(UUID(), start: date(2025, 6, 4, 19))
+        mw.append(misDay)
+        ms += sets(benchID, muscle: .chest, grams: 500_000, reps: 5, count: 1, workout: misDay)
+        let withMislog = ProgressionEngine.compute(
+            input: input(workouts: mw, sets: ms),
+            config: config, calendar: cal, asOf: date(2025, 6, 4, 20))
+
+        // The provisional 500 kg set contributes NOTHING to weekly volume or PL — the
+        // quarantine that already protects the Strength Score now protects volume too.
+        #expect(withMislog.weeklyVolumeLb == control.weeklyVolumeLb)
+        #expect(withMislog.powerLevel == control.powerLevel)
+        #expect(!withMislog.badges.contains { $0.key == "new_ceiling" })
+    }
 }
 
 // MARK: - Idempotency

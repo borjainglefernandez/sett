@@ -9,7 +9,6 @@ import SettCore
 struct OnboardingView: View {
     @Environment(AppServices.self) private var services
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private enum Page: Int, Hashable, CaseIterable {
         case invite, signIn, units, phase, oura, rival
@@ -30,9 +29,6 @@ struct OnboardingView: View {
         }
         .tabViewStyle(.page(indexDisplayMode: .never))
         .background(SettColor.screen.ignoresSafeArea())
-        .onChange(of: page) { _, newPage in
-            if newPage == .rival { rollUpPowerLevel() }
-        }
     }
 
     // MARK: Page 1 — invite code
@@ -261,6 +257,9 @@ struct OnboardingView: View {
                     .kerning(1.5)
                     .foregroundStyle(.secondary)
                 PowerNumeral(displayedPowerLevel, size: .xl)
+                Text("Earn it — every set raises it.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             }
             Spacer()
             continueButton("Begin training") {
@@ -283,7 +282,7 @@ struct OnboardingView: View {
             Text("the Crimson Star")
                 .font(.footnote)
                 .foregroundStyle(.white.opacity(0.6))
-            Text("“Power level \(rivalPowerLevel) and climbing. You start at 100. Catch me — if your species can.”")
+            Text("“Power level \(rivalPowerLevel) and climbing. You? Starting from zero. Every set closes the gap — catch me if your species can.”")
                 .font(.subheadline)
                 .italic()
                 .multilineTextAlignment(.center)
@@ -296,23 +295,6 @@ struct OnboardingView: View {
 
     private var rivalPowerLevel: Int {
         services.progression.config?.rival["startPL"] as? Int ?? 3000
-    }
-
-    /// 0 → 100 roll-up (`contentTransition(.numericText)` inside PowerNumeral).
-    /// Reduce Motion snaps straight to 100.
-    private func rollUpPowerLevel() {
-        guard displayedPowerLevel == 0 else { return }
-        if reduceMotion {
-            displayedPowerLevel = 100
-            return
-        }
-        Task { @MainActor in
-            for value in [8, 27, 61, 100] {
-                try? await Task.sleep(for: .milliseconds(300))
-                withAnimation(.snappy) { displayedPowerLevel = value }
-            }
-            Haptics.levelUp()
-        }
     }
 
     // MARK: Navigation

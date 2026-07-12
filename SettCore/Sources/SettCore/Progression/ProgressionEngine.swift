@@ -453,6 +453,11 @@ public enum ProgressionEngine {
         var tonnageGrams = 0
         for record in analysis.effectiveSets
         where record.sample.completedAt > volStart && record.sample.completedAt <= moment {
+            // Same anti-cheese quarantine as the Strength Score: a provisional (not yet
+            // verified) set — including a fat-fingered mis-log — doesn't count toward
+            // volume (and thus PL + tonnage badges) until a later distinct-day session
+            // confirms it.
+            guard let verifiedAt = record.verifiedAt, verifiedAt <= moment else { continue }
             tonnageGrams += record.sample.weightGrams * record.sample.reps
         }
         let windowWeeks = Double(plc.volumeWindowDays) / 7.0
