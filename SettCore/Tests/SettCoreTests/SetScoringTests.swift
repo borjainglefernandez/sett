@@ -47,4 +47,65 @@ import Testing
         let viaExtraWeight = ProgressEngine.e1RMGrams(weightGrams: grams(250) + perRep, reps: 3)
         #expect(abs(lb(viaExtraRep) - lb(viaExtraWeight)) < 0.3)
     }
+
+    // MARK: Rep cap — beyond 12 reps, e1RM stops climbing (the Epley cap)
+
+    @Test("e1RM caps reps at 12 — 20 reps scores the same as 12")
+    func repsCapAt12() {
+        let at12 = ProgressEngine.e1RMGrams(weightGrams: grams(135), reps: 12)
+        let at13 = ProgressEngine.e1RMGrams(weightGrams: grams(135), reps: 13)
+        let at20 = ProgressEngine.e1RMGrams(weightGrams: grams(135), reps: 20)
+        #expect(at13 == at12)
+        #expect(at20 == at12)
+        // and 12 is still strictly above 11 (the cap kicks in only past 12)
+        #expect(at12 > ProgressEngine.e1RMGrams(weightGrams: grams(135), reps: 11))
+    }
+
+    @Test("Zero/negative reps don't crash or inflate e1RM")
+    func nonPositiveReps() {
+        // reps clamp at 0, so e1RM == the raw weight (no rep credit), never negative.
+        #expect(ProgressEngine.e1RMGrams(weightGrams: grams(135), reps: 0) == grams(135))
+        #expect(ProgressEngine.e1RMGrams(weightGrams: grams(135), reps: -3) == grams(135))
+    }
+
+    // MARK: Effective load — bodyweight adds the lifter's mass (the CLAUDE.md rule)
+
+    @Test("effectiveWeightGrams: non-bodyweight equipment is the added weight unchanged")
+    func effectiveLoadFreeWeight() {
+        for eq in [Equipment.barbell, .dumbbell, .machine, .cable] {
+            #expect(LoadMath.effectiveWeightGrams(addedGrams: grams(185), equipment: eq,
+                                                  bodyweightGrams: grams(180)) == grams(185))
+        }
+    }
+
+    @Test("effectiveWeightGrams: bodyweight adds real mass; nil falls back to the default")
+    func effectiveLoadBodyweight() {
+        // A bodyweight pull-up at 180 lb bodyweight moves ~180 lb of effective load.
+        let bw = LoadMath.effectiveWeightGrams(addedGrams: 0, equipment: .bodyweight,
+                                               bodyweightGrams: grams(180))
+        #expect(bw == grams(180))
+        // A weighted pull-up (+45 lb) adds to bodyweight.
+        let weighted = LoadMath.effectiveWeightGrams(addedGrams: grams(45), equipment: .bodyweight,
+                                                     bodyweightGrams: grams(180))
+        #expect(weighted == grams(180) + grams(45))
+        // No captured bodyweight → the neutral default (never 0 — a pull-up must score).
+        let fallback = LoadMath.effectiveWeightGrams(addedGrams: 0, equipment: .bodyweight,
+                                                     bodyweightGrams: nil)
+        #expect(fallback == LoadMath.defaultBodyweightGrams)
+        #expect(fallback > 0)
+    }
+
+    @Test("A bodyweight pull-up scores against real bodyweight, not the 80 kg default")
+    func bodyweightE1RMUsesRealMass() {
+        // Same movement (BW pull-up × 8) scored at two different bodyweights must differ
+        // — the whole point of capturing workout.bodyweightGrams.
+        let light = LoadMath.effectiveWeightGrams(addedGrams: 0, equipment: .bodyweight,
+                                                  bodyweightGrams: grams(130))
+        let heavy = LoadMath.effectiveWeightGrams(addedGrams: 0, equipment: .bodyweight,
+                                                  bodyweightGrams: grams(220))
+        let lightE1RM = ProgressEngine.e1RMGrams(weightGrams: light, reps: 8)
+        let heavyE1RM = ProgressEngine.e1RMGrams(weightGrams: heavy, reps: 8)
+        #expect(heavyE1RM > lightE1RM)
+        #expect(lightE1RM > 0)   // never scored as 0
+    }
 }

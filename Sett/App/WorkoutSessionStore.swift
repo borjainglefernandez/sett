@@ -246,6 +246,26 @@ public final class WorkoutSessionStore {
         Haptics.selection()
     }
 
+    /// Soft-delete a whole workout AND tombstone every child exercise + set, so no live
+    /// child is left orphaned under a deleted parent (which sync would otherwise push
+    /// under a tombstone). Mirrors finishWorkout's discipline for the delete path.
+    public func deleteWorkout(_ workout: Workout) {
+        let now = Date.now
+        for we in workout.exercises {
+            for set in we.sets where set.deletedAt == nil {
+                set.deletedAt = now; set.updatedAt = now; set.needsPush = true
+            }
+            if we.deletedAt == nil {
+                we.deletedAt = now; we.updatedAt = now; we.needsPush = true
+            }
+        }
+        workout.deletedAt = now
+        workout.updatedAt = now
+        workout.needsPush = true
+        persist()
+        Haptics.rigid()
+    }
+
     public func startRest(seconds: Int, nextUp: String? = nil) {
         restTotalSeconds = seconds
         let ends = Date.now.addingTimeInterval(TimeInterval(seconds))

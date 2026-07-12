@@ -234,12 +234,10 @@ struct HistoryListView: View {
     }
 
     private func delete(_ workout: Workout) {
-        workout.deletedAt = .now
-        workout.updatedAt = .now
-        workout.needsPush = true
-        try? modelContext.save()
+        // Route through the store so the workout's child exercises + sets are tombstoned
+        // too (not left live under a deleted parent).
+        services.session.deleteWorkout(workout)
         refreshSamples()
-        Haptics.rigid()
     }
 }
 

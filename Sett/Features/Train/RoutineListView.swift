@@ -313,7 +313,7 @@ struct RoutineListView: View {
                 .foregroundStyle(SettColor.heroCyan)
             Text("No routines yet")
                 .font(.title3.bold())
-            Text("Build one, or Quick Start and we'll remember it.")
+            Text("Build a routine, or Quick Start from Home to train without a plan.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
