@@ -199,6 +199,8 @@ struct SetEntryRow: View {
                 .foregroundStyle(.white)
                 .frame(width: 34, height: 34)
                 .background(SettColor.heroCyan, in: Circle())
+                .frame(width: 44, height: 44)   // 34pt disc, full 44pt tap target (a11y)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(repsValue <= 0)

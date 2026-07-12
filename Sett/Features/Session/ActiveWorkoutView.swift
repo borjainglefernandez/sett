@@ -382,6 +382,13 @@ struct ActiveWorkoutView: View {
         max(session.plannedSetCount(for: exercise), exercise.orderedSets.count + 1)
     }
 
+    /// Working sets logged (warm-ups excluded). `plannedSetCount` is working-only, so
+    /// plan-completion must compare against THIS, not the raw count — otherwise a warm-up
+    /// "fills" a planned slot and the queue skips a real working set.
+    private func workingLogged(_ exercise: WorkoutExercise) -> Int {
+        exercise.orderedSets.filter { !$0.isWarmup }.count
+    }
+
     private func nextOpenSlot(of exercise: WorkoutExercise) -> Int {
         min(exercise.orderedSets.count, slotCount(for: exercise) - 1)
     }
@@ -449,7 +456,7 @@ struct ActiveWorkoutView: View {
         hasInitializedCursor = true
         if let index = exercises.firstIndex(where: { exercise in
             let planned = session.plannedSetCount(for: exercise)
-            return planned > 0 && exercise.orderedSets.count < planned
+            return planned > 0 && workingLogged(exercise) < planned
         }) {
             cursor = QueuePosition(exerciseIndex: index,
                                    slotIndex: nextOpenSlot(of: exercises[index]))
@@ -465,7 +472,7 @@ struct ActiveWorkoutView: View {
         guard position.exerciseIndex < exercises.count else { return position }
         let exercise = exercises[position.exerciseIndex]
         let planned = session.plannedSetCount(for: exercise)
-        if planned > 0 && exercise.orderedSets.count >= planned {
+        if planned > 0 && workingLogged(exercise) >= planned {
             let nextIndex = position.exerciseIndex + 1
             guard nextIndex < exercises.count else { return endPosition(exercises) }
             return QueuePosition(exerciseIndex: nextIndex,

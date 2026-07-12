@@ -101,10 +101,13 @@ struct SettingsView: View {
                 .listRowBackground(SettColor.card)
                 .listRowSeparatorTint(SettColor.cardBorder)
 
+                // Invite codes are issued by the (not-yet-wired) backend; sharing a fake
+                // CHAMBER-XXXXXX on an invite-only app is worse than nothing, so the row
+                // stays hidden until real codes exist. Re-enable by restoring
+                // ShareLink(item: inviteMessage) here once the backend issues codes.
                 Section {
-                    ShareLink(item: inviteMessage) {
-                        Label("Invite a Friend", systemImage: "person.badge.plus")
-                    }
+                    Label("Invites arrive with sync", systemImage: "person.badge.plus")
+                        .foregroundStyle(SettColor.ash)
                 } header: {
                     sectionHeader("FRIENDS")
                 }

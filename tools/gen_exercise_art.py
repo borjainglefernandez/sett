@@ -35,9 +35,13 @@ STYLE = (
     "no mouth, no skin tone, no clothing details — its head crowned by an abstract "
     "upswept crest of pure flame-like energy. The figure is matte near-black, "
     "rim-lit in electric cyan, wrapped in a crackling cyan-white aura with lightning "
-    "arcs. KEY LIGHTING RULE: the PRIMARY WORKING MUSCLES of the movement blaze from "
-    "WITHIN the silhouette in molten gold, like magma glowing through cracked armor — "
-    "the hottest and brightest region of the image, so the target muscle group is "
+    "arcs. COLOR LOCK: the flame crest, rim light and aura are ALWAYS electric "
+    "CYAN-WHITE — never gold, yellow or orange. KEY LIGHTING RULE: ONLY the exact "
+    "PRIMARY WORKING MUSCLES named for this movement blaze from WITHIN the silhouette "
+    "in molten gold, like magma glowing through cracked armor — the hottest brightest "
+    "region of the image. Be ANATOMICALLY PRECISE: light ONLY that named muscle group "
+    "and keep every other body region dark near-black; NEVER let the gold leak onto "
+    "the abs/core unless the core is the named target. So the target muscle group is "
     "unmistakable at a glance. Bold heroic energy: thick simple shapes, cel-shaded "
     "glow, dynamic pose, bold readable silhouette that stays clear at small icon "
     "size. Completely original design — must NOT resemble any existing anime, manga, "
@@ -50,7 +54,7 @@ SCENES = {
     "flatBenchPress": "lying flat on a bench, pressing a heavy loaded barbell straight up at lockout, plates prominent",
     "inclineBenchPress": "lying on a steeply inclined bench, pressing a loaded barbell up and slightly forward",
     "declineBenchPress": "lying on a decline bench with feet hooked high, pressing a loaded barbell above the chest",
-    "chestFly": "lying on a flat bench sweeping two dumbbells together in a wide hugging arc above the chest",
+    "chestFly": "seated upright at a pec-deck fly machine, bringing both padded arms together in front of the chest; the PECTORAL chest muscles blaze, the core stays dark",
     "hexPress": "lying on a bench pressing two dumbbells squeezed together over the chest",
     "chestPress": "seated at a chest press machine driving both handles forward explosively",
     "pullAround": "standing, pulling a low cable across the body in a rising arc, cable taut behind",
@@ -60,7 +64,7 @@ SCENES = {
     "tricepPushdown": "standing at a high cable, pressing the bar down to the thighs with elbows pinned",
     "skullCrusher": "lying on a bench lowering an EZ-bar toward the forehead, forearms hinged",
     "tricepExtension": "standing, both arms overhead extending a single dumbbell behind the head",
-    "frenchPress": "seated, extending a dumbbell overhead with both hands, elbows tight",
+    "frenchPress": "seated on a bench, both hands cupping ONE single dumbbell held overhead, extending it up while the elbows stay tight; the TRICEPS blaze",
     # biceps
     "bicepCurl": "standing, curling a heavy dumbbell to shoulder height with a clenched fist, bicep bulging",
     "inclineBicepCurl": "reclined on an incline bench curling two dumbbells from a deep stretch",
@@ -76,7 +80,7 @@ SCENES = {
     "shrugs": "standing, shrugging two very heavy dumbbells, traps flexed to the ears",
     "uprightRow": "standing, pulling a barbell vertically up the torso to chin height, elbows high",
     # back
-    "latPulldown": "seated at a lat pulldown machine, pulling the wide bar down to the collarbone",
+    "latPulldown": "rear three-quarter view, seated at a lat pulldown machine gripping the wide overhead bar and pulling it down behind toward the upper back; the LATS and back muscles flare wide and blaze molten gold",
     "latPullover": "standing at a high cable, sweeping straight arms from overhead down to the thighs",
     "bentOverRow": "hinged flat-backed, rowing a heavy loaded barbell into the waist",
     "pullUp": "chin over a pull-up bar mid-rep, back flared wide, legs tucked",
@@ -86,10 +90,10 @@ SCENES = {
     # legs
     "squat": "deep in a heavy barbell back squat, bar loaded with big plates, thighs parallel",
     "hackSquat": "reclined on a hack squat sled, driving up through the platform",
-    "bulgarianSplitSquat": "rear foot elevated on a bench, deep in a split squat holding dumbbells",
+    "bulgarianSplitSquat": "in a deep split squat with the REAR foot resting up on top of a bench behind, front leg bent and lunging, holding a dumbbell in each hand; the front QUADRICEPS and glute blaze",
     "legExtension": "seated on a leg extension machine, kicking the pad to full lockout",
     "legCurl": "lying prone on a leg curl machine, heels curling the pad toward the glutes",
-    "hipThrust": "shoulders on a bench, driving a barbell up with the hips in a powerful bridge",
+    "hipThrust": "upper back braced against a bench, feet planted, a loaded barbell resting ACROSS the HIPS/lap, driving the hips up into a flat bridge; the GLUTES blaze",
     "sumoDeadlift": "pulling a loaded barbell in an extremely wide sumo stance, knees out",
     "romanianDeadlift": "hinged with near-straight legs, barbell sliding down the thighs, hamstrings loaded",
     "standingCalfRaises": "standing on a raised block on tiptoes, holding a dumbbell, calves carved",
@@ -105,13 +109,13 @@ SCENES = {
     "farmersCarry": "walking upright carrying two massive dumbbells at the sides, veins popping",
     # muscle-group emblems (custom-exercise defaults) — flex poses, no equipment.
     # Each names its glow target explicitly: ONLY that region burns molten gold.
-    "muscle_chest": "striking a most-muscular crab pose facing the viewer; ONLY both PECTORAL muscles blaze molten gold, everything else stays dark",
-    "muscle_triceps": "seen from a rear three-quarter angle, one arm flexed locked overhead; ONLY the TRICEPS on the back of that arm blazes molten gold",
-    "muscle_biceps": "hitting a front double-biceps pose; ONLY both BICEPS blaze molten gold, everything else stays dark",
-    "muscle_shoulders": "arms spread dead straight in a T-pose; ONLY both DELTOID shoulder caps blaze molten gold",
-    "muscle_back": "seen ENTIRELY FROM BEHIND — only the back of the head crest visible, absolutely no face — hitting a rear lat spread; ONLY the LATS and upper back blaze molten gold in a wide V",
-    "muscle_legs": "rooted in a wide horse stance, fists at the hips; ONLY both QUADRICEPS thighs blaze molten gold",
-    "muscle_core": "standing braced, fists clenched at the sides; ONLY the ABDOMINAL grid blazes molten gold",
+    "muscle_chest": "facing the viewer, arms pressed together low in a most-muscular pose; ONLY the two big PECTORAL chest plates across the UPPER torso blaze molten gold — the abs and core stay completely dark",
+    "muscle_triceps": "rear three-quarter view, one arm bent and locked overhead; ONLY the TRICEPS horseshoe on the BACK of that upper arm (between shoulder and elbow) blazes molten gold — the forearm, shoulder and rest of the body stay dark",
+    "muscle_biceps": "front double-biceps pose, both elbows bent to 90 degrees; ONLY the two bulging BICEPS PEAKS on the front of the UPPER arms (between shoulder and elbow) blaze molten gold — the forearms and everything else stay completely dark",
+    "muscle_shoulders": "arms spread dead straight out to the sides in a T; ONLY the two round DELTOID caps on top of the shoulders blaze molten gold — the chest, arms and core stay completely dark",
+    "muscle_back": "seen ENTIRELY FROM BEHIND — only the back of the head crest visible, absolutely no face — hitting a rear lat spread, elbows flared; ONLY the LATS and upper back blaze molten gold in a wide V",
+    "muscle_legs": "rooted in a wide stance, fists at the hips; the ENTIRE QUADRICEPS on the front of BOTH thighs (from hip to knee) blaze molten gold — the torso and core stay dark",
+    "muscle_core": "standing braced, fists clenched at the sides; ONLY the six-pack ABDOMINAL grid on the belly blazes molten gold, everything else dark",
     "muscle_other": "in a rising power-up stance, aura detonating upward; the WHOLE BODY is veined evenly with molten-gold energy cracks",
 }
 

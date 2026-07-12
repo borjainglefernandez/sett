@@ -574,7 +574,7 @@ struct SetPlayerView: View {
             Image(systemName: symbol)
                 .font(.subheadline.weight(.bold))
                 .foregroundStyle(SettColor.bone)
-                .frame(width: 36, height: 36)
+                .frame(width: 44, height: 44)   // was 36 — full 44pt tap target (a11y)
                 .background {
                     Circle().fill(TimeChamber.void.opacity(0.55))
                     Circle().strokeBorder(liveTier.color.opacity(0.45), lineWidth: 1)

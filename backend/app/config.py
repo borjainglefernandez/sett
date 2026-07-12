@@ -8,6 +8,10 @@ from functools import lru_cache
 
 from cryptography.fernet import Fernet
 
+# The in-repo dev fallback for the JWT signing secret. It must NEVER be the live
+# secret — a known signing key lets anyone forge an admin token for any user.
+DEV_JWT_SECRET = "dev-secret-do-not-use-in-prod-padding"
+
 
 @dataclass(frozen=True)
 class Settings:
@@ -46,9 +50,9 @@ def get_settings() -> Settings:
     def env(key: str, default: str = "") -> str:
         return os.environ.get(key, default)
 
-    return Settings(
+    settings = Settings(
         database_url=env("DATABASE_URL", "sqlite+aiosqlite:///./sett_dev.db"),
-        jwt_secret=env("JWT_SECRET", "dev-secret-do-not-use-in-prod-padding"),
+        jwt_secret=env("JWT_SECRET", DEV_JWT_SECRET),
         apple_bundle_id=env("APPLE_BUNDLE_ID", "com.borja.sett"),
         apple_issuer="https://appleid.apple.com",
         apple_jwks_url="https://appleid.apple.com/auth/keys",
@@ -77,3 +81,28 @@ def get_settings() -> Settings:
         postgres_host=env("POSTGRES_HOST", "sett-db"),
         sentry_dsn=env("SENTRY_DSN"),
     )
+    _validate_for_production(settings, env)
+    return settings
+
+
+def _validate_for_production(settings: "Settings", env) -> None:
+    """Fail fast rather than boot a production server on insecure defaults. A prod
+    signal (ENVIRONMENT/APP_ENV in prod/production/staging) makes these fatal; in dev
+    they only warn, so local runs keep working."""
+    is_prod = env("ENVIRONMENT", env("APP_ENV", "")).strip().lower() in (
+        "prod", "production", "staging",
+    )
+    problems: list[str] = []
+    if settings.jwt_secret == DEV_JWT_SECRET or len(settings.jwt_secret) < 32:
+        problems.append("JWT_SECRET is the dev default or shorter than 32 chars")
+    if not env("OURA_TOKEN_KEY"):
+        problems.append("OURA_TOKEN_KEY is unset (ephemeral key ⇒ tokens undecryptable after restart)")
+    if settings.auto_create_schema:
+        problems.append("AUTO_CREATE_SCHEMA is on (risks schema drift; use Alembic in prod)")
+    if not problems:
+        return
+    message = "Insecure production config: " + "; ".join(problems)
+    if is_prod:
+        raise RuntimeError(message)
+    import logging
+    logging.getLogger("sett.config").warning("%s (allowed in dev only)", message)

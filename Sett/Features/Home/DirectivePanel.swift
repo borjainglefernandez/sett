@@ -96,7 +96,7 @@ struct DirectivePanel: View {
     private var directives: [Directive] {
         let trained = todaysWorkouts.isEmpty ? 0 : 1
         let weighed = todaysBodyweight.isEmpty ? 0 : 1
-        let setCount = min(todaysSets.count, 10)
+        let setCount = min(todaysSets.filter { !$0.isWarmup }.count, 10)   // working sets only, like every other count
         return [
             Directive(key: DirectiveKey.chamber,
                       title: todaysRoutine.map { "Start \($0.name)" } ?? "Enter the chamber",

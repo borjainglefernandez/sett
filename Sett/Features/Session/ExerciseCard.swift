@@ -346,7 +346,7 @@ struct ExerciseCard: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Set \(label), \(WeightFormat.compactWithUnit(grams: set.weightGrams, unit: unit)) by \(set.reps)")
+            .accessibilityLabel(loggedRowLabel(set: set, label: label, tier: tier, delta: delta))
             .accessibilityHint("Fixes this set's weight and reps. Long-press for note or delete.")
 
             if !note.isEmpty { noteLine(note, on: set) }
@@ -462,6 +462,23 @@ struct ExerciseCard: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(hasTarget ? "Planned set \(number), target \(weightText) by \(repsText)"
                                        : "Planned set \(number)")
+    }
+
+    /// Spoken VoiceOver label for a logged row — the whole progress signal (PWR, the
+    /// vs-last trend, and the outcome tier) that is otherwise colour/glyph-only.
+    private func loggedRowLabel(set: SetEntry, label: String, tier: AuraTier, delta: Int?) -> String {
+        let base = "Set \(label), \(WeightFormat.compactWithUnit(grams: set.weightGrams, unit: unit)) by \(set.reps)"
+        if set.isWarmup { return base + ", warm-up" }
+        var parts = [base, "power \(pwr(set))"]
+        if tier == .radiant {
+            parts.append("personal best")
+        } else if let delta {
+            if delta > 0 { parts.append("up \(delta) versus last") }
+            else if delta < 0 {
+                parts.append(phase == .cutting ? "down \(-delta), expected on a cut" : "down \(-delta) versus last")
+            } else { parts.append("held versus last") }
+        }
+        return parts.joined(separator: ", ")
     }
 
     /// vs-last PWR delta — the SAME glyph + colour the scouter showed (shared VsLast).

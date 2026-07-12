@@ -173,8 +173,10 @@ async def pull_sleep(
     for item in sleep_periods.get("data", []):
         day = date.fromisoformat(item["day"])
         entry = by_day.setdefault(day, {})
-        # Keep the longest sleep period per day.
-        if item.get("total_sleep_duration", 0) >= entry.get("total_sleep_sec", -1):
+        # Keep the longest sleep period per day. Coalesce None explicitly: a present-but-
+        # None key defeats dict.get's default and an int >= None comparison would raise
+        # TypeError, silently killing the whole user's sync.
+        if (item.get("total_sleep_duration") or 0) >= (entry.get("total_sleep_sec") or -1):
             entry.update(
                 total_sleep_sec=item.get("total_sleep_duration"),
                 deep_sec=item.get("deep_sleep_duration"),

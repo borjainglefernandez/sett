@@ -68,12 +68,24 @@ public final class WorkoutSessionStore {
         isPresentingWorkout = true
     }
 
+    /// The lifter's most recent logged bodyweight, in grams — snapshotted onto each new
+    /// workout so bodyweight lifts (pull-ups/dips) score against real mass rather than
+    /// the 80 kg default. nil when they've never logged one (LoadMath then falls back).
+    private func latestBodyweightGrams() -> Int? {
+        var descriptor = FetchDescriptor<BodyweightEntry>(
+            predicate: #Predicate { $0.deletedAt == nil },
+            sortBy: [SortDescriptor(\.loggedAt, order: .reverse)])
+        descriptor.fetchLimit = 1
+        return (try? context.fetch(descriptor))?.first?.weightGrams
+    }
+
     public func quickStart(title: String = "Workout") {
         // Never orphan an in-progress workout: if one is live, resume it rather than
         // silently creating a second (which would vanish from every history query).
         if activeWorkout != nil { isPresentingWorkout = true; Haptics.medium(); return }
         let workout = Workout(title: title)
         workout.phaseRaw = settings.trainingPhase
+        workout.bodyweightGrams = latestBodyweightGrams()
         context.insert(workout)
         persist()
         activeWorkout = workout
@@ -88,6 +100,7 @@ public final class WorkoutSessionStore {
         workout.routineNameSnapshot = routine.name
         workout.domainRaw = routine.domainRaw   // the routine's realm (nil ⇒ app default)
         workout.phaseRaw = settings.trainingPhase
+        workout.bodyweightGrams = latestBodyweightGrams()
         context.insert(workout)
 
         for (index, routineExercise) in routine.orderedExercises.enumerated() {

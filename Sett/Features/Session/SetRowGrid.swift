@@ -64,7 +64,7 @@ enum SetRowGrid {
     /// FOUR of these (weight −, weight +, reps −, reps +) replace the old two 28pt
     /// stepper gutters, so 4×14 = 2×28: the value cells keep their exact x (no
     /// realignment) and the steppers become sleek flanking glyphs, not a chunky box.
-    static let stepFlank: CGFloat = 14
+    static let stepFlank: CGFloat = 14   // ± glyph flank (also reserved as a clear gutter in logged/planned rows); tap target is 44pt tall
     /// Breathing room between a value and its inner ± glyph, so a − never reads as a
     /// negation of the number (e.g. "− 8" not "−8"). Lives INSIDE the value cell, so it
     /// costs no width and the shared column stays aligned.
