@@ -5,8 +5,8 @@ and writes ExArt_<key>.imageset with a single-scale universal Contents.json."""
 import json, os, sys
 from PIL import Image
 
-ART = "/private/tmp/claude-501/-Users-borja-Projects/ef5ed7e3-d912-4fd7-b1e9-9caf91c457fb/scratchpad/exercise-art"
-CATALOG = "/Users/borja/Projects/sett-v2/Sett/Assets.xcassets"
+ART = os.environ.get("ART_SRC") or sys.exit("set ART_SRC to the generated-art directory")
+CATALOG = os.environ.get("ART_CATALOG", "/Users/borja/Projects/sett-v2/Sett/Assets.xcassets")
 BG = (10, 13, 18)   # #0A0D12 — the app's screen color
 
 count = 0

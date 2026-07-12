@@ -10,7 +10,7 @@ Key: GEMINI_API_KEY env var, or GEMINI_API_KEY=... line in sett-v2/.env
 import base64, json, os, sys, time, urllib.request, urllib.error
 
 MODEL = os.environ.get("ART_MODEL", "gemini-2.5-flash-image")
-OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "exercise-art")
+OUT = os.environ.get("ART_OUT") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "exercise-art")
 os.makedirs(OUT, exist_ok=True)
 
 def api_key():
@@ -24,20 +24,25 @@ def api_key():
                 return line.strip().split("=", 1)[1].strip().strip('"').strip("'")
     sys.exit("GEMINI_API_KEY not found (env var or sett-v2/.env)")
 
-# One locked style block so all 58 icons read as one set. Original character —
-# evokes the vibe without naming protected IP.
+# One locked style block so all 58 icons read as one set. v2: an ORIGINAL abstract
+# energy-silhouette — faceless, no costume, no hair color — so it cannot read as any
+# franchise character, with the working muscles blazing from within (the emphasis).
 STYLE = (
-    "Square 1:1 digital illustration. A single stylized anime warrior with dramatic "
-    "spiky golden hair and a fierce expression, drawn in bold 90s martial-arts anime "
-    "style: thick clean linework, cel shading, dynamic pose, glowing golden-and-cyan "
-    "ki aura with crackling energy sparks. The very dark navy background (#0a0d12) "
-    "must FILL THE ENTIRE CANVAS edge to edge — absolutely no white margins, no "
-    "rounded-rectangle app-icon frame, no border, no matte, no drop shadow around a "
-    "tile. Full-bleed artwork only. The character is rim-lit by their own aura, "
-    "centered, filling most of the frame, with a bold readable silhouette that stays "
-    "clear at small icon size. No text, no watermark, no background scenery. "
-    "Same recurring character across a whole icon set: muscular male warrior, golden "
-    "spiky hair, dark blue-black training suit with cyan accents. The warrior is "
+    "Square 1:1 digital illustration, full-bleed on a very dark navy background "
+    "(#0a0d12) that fills the entire canvas edge to edge — no white margins, no "
+    "rounded-icon frame, no border, no matte. An ORIGINAL abstract ENERGY WARRIOR: "
+    "a completely FACELESS dark humanoid silhouette — no facial features, no eyes, "
+    "no mouth, no skin tone, no clothing details — its head crowned by an abstract "
+    "upswept crest of pure flame-like energy. The figure is matte near-black, "
+    "rim-lit in electric cyan, wrapped in a crackling cyan-white aura with lightning "
+    "arcs. KEY LIGHTING RULE: the PRIMARY WORKING MUSCLES of the movement blaze from "
+    "WITHIN the silhouette in molten gold, like magma glowing through cracked armor — "
+    "the hottest and brightest region of the image, so the target muscle group is "
+    "unmistakable at a glance. Bold heroic energy: thick simple shapes, cel-shaded "
+    "glow, dynamic pose, bold readable silhouette that stays clear at small icon "
+    "size. Completely original design — must NOT resemble any existing anime, manga, "
+    "or video-game character or franchise. Centered, filling most of the frame. "
+    "No text, no watermark, no background scenery. The warrior is "
 )
 
 SCENES = {
@@ -98,15 +103,16 @@ SCENES = {
     "hangingLegRaise": "hanging from a bar, raising both legs to an L-sit",
     "russianTwist": "seated in a V, twisting the torso with hands clasped, feet hovering",
     "farmersCarry": "walking upright carrying two massive dumbbells at the sides, veins popping",
-    # muscle-group emblems (custom-exercise defaults) — flex poses, no equipment
-    "muscle_chest": "striking a most-muscular crab pose, chest cramping with power",
-    "muscle_triceps": "flexing one arm locked straight overhead, triceps horseshoe carved",
-    "muscle_biceps": "hitting a front double biceps pose, both arms flexed hard",
-    "muscle_shoulders": "arms spread dead straight in an iron-cross T, delts capped",
-    "muscle_back": "hitting a rear lat spread, back flared impossibly wide",
-    "muscle_legs": "in a rooted horse stance, quads carved, fists at the hips",
-    "muscle_core": "in a rigid plank, core glowing through the suit",
-    "muscle_other": "in a power-up stance, fists clenched at the sides, aura detonating upward",
+    # muscle-group emblems (custom-exercise defaults) — flex poses, no equipment.
+    # Each names its glow target explicitly: ONLY that region burns molten gold.
+    "muscle_chest": "striking a most-muscular crab pose facing the viewer; ONLY both PECTORAL muscles blaze molten gold, everything else stays dark",
+    "muscle_triceps": "seen from a rear three-quarter angle, one arm flexed locked overhead; ONLY the TRICEPS on the back of that arm blazes molten gold",
+    "muscle_biceps": "hitting a front double-biceps pose; ONLY both BICEPS blaze molten gold, everything else stays dark",
+    "muscle_shoulders": "arms spread dead straight in a T-pose; ONLY both DELTOID shoulder caps blaze molten gold",
+    "muscle_back": "seen ENTIRELY FROM BEHIND — only the back of the head crest visible, absolutely no face — hitting a rear lat spread; ONLY the LATS and upper back blaze molten gold in a wide V",
+    "muscle_legs": "rooted in a wide horse stance, fists at the hips; ONLY both QUADRICEPS thighs blaze molten gold",
+    "muscle_core": "standing braced, fists clenched at the sides; ONLY the ABDOMINAL grid blazes molten gold",
+    "muscle_other": "in a rising power-up stance, aura detonating upward; the WHOLE BODY is veined evenly with molten-gold energy cracks",
 }
 
 def generate(key, scene, api, retries=3):
