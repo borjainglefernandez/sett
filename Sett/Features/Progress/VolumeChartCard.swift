@@ -46,9 +46,24 @@ struct VolumeChartCard: View {
             .chartXScale(domain: points.map(\.label))
             .chartYAxisLabel("×1,000 \(unit.symbol)")
             .frame(height: 180)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Volume, last 8 \(period.rawValue)s")
+            .accessibilityValue(accessibilitySummary(points))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .settCard()
+    }
+
+    /// Spoken summary — SwiftUI Charts expose no data to VoiceOver on their own.
+    private func accessibilitySummary(_ points: [VolumePoint]) -> String {
+        guard let last = points.last, last.thousands > 0 || points.count > 1 else {
+            return "No volume logged yet"
+        }
+        let latest = "\(Int((last.thousands * 1000).rounded()).formatted()) \(unit.symbol) in \(last.label)"
+        guard points.count > 1, let first = points.first else { return latest }
+        let trend = last.thousands > first.thousands ? "up"
+            : (last.thousands < first.thousands ? "down" : "flat")
+        return "\(latest); trending \(trend) over the last \(points.count) \(period.rawValue)s"
     }
 
     private func label(for bucket: BucketKey) -> String {

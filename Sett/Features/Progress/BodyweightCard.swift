@@ -39,6 +39,9 @@ struct BodyweightCard: View {
                 }
                 .chartYScale(domain: yDomain(recent))
                 .frame(height: 140)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Bodyweight, last 90 days")
+                .accessibilityValue(accessibilitySummary(recent, latest: latest))
                 if let footnote = minMaxFootnote(recent) {
                     Text(footnote)
                         .font(.caption)
@@ -55,6 +58,18 @@ struct BodyweightCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .settCard()
+    }
+
+    /// Spoken chart summary — latest weight + net change over the window (Charts give
+    /// VoiceOver nothing on their own).
+    private func accessibilitySummary(_ entries: [BodyweightEntry], latest: BodyweightEntry) -> String {
+        let now = BodyweightFormat.valueWithUnit(grams: latest.weightGrams, unit: unit)
+        guard let first = entries.first, first.id != latest.id else { return "\(now), one entry" }
+        let deltaGrams = latest.weightGrams - first.weightGrams
+        let dir = deltaGrams > 0 ? "up" : (deltaGrams < 0 ? "down" : "no change")
+        let deltaText = BodyweightFormat.value(grams: abs(deltaGrams), unit: unit)
+        return deltaGrams == 0 ? "\(now), \(dir) over 90 days"
+            : "\(now), \(dir) \(deltaText) \(unit.symbol) over 90 days"
     }
 
     private func displayValue(_ grams: Int) -> Double {
