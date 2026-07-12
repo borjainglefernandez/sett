@@ -530,10 +530,11 @@ public final class WorkoutSessionStore {
             predicate: #Predicate { $0.deletedAt == nil && !$0.isArchived }))) ?? []
         let active = Scheduling.orderedActive(all)
         guard !active.isEmpty else { return }
-        let i = ((settings.rotationIndex % active.count) + active.count) % active.count
-        if active[i].id == routineID {
-            settings.rotationIndex = i + 1
-        }
+        // Only advance when the completed workout WAS the routine the cursor pointed at;
+        // then move the identity cursor to the next routine in order (wrapping).
+        guard Scheduling.nextRoutine(all, settings: settings)?.id == routineID,
+              let idx = active.firstIndex(where: { $0.id == routineID }) else { return }
+        settings.rotationRoutineID = active[(idx + 1) % active.count].id.uuidString
     }
 
     public func finishWorkout() {
@@ -547,8 +548,14 @@ public final class WorkoutSessionStore {
         }
         let plBefore = progression.snapshotPowerLevel
 
+        // Seal the workout FIRST and require the write to land. If it fails, keep the
+        // session presented so the write-fault banner offers retrySave — do NOT credit
+        // PL/XP/badges or present the summary against a workout whose endedAt never
+        // persisted (which resumeOngoingWorkoutIfAny would otherwise resurrect).
         workout.endedAt = .now
-        touchAndSave(workout)
+        workout.updatedAt = .now
+        workout.needsPush = true
+        guard persist() else { return }
         advanceRotationIfNeeded(finished: workout)
 
         // Transformation tier of the ACTIVE character: same before/after diff as

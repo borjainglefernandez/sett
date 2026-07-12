@@ -63,10 +63,14 @@ public final class UserSettingsStore {
     public var scheduleMode: ScheduleMode {
         didSet { UserDefaults.standard.set(scheduleMode.rawValue, forKey: "sett.scheduleMode") }
     }
-    /// The rotation pointer — index into the ordered routines; advances on each
-    /// completed rotation workout.
+    /// The rotation pointer — LEGACY positional index, kept only to migrate old installs.
     public var rotationIndex: Int {
         didSet { UserDefaults.standard.set(rotationIndex, forKey: "sett.rotationIndex") }
+    }
+    /// The next-up routine in rotation mode, by id. Identity-based so reordering or
+    /// deleting routines never drifts the cursor to the wrong plan (nil ⇒ start of order).
+    public var rotationRoutineID: String? {
+        didSet { UserDefaults.standard.set(rotationRoutineID, forKey: "sett.rotationRoutineID") }
     }
 
     /// Resolved current phase (defaults to maintaining).
@@ -89,6 +93,7 @@ public final class UserSettingsStore {
         self.startsInList = defaults.bool(forKey: "sett.startsInList")
         self.scheduleMode = ScheduleMode(rawValue: defaults.string(forKey: "sett.scheduleMode") ?? "") ?? .weekday
         self.rotationIndex = defaults.integer(forKey: "sett.rotationIndex")
+        self.rotationRoutineID = defaults.string(forKey: "sett.rotationRoutineID")
     }
 
     public func displayWeight(_ grams: Int) -> String {
@@ -120,6 +125,13 @@ public enum Scheduling {
         guard !active.isEmpty else { return nil }
         switch settings.scheduleMode {
         case .rotation:
+            // Identity-based: return the routine the cursor names. If it was never set
+            // or its routine was deleted, fall back to the migrated positional index,
+            // then the start of the order — never a wrong-but-present routine.
+            if let id = settings.rotationRoutineID,
+               let match = active.first(where: { $0.id.uuidString == id }) {
+                return match
+            }
             let i = ((settings.rotationIndex % active.count) + active.count) % active.count
             return active[i]
         case .weekday:
