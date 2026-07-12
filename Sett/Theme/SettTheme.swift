@@ -34,8 +34,10 @@ public enum SettColor {
     public static let bone = Color(dynamicLight: 0xE8E1D0, dark: 0xE8E1D0)
     /// Secondary text.
     public static let ash = Color(dynamicLight: 0x9B948A, dark: 0x9B948A)
-    /// Tertiary text / ghost values.
-    public static let iron = Color(dynamicLight: 0x5C564E, dark: 0x5C564E)
+    /// Tertiary text / ghost values. Lifted from 0x5C564E (~2.8:1 on the void, failing
+    /// WCAG AA for the functional text it carries — units, PLANNED, planned numerals) to
+    /// ~4:1 while staying clearly below `ash`, so the tertiary hierarchy is preserved.
+    public static let iron = Color(dynamicLight: 0x776F63, dark: 0x776F63)
 
     /// The engraved-groove near-black — outer strokes and numeral outlines.
     public static let etch = Color(dynamicLight: 0x050403, dark: 0x050403)

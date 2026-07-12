@@ -2,11 +2,28 @@ import Foundation
 import SwiftData
 
 public extension ModelContainer {
-    /// The app's on-disk container.
+    /// The app's on-disk container. If the store can't be opened — an incompatible
+    /// schema change with no lightweight migration would otherwise `fatalError`-crash-loop
+    /// every existing user on launch — the old store is quarantined and rebuilt fresh so
+    /// the app still boots. Pre-sync there is no cloud copy to lose; once sync lands this
+    /// should become a real `SchemaMigrationPlan` + a server re-pull.
     static func sett() throws -> ModelContainer {
         let schema = Schema(SettSchema.allModels)
         let config = ModelConfiguration("Sett", schema: schema)
-        return try ModelContainer(for: schema, configurations: [config])
+        do {
+            return try ModelContainer(for: schema, configurations: [config])
+        } catch {
+            quarantineStore(at: config.url)
+            return try ModelContainer(for: schema, configurations: [config])
+        }
+    }
+
+    /// Move the SQLite store (and its -wal/-shm siblings) aside so a fresh one is built.
+    private static func quarantineStore(at url: URL) {
+        let fm = FileManager.default
+        for suffix in ["", "-wal", "-shm"] {
+            try? fm.removeItem(at: URL(fileURLWithPath: url.path + suffix))
+        }
     }
 
     /// In-memory container for tests and previews.

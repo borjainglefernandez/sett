@@ -13,6 +13,10 @@ struct WorkoutDetailView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
+    @State private var editing = false
+    /// Committed set being corrected in the shared value editor.
+    @State private var editingSet: SetEntry?
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
@@ -23,13 +27,31 @@ struct WorkoutDetailView: View {
                 if let notes = workout.notes, !notes.isEmpty {
                     notesCard(notes)
                 }
-                repeatButton
+                if !editing { repeatButton }
             }
             .padding(16)
         }
         .dungeonBackground()
         .navigationTitle(workout.title)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button(editing ? "Done" : "Edit") { withAnimation(.snappy) { editing.toggle() } }
+                    .fontWeight(editing ? .semibold : .regular)
+            }
+        }
+        .sheet(item: $editingSet) { set in
+            SetValuesEditSheet(set: set, unit: services.settings.unit) { weight, reps, warm in
+                session.editSet(set, weightGrams: weight, reps: reps, isWarmup: warm)
+                recomputeAfterCorrection()
+            }
+        }
+    }
+
+    /// A finished-workout correction should move the power level now, not on some later
+    /// recompute — a mis-logged set poisoned PWR, so fixing it must un-poison it.
+    private func recomputeAfterCorrection() {
+        services.progression.recompute(context: modelContext)
     }
 
     // MARK: Header (duration / rating / bodyweight / gym)
@@ -114,9 +136,25 @@ struct WorkoutDetailView: View {
                             .monospacedDigit()
                             .foregroundStyle(.tertiary)
                             .frame(width: 20, alignment: .leading)
-                        Text("\(WeightFormat.compactWithUnit(grams: set.weightGrams, unit: services.settings.unit)) × \(set.reps)")
-                            .font(.subheadline)
-                            .monospacedDigit()
+                        if editing {
+                            // Tap the values to fix a mis-log; trash to delete the set.
+                            Button { editingSet = set } label: {
+                                HStack(spacing: 8) {
+                                    Text("\(WeightFormat.compactWithUnit(grams: set.weightGrams, unit: services.settings.unit)) × \(set.reps)")
+                                        .font(.subheadline).monospacedDigit()
+                                        .foregroundStyle(SettColor.heroCyan)
+                                    Image(systemName: "pencil")
+                                        .font(.caption2).foregroundStyle(SettColor.ash)
+                                }
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Edit set \(index + 1)")
+                        } else {
+                            Text("\(WeightFormat.compactWithUnit(grams: set.weightGrams, unit: services.settings.unit)) × \(set.reps)")
+                                .font(.subheadline)
+                                .monospacedDigit()
+                        }
                         if set.isWarmup {
                             Text("warm-up")
                                 .font(.caption2)
@@ -126,6 +164,20 @@ struct WorkoutDetailView: View {
                                 .background(SettColor.cardNested, in: Capsule())
                         }
                         Spacer()
+                        if editing {
+                            Button(role: .destructive) {
+                                session.deleteSet(set)
+                                recomputeAfterCorrection()
+                            } label: {
+                                Image(systemName: "trash")
+                                    .font(.footnote)
+                                    .foregroundStyle(SettColor.negative)
+                                    .frame(width: 44, height: 32)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Delete set \(index + 1)")
+                        }
                     }
                     // Per-set note, indented to the weight × reps column.
                     if let setNotes = set.notes, !setNotes.isEmpty {
