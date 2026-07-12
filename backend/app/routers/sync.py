@@ -54,6 +54,16 @@ PUSH_TABLES: list[tuple[str, type]] = [
     ("badge_events", BadgeEvent),
 ]
 
+# child table -> (its parent FK column, parent model). A DB foreign key guarantees the
+# parent EXISTS, not that it belongs to the pusher — so a crafted push could otherwise
+# graft a set/exercise onto another user's workout/routine. We reject those.
+PARENT_FK: dict[str, tuple[str, type]] = {
+    "routine_exercises": ("routine_id", Routine),
+    "planned_sets": ("routine_exercise_id", RoutineExercise),
+    "workout_exercises": ("workout_id", Workout),
+    "setts": ("workout_exercise_id", WorkoutExercise),
+}
+
 # Everything a client pulls: pushed tables + server-owned rows (same pipe).
 PULL_TABLES: list[tuple[str, type]] = PUSH_TABLES + [
     ("sleep_daily", SleepDaily),
@@ -130,6 +140,16 @@ async def _apply_changes(
                 continue
             data["user_id"] = auth.user.id
             data.pop("sync_seq", None)
+
+            # A child row may only reference a parent the pusher owns.
+            parent_fk = PARENT_FK.get(table_name)
+            if parent_fk is not None:
+                fk_col, parent_model = parent_fk
+                parent_id = data.get(fk_col)
+                parent_row = await session.get(parent_model, parent_id) if parent_id is not None else None
+                if parent_row is None or getattr(parent_row, "user_id", None) != auth.user.id:
+                    skipped.append({"table": table_name, "id": str(record_id), "reason": "forbidden_parent"})
+                    continue
 
             existing = await session.get(model, record_id)
             if existing is not None:

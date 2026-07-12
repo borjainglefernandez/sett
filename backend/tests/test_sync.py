@@ -313,6 +313,35 @@ async def test_cannot_touch_other_users_rows_or_global_catalog(client, signup):
     assert pull.json()["changes"]["workouts"][0]["title"] == "Alice's"
 
 
+async def test_cannot_graft_child_onto_another_users_parent(client, signup):
+    alice = await signup("alice_parent")
+    bob = await signup("bob_parent")
+    at = utcnow().isoformat()
+    workout_id = str(uuid.uuid4())
+    # Alice owns a workout.
+    await client.post(
+        "/v1/sync/push",
+        headers=alice["headers"],
+        json={"changes": {"workouts": [
+            {"id": workout_id, "title": "Alice's", "started_at": at, "updated_at": at}
+        ]}},
+    )
+    # Bob tries to attach a workout_exercise to ALICE's workout.
+    attack = await client.post(
+        "/v1/sync/push",
+        headers=bob["headers"],
+        json={"changes": {"workout_exercises": [
+            {"id": str(uuid.uuid4()), "workout_id": workout_id,
+             "exercise_id": GLOBAL_EXERCISE_ID, "position": 0, "updated_at": at}
+        ]}},
+    )
+    body = attack.json()
+    assert body["applied"] == 0
+    assert ("workout_exercises", "forbidden_parent") in {
+        (s["table"], s["reason"]) for s in body["skipped"]
+    }
+
+
 async def test_server_owned_rows_flow_through_pull(client, signup, db_session):
     creds = await signup("sleepy")
     user_id = uuid.UUID(creds["user_id"])

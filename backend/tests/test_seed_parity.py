@@ -27,7 +27,7 @@ def test_seed_is_byte_identical_to_ios_bundle_copy():
 
 def test_seed_catalog_shape():
     catalog = load_seed_catalog()
-    assert len(catalog) == 67
+    assert len(catalog) == 81
     ids = [entry["id"] for entry in catalog]
     assert len(set(ids)) == len(ids), "duplicate exercise UUIDs in seed"
     for entry in catalog:

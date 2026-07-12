@@ -54,6 +54,10 @@ async def upsert_gym(body: GymBody, auth: AuthDep, session: SessionDep) -> dict[
         gym = Gym(id=body.id, name=body.name, lat=body.lat, lon=body.lon, created_by=auth.user.id)
         session.add(gym)
     else:
+        # Only the creator may rename/relocate a community gym — otherwise any
+        # authenticated user could move or rename anyone's gym.
+        if gym.created_by != auth.user.id:
+            raise HTTPException(status_code=403, detail="not the gym's creator")
         gym.name = body.name
         gym.lat = body.lat
         gym.lon = body.lon

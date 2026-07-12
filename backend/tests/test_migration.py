@@ -34,9 +34,9 @@ def test_initial_migration_creates_schema_and_seed(tmp_path):
         catalog_rows = conn.execute(
             "SELECT COUNT(*) FROM exercises WHERE user_id IS NULL"
         ).fetchone()[0]
-        assert catalog_rows == 67
+        assert catalog_rows == 81
         # Counter primed past the catalog's sequence numbers.
-        assert conn.execute("SELECT value FROM sync_counter WHERE id=1").fetchone()[0] == 67
+        assert conn.execute("SELECT value FROM sync_counter WHERE id=1").fetchone()[0] == 81
         assert conn.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0001_initial"
     finally:
         conn.close()

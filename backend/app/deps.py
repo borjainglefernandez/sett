@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import db
 from .config import Settings, get_settings
-from .models import User
+from .models import Device, User
 from .security import TokenError, decode_access_token
 from .services.apple import AppleVerifier, RemoteAppleVerifier
 from .services.digests import AnthropicDigestModel, DigestModel
@@ -79,7 +79,15 @@ async def get_auth(request: Request, settings: SettingsDep, session: SessionDep)
     user = await session.get(User, user_id)
     if user is None:
         raise HTTPException(status_code=401, detail="unknown user")
-    return AuthContext(user=user, device_id=device_id, is_admin=bool(claims.get("adm")))
+    # Revoked / logged-out device: the access token must stop working immediately, not
+    # linger up to an hour until it expires. A live session always has a
+    # refresh_token_hash (login sets it, logout/revoke clears it or deletes the device).
+    device = await session.get(Device, device_id)
+    if device is None or device.refresh_token_hash is None or device.user_id != user_id:
+        raise HTTPException(status_code=401, detail="device revoked")
+    # Admin is authoritative from the DB, never just the token's `adm` claim (which a
+    # stale or — absent the secret guard — forged token could carry).
+    return AuthContext(user=user, device_id=device_id, is_admin=user.is_admin)
 
 
 AuthDep = Annotated[AuthContext, Depends(get_auth)]
