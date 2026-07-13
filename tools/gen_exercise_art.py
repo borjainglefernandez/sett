@@ -111,7 +111,7 @@ SCENES = {
     # Each names its glow target explicitly: ONLY that region burns molten gold.
     "muscle_chest": "facing the viewer, arms pressed together low in a most-muscular pose; ONLY the two big PECTORAL chest plates across the UPPER torso blaze molten gold — the abs and core stay completely dark",
     "muscle_triceps": "rear three-quarter view, one arm bent and locked overhead; ONLY the TRICEPS horseshoe on the BACK of that upper arm (between shoulder and elbow) blazes molten gold — the forearm, shoulder and rest of the body stay dark",
-    "muscle_biceps": "front double-biceps pose, both elbows bent to 90 degrees; ONLY the two bulging BICEPS PEAKS on the front of the UPPER arms (between shoulder and elbow) blaze molten gold — the forearms and everything else stay completely dark",
+    "muscle_biceps": "a single powerful arm flexed and curled — upper arm angled, fist up near the shoulder. The BICEP is the big round peak that balls up on the upper arm at peak contraction; ONLY that bicep peak blazes molten gold. The forearm and fist stay dark. The other arm rests at the side",
     "muscle_shoulders": "arms spread dead straight out to the sides in a T; ONLY the two round DELTOID caps on top of the shoulders blaze molten gold — the chest, arms and core stay completely dark",
     "muscle_back": "seen ENTIRELY FROM BEHIND — only the back of the head crest visible, absolutely no face — hitting a rear lat spread, elbows flared; ONLY the LATS and upper back blaze molten gold in a wide V",
     "muscle_legs": "rooted in a wide stance, fists at the hips; the ENTIRE QUADRICEPS on the front of BOTH thighs (from hip to knee) blaze molten gold — the torso and core stay dark",
