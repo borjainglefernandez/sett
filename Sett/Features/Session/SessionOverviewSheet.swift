@@ -138,7 +138,7 @@ struct SessionOverviewSheet: View {
         let count = we.orderedSets.filter { !$0.isWarmup }.count
         return HStack(spacing: 12) {
             ExerciseIcon(name: we.exerciseNameSnapshot, equipment: we.equipment,
-                         muscle: we.muscle, size: 28, color: SettColor.heroCyan)
+                         muscle: we.muscle, size: 34, color: SettColor.heroCyan)
             VStack(alignment: .leading, spacing: 3) {
                 Text(we.exerciseNameSnapshot.uppercased())
                     .font(.system(.callout, design: .monospaced).weight(.bold))

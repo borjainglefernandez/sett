@@ -196,7 +196,7 @@ struct ExerciseCard: View {
                 ExerciseIcon(name: workoutExercise.exerciseNameSnapshot,
                              equipment: workoutExercise.equipment,
                              muscle: workoutExercise.muscle,
-                             size: 36, color: topTier.color)
+                             size: 44, color: topTier.color)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(workoutExercise.exerciseNameSnapshot.uppercased())
                         .font(.system(.callout, design: .monospaced).weight(.bold))

@@ -243,7 +243,7 @@ struct RoutineEditorView: View {
         HStack(spacing: 12) {
             ExerciseIcon(name: draft.wrappedValue.name, equipment: draft.wrappedValue.equipment,
                          muscle: Muscle(rawValue: draft.wrappedValue.muscleRaw) ?? .other,
-                         size: 26, color: SettColor.heroCyan)
+                         size: 32, color: SettColor.heroCyan)
             VStack(alignment: .leading, spacing: 2) {
                 Text(draft.wrappedValue.name)
                     .font(.system(.subheadline, design: .rounded).weight(.semibold))

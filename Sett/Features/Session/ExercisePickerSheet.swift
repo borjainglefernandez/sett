@@ -108,7 +108,7 @@ struct ExercisePickerSheet: View {
         } label: {
             HStack(spacing: 12) {
                 ExerciseIcon(name: exercise.name, equipment: exercise.equipment,
-                             muscle: exercise.muscle, size: 28, color: SettColor.heroCyan)
+                             muscle: exercise.muscle, size: 32, color: SettColor.heroCyan)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(exercise.name)
                         .foregroundStyle(.primary)
