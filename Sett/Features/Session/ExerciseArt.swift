@@ -44,37 +44,45 @@ enum ExerciseArt {
     }()
 }
 
-/// A "battle medallion": the art screen-blended over a tier-tinted disc. The art's flat
-/// near-black background (which matched the void card and made the icon invisible)
-/// contributes almost nothing under `.screen`, so the tinted disc shows through and
-/// gives the icon a clear boundary, while the warrior's glowing cyan/gold edges pop on
-/// top. The ring keeps the performance-tier signal that full-color art can't carry.
+/// A "battle medallion" (BOOST+ treatment). The Gemini art is ~95% dark linework at
+/// avg luminance 35/255 — a glowing-figure-in-the-dark look that goes to mud when shrunk.
+/// An earlier version screen-blended it over a tinted disc, but `.screen` only keeps the
+/// *bright* ~5% of the figure and drops the rest, making the icon fainter still.
+///
+/// This draws the art normally over a near-void disc and lifts it — saturation/contrast/
+/// brightness push the dark cyan linework up to a visible glow, so the whole warrior
+/// reads, not just the gold torso. The tier-coloured ring carries the performance signal
+/// full-colour art can't. Verified in the Icon Lab (SETT_DEBUG_ICONLAB) to beat every
+/// other treatment at 44pt; below ~40pt the art is inherently too dense, so call sites
+/// keep icons at or above that floor.
 struct ExerciseArtView: View {
     let asset: String
-    var size: CGFloat = 28
+    var size: CGFloat = 40
     var color: Color = SettColor.heroCyan
 
     var body: some View {
         ZStack {
-            // Tinted ground — a soft radial glow of the tier colour that fades to void.
+            // A near-void ground with a faint tier wash — dark enough that the brightened
+            // linework stands off it, unlike the old bright tinted disc it fought against.
             Circle()
                 .fill(RadialGradient(
-                    colors: [color.opacity(0.34), color.opacity(0.12), TimeChamber.void.opacity(0.96)],
-                    center: .center, startRadius: 0, endRadius: size * 0.62))
-            // The warrior, screen-blended so its dark background drops into the disc and
-            // only its glow adds on top.
+                    colors: [color.opacity(0.16), TimeChamber.void.opacity(0.98)],
+                    center: .center, startRadius: 0, endRadius: size * 0.6))
+            // The warrior, lifted so the dark 95% becomes a visible glow instead of vanishing.
             Image(asset)
                 .resizable()
                 .scaledToFill()
                 .frame(width: size, height: size)
-                .blendMode(.screen)
+                .saturation(2.0)
+                .contrast(1.7)
+                .brightness(0.12)
         }
-        .compositingGroup()                      // isolate the blend from the card behind
+        .compositingGroup()
         .frame(width: size, height: size)
         .clipShape(Circle())
         .overlay {
             Circle().strokeBorder(color.opacity(0.9), lineWidth: max(1.5, size / 15))
         }
-        .shadow(color: color.opacity(0.5), radius: size * 0.18)
+        .shadow(color: color.opacity(0.45), radius: size * 0.16)
     }
 }

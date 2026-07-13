@@ -51,6 +51,9 @@ struct RootView: View {
             if let flag = ProcessInfo.processInfo.environment["SETT_DEBUG_GLYPHS"], !flag.isEmpty {
                 ExerciseGlyphContactSheet()
             }
+            if let flag = ProcessInfo.processInfo.environment["SETT_DEBUG_ICONLAB"], !flag.isEmpty {
+                IconLabSheet()
+            }
         }
         #endif
     }

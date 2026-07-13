@@ -1395,3 +1395,153 @@ struct ExerciseGlyphContactSheet: View {
     }
 }
 #endif
+
+// MARK: - Icon Lab (SETT_DEBUG_ICONLAB=1) — compare art-legibility treatments
+//
+// The Gemini art is ~95% dark linework (avg luminance 35/255): a glowing-figure-in-
+// the-dark look that reads at 200px but goes to mud at 28-44pt. This sheet renders the
+// same exercises across candidate fixes at BOTH real sizes so we can pick with our eyes.
+
+enum IconTreatment: String, CaseIterable, Identifiable {
+    case now        // current screen-blend medallion (baseline)
+    case boost      // normal blend + moderate brighten/contrast/saturate
+    case boostPlus  // normal blend + heavy brighten/contrast/saturate
+    case duotone    // luminance→alpha recolor: solid tier-hue neon figure
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .now: return "NOW"
+        case .boost: return "BOOST"
+        case .boostPlus: return "BOOST+"
+        case .duotone: return "DUOTONE"
+        }
+    }
+}
+
+/// One candidate rendering of an art asset. `.now` reuses the shipped medallion; the
+/// others draw on a dark tier-ringed disc so we compare the *art treatment*, not framing.
+struct IconTreatmentView: View {
+    let asset: String
+    let treatment: IconTreatment
+    var size: CGFloat = 44
+    var color: Color = SettColor.heroCyan
+
+    var body: some View {
+        switch treatment {
+        case .now:
+            ExerciseArtView(asset: asset, size: size, color: color)
+        case .boost:
+            disc { boosted(sat: 1.6, con: 1.35, bri: 0.05) }
+        case .boostPlus:
+            disc { boosted(sat: 2.0, con: 1.7, bri: 0.12) }
+        case .duotone:
+            disc {
+                // Solid tier hue, masked by the art's own luminance: the bright 5%
+                // (gold torso + hot aura + brightest cyan) becomes an opaque neon shape,
+                // the dark 95% drops out. A crisp single-hue mark that survives 28pt.
+                Circle()
+                    .fill(RadialGradient(
+                        colors: [color, color.opacity(0.75)],
+                        center: .center, startRadius: 0, endRadius: size * 0.55))
+                    .mask {
+                        Image(asset).resizable().scaledToFill()
+                            .frame(width: size, height: size)
+                            .contrast(1.5).brightness(0.02)
+                            .luminanceToAlpha()
+                    }
+            }
+        }
+    }
+
+    private func boosted(sat: Double, con: Double, bri: Double) -> some View {
+        Image(asset).resizable().scaledToFill()
+            .frame(width: size, height: size)
+            .saturation(sat).contrast(con).brightness(bri)
+    }
+
+    @ViewBuilder private func disc<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        ZStack {
+            Circle().fill(RadialGradient(
+                colors: [color.opacity(0.16), TimeChamber.void.opacity(0.98)],
+                center: .center, startRadius: 0, endRadius: size * 0.6))
+            content()
+        }
+        .compositingGroup()
+        .frame(width: size, height: size)
+        .clipShape(Circle())
+        .overlay { Circle().strokeBorder(color.opacity(0.9), lineWidth: max(1.5, size / 15)) }
+        .shadow(color: color.opacity(0.45), radius: size * 0.16)
+    }
+}
+
+#if DEBUG
+/// Side-by-side comparison of icon-legibility treatments. Shown via SETT_DEBUG_ICONLAB=1.
+struct IconLabSheet: View {
+    /// Representative + worst-case exercises (shrugs was the tightest/faintest).
+    private let samples: [(String, Color)] = [
+        ("Flat Bench Press", SettColor.heroCyan),
+        ("Squat", SettColor.heroCyan),
+        ("Deadlift", SettColor.heroCyan),
+        ("Bicep Curl", SettColor.heroCyan),
+        ("Lat Pulldown", SettColor.heroCyan),
+        ("Shrugs", SettColor.heroCyan),
+    ]
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                header
+                block(size: 44, caption: "AT 44pt  (exercise card / player header)")
+                block(size: 28, caption: "AT 28pt  (dense lists — the hard case)")
+            }
+            .padding(14)
+        }
+        .dungeonBackground()
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("ICON LAB")
+                .font(.system(size: 13, weight: .heavy, design: .monospaced)).kerning(2)
+                .foregroundStyle(SettColor.bone)
+            HStack(spacing: 10) {
+                ForEach(IconTreatment.allCases) { t in
+                    Text(t.label)
+                        .font(.system(size: 8, weight: .bold, design: .monospaced)).kerning(1)
+                        .foregroundStyle(SettColor.ash)
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            .padding(.leading, 70)
+        }
+    }
+
+    private func block(size: CGFloat, caption: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(caption)
+                .font(.system(size: 9, weight: .bold, design: .monospaced)).kerning(1.2)
+                .foregroundStyle(SettColor.heroCyan.opacity(0.8))
+            ForEach(samples, id: \.0) { name, color in
+                if let asset = ExerciseArt.movementAsset(for: name) {
+                    HStack(spacing: 10) {
+                        Text(name.uppercased())
+                            .font(.system(size: 8, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(SettColor.ash)
+                            .frame(width: 60, alignment: .leading)
+                            .lineLimit(2)
+                        ForEach(IconTreatment.allCases) { t in
+                            IconTreatmentView(asset: asset, treatment: t, size: size, color: color)
+                                .frame(maxWidth: .infinity)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(10)
+        .background {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(TimeChamber.void.opacity(0.4))
+        }
+    }
+}
+#endif
