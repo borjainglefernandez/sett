@@ -61,7 +61,7 @@ struct SleepImpactCard: View {
         let points = points
         VStack(alignment: .leading, spacing: 12) {
             Label("Sleep × Lifts", systemImage: "bed.double.fill")
-                .font(.headline)
+                .font(.title3.weight(.semibold))
             if points.count >= 10 {
                 chart(points: points)
                 Text("Each dot is a workout: last night's sleep score against session volume.")

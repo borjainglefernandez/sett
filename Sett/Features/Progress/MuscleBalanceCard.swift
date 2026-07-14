@@ -51,11 +51,9 @@ struct MuscleBalanceCard: View {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
                     Text("Muscle Balance")
-                        .font(.title3.bold())
+                        .font(.title3.weight(.semibold))
                     Spacer()
-                    Text(periodCaption)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                    Eyebrow(periodCaption.uppercased())
                 }
                 let top = shares.first?.share ?? 1
                 ForEach(shares, id: \.muscle) { entry in

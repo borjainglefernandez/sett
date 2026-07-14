@@ -32,11 +32,9 @@ struct NetSummaryCard: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("Net Progress")
-                    .font(.headline)
+                    .font(.title3.weight(.semibold))
                 Spacer()
-                Text(vsLabel)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Eyebrow(vsLabel.uppercased())
             }
             HStack(spacing: 32) {
                 metric(value: net.reps, caption: "net reps", isNew: net.isNew)
@@ -48,12 +46,14 @@ struct NetSummaryCard: View {
         .accessibilityElement(children: .combine)
     }
 
+    /// Plain heavy mono — PowerNumeral (and its aura glow) is the power level's
+    /// sacred treatment; a weekly net delta doesn't get to wear it.
     @ViewBuilder
     private func metric(value: Int, caption: String, isNew: Bool) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             if isNew {
                 Text("NEW")
-                    .font(PowerFont.m())
+                    .font(.system(size: 26, weight: .heavy, design: .monospaced))
                     .kerning(1.5)
                     .foregroundStyle(SettColor.heroCyan)
             } else {
@@ -63,17 +63,16 @@ struct NetSummaryCard: View {
                             .font(.system(size: 13, weight: .heavy))
                             .foregroundStyle(color(for: value))
                     }
-                    if value > 0 {
-                        Text("+")
-                            .font(PowerFont.m())
-                            .foregroundStyle(color(for: value))
-                    }
-                    PowerNumeral(value, size: .m, color: color(for: value))
+                    Text("\(value > 0 ? "+" : "")\(value.formatted())")
+                        .font(.system(size: 26, weight: .heavy, design: .monospaced))
+                        .monospacedDigit()
+                        .foregroundStyle(color(for: value))
+                        .contentTransition(.numericText(value: Double(value)))
                 }
             }
             Text(caption)
                 .font(.footnote)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(SettColor.ash)
         }
     }
 

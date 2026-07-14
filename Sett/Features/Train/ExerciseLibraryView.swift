@@ -186,7 +186,11 @@ struct ExerciseLibraryView: View {
                 }
                 Spacer()
                 if let e1rm = bestE1RMs[exercise.id] {
-                    PowerNumeral(displayValue(e1rm), size: .m)
+                    // Power-number canon: the gold PowerNumeral is the PL's alone.
+                    Text("PWR \(displayValue(e1rm))")
+                        .font(.system(size: 13, weight: .heavy, design: .monospaced))
+                        .monospacedDigit()
+                        .foregroundStyle(SettColor.heroCyan)
                         .accessibilityLabel("e1RM \(displayValue(e1rm)) \(services.settings.unit.symbol)")
                 }
             }

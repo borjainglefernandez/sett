@@ -44,7 +44,7 @@ struct E1RMTrendsCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("e1RM Trends")
-                .font(.headline)
+                .font(.title3.weight(.semibold))
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12) {
                     ForEach(trends) { trend in

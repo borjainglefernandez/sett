@@ -1,4 +1,5 @@
 import SwiftUI
+import Charts
 import UIKit
 
 // MARK: - Palette (the Dark Chamber, design language v3)
@@ -456,6 +457,34 @@ public struct ChamberStepper: View {
         .buttonStyle(.plain)
         .accessibilityLabel(symbol == "plus" ? "Increment" : "Decrement")
     }
+}
+
+/// One axis voice for every chart — mono ash labels on iron hairlines, so Swift
+/// Charts stops shipping its stock chrome into the chamber.
+public struct ScouterChartStyle: ViewModifier {
+    public func body(content: Content) -> some View {
+        content
+            .chartXAxis {
+                AxisMarks { _ in
+                    AxisGridLine().foregroundStyle(SettColor.iron.opacity(0.35))
+                    AxisValueLabel()
+                        .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(SettColor.ash)
+                }
+            }
+            .chartYAxis {
+                AxisMarks { _ in
+                    AxisGridLine().foregroundStyle(SettColor.iron.opacity(0.35))
+                    AxisValueLabel()
+                        .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(SettColor.ash)
+                }
+            }
+    }
+}
+
+public extension View {
+    func scouterChart() -> some View { modifier(ScouterChartStyle()) }
 }
 
 /// The themed empty state — replaces stock `ContentUnavailableView` so an empty screen

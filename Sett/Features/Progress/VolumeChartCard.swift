@@ -31,11 +31,9 @@ struct VolumeChartCard: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("Volume")
-                    .font(.headline)
+                    .font(.title3.weight(.semibold))
                 Spacer()
-                Text("last 8 \(period.rawValue)s")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Eyebrow("LAST 8 \(period.rawValue.uppercased())S")
             }
             Chart(points) { point in
                 BarMark(x: .value("Period", point.label),
@@ -45,6 +43,7 @@ struct VolumeChartCard: View {
             }
             .chartXScale(domain: points.map(\.label))
             .chartYAxisLabel("×1,000 \(unit.symbol)")
+            .scouterChart()
             .frame(height: 180)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Volume, last 8 \(period.rawValue)s")

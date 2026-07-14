@@ -47,7 +47,7 @@ struct PRFeedCard: View {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
                     Text("Recent PRs")
-                        .font(.title3.bold())
+                        .font(.title3.weight(.semibold))
                     Spacer()
                     Image(systemName: "medal.fill")
                         .font(.subheadline)
@@ -73,7 +73,7 @@ struct PRFeedCard: View {
                         Text("PWR \(event.pwr)")
                             .font(.system(size: 13, weight: .heavy, design: .monospaced))
                             .monospacedDigit()
-                            .foregroundStyle(SettColor.saiyanGold)
+                            .foregroundStyle(SettColor.bone)
                     }
                     .frame(minHeight: 34)
                 }

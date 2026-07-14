@@ -110,7 +110,8 @@ struct PowerTabView: View {
                 // Rank lives in the frame material now, so the idle aura stays
                 // ki-cyan at every tier — only Zenith earns its own gradient.
                 BreathingAura(gradient: activeTier == .zenith ? Aura.zenith : Aura.cyan)
-                    .frame(width: 150, height: 150)
+                    .frame(width: 118, height: 118)
+                    .opacity(0.55)   // the gold PL below is the lead; the aura is ambience
                 CharacterAvatarView(character: activeCharacter, tier: activeTier)
             }
             .frame(height: 160)
@@ -442,7 +443,7 @@ struct PowerTabView: View {
         .frame(width: 88, height: 88)
         .overlay {
             Circle()
-                .strokeBorder(Color.gray.opacity(0.35), lineWidth: 4)
+                .strokeBorder(SettColor.iron.opacity(0.55), lineWidth: 4)
         }
         .grayscale(1)
     }

@@ -21,11 +21,9 @@ struct BodyweightCard: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
                 Text("Bodyweight")
-                    .font(.headline)
+                    .font(.title3.weight(.semibold))
                 Spacer()
-                Text("last 90 days")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Eyebrow("LAST 90 DAYS")
             }
             if let latest = recent.last {
                 Text(BodyweightFormat.valueWithUnit(grams: latest.weightGrams, unit: unit))
@@ -39,6 +37,7 @@ struct BodyweightCard: View {
                 }
                 .chartYScale(domain: yDomain(recent))
                 .frame(height: 140)
+            .scouterChart()
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel("Bodyweight, last 90 days")
                 .accessibilityValue(accessibilitySummary(recent, latest: latest))

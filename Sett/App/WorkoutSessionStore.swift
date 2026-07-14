@@ -48,8 +48,9 @@ public final class WorkoutSessionStore {
     private func resumeOngoingWorkoutIfAny() {
         #if DEBUG
         // Screenshot harness: a resurrected demo workout's fullScreenCover was
-        // occluding every SETT_DEBUG_SURFACE capture.
-        if let flag = ProcessInfo.processInfo.environment["SETT_DEBUG_SURFACE"], !flag.isEmpty {
+        // occluding every SETT_DEBUG_SURFACE / SETT_DEBUG_TAB capture.
+        let env = ProcessInfo.processInfo.environment
+        if !(env["SETT_DEBUG_SURFACE"] ?? "").isEmpty || !(env["SETT_DEBUG_TAB"] ?? "").isEmpty {
             return
         }
         #endif
