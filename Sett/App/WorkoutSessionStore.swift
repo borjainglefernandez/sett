@@ -564,6 +564,20 @@ public final class WorkoutSessionStore {
         guard Scheduling.nextRoutine(all, settings: settings)?.id == routineID,
               let idx = active.firstIndex(where: { $0.id == routineID }) else { return }
         settings.rotationRoutineID = active[(idx + 1) % active.count].id.uuidString
+        // Finishing the LAST routine of the cycle wraps the cursor to the top — a full
+        // lap of the split. Home shows a one-shot gold seal banner for it.
+        if active.count > 1, idx == active.count - 1 {
+            rotationCycleSealed = true
+        }
+    }
+
+    /// One-shot "full rotation lap" flag — set when the cycle wraps, cleared when the
+    /// user acknowledges home's seal banner. Deliberately in-memory: the hype is for
+    /// the moment, not a persistent badge.
+    public private(set) var rotationCycleSealed = false
+
+    public func acknowledgeRotationSeal() {
+        rotationCycleSealed = false
     }
 
     public func finishWorkout() {

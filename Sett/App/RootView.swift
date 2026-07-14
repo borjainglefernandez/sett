@@ -95,6 +95,15 @@ struct DebugSurfaceHost: View {
             ExercisePickerSheet()
         case "routinepicker":
             RoutineExercisePickerSheet { _ in }
+        case "streak":
+            StreakSheet(
+                state: StreakEngine.streakState(
+                    workoutDates: finished.map(\.startedAt),
+                    weeklyTarget: 3,
+                    calendar: SevenSlotBurstRow.isoCalendar,
+                    asOf: .now),
+                mode: .rotation,
+                scheduledDays: [])
         default:
             EmptyView()
         }

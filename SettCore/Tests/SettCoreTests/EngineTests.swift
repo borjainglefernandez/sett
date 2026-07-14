@@ -674,6 +674,99 @@ struct StreakEngineTests {
     }
 }
 
+// MARK: - Shielded streak (streakState)
+
+@Suite("StreakEngine.streakState — shields & targets")
+struct StreakStateTests {
+    let cal = isoMadrid()
+
+    private func twoDays(weekOfMonday monday: (Int, Int, Int)) -> [Date] {
+        [date(monday.0, monday.1, monday.2, 18, 0),
+         cal.date(byAdding: .day, value: 3, to: date(monday.0, monday.1, monday.2, 18, 0))!]
+    }
+
+    /// Mondays of N consecutive ISO weeks starting at the given one.
+    private func mondays(from start: (Int, Int, Int), count: Int) -> [(Int, Int, Int)] {
+        (0..<count).map { i in
+            let d = cal.date(byAdding: .day, value: 7 * i, to: date(start.0, start.1, start.2, 12, 0))!
+            let c = cal.dateComponents([.year, .month, .day], from: d)
+            return (c.year!, c.month!, c.day!)
+        }
+    }
+
+    @Test("Four straight passing weeks bank a shield")
+    func shieldEarned() {
+        let dates = mondays(from: (2026, 5, 4), count: 4).flatMap { twoDays(weekOfMonday: $0) }
+        let state = StreakEngine.streakState(workoutDates: dates, weeklyTarget: 2,
+                                             calendar: cal, asOf: date(2026, 6, 2, 9, 0))
+        #expect(state.weeks == 4)
+        #expect(state.shields == 1)
+        #expect(state.weeksToNextShield == 4)
+    }
+
+    @Test("A missed week spends the shield and the streak survives")
+    func shieldAbsorbsMiss() {
+        // 4 passing weeks (bank a shield), one fully empty vacation week, then 1 passing week.
+        var dates = mondays(from: (2026, 5, 4), count: 4).flatMap { twoDays(weekOfMonday: $0) }
+        dates += twoDays(weekOfMonday: (2026, 6, 8))   // week of Jun 1 skipped entirely
+        let state = StreakEngine.streakState(workoutDates: dates, weeklyTarget: 2,
+                                             calendar: cal, asOf: date(2026, 6, 16, 9, 0))
+        #expect(state.weeks == 5)      // 4 + survived miss + 1
+        #expect(state.shields == 0)    // spent
+    }
+
+    @Test("A missed week with no shield resets to zero")
+    func noShieldResets() {
+        // Only 2 passing weeks (no shield yet), then an empty week, then 1 passing week.
+        var dates = mondays(from: (2026, 5, 18), count: 2).flatMap { twoDays(weekOfMonday: $0) }
+        dates += twoDays(weekOfMonday: (2026, 6, 8))   // week of Jun 1 skipped
+        let state = StreakEngine.streakState(workoutDates: dates, weeklyTarget: 2,
+                                             calendar: cal, asOf: date(2026, 6, 16, 9, 0))
+        #expect(state.weeks == 1)
+        #expect(state.bestWeeks == 2)
+    }
+
+    @Test("Two banked shields survive a two-week vacation")
+    func twoShieldsTwoWeeks() {
+        // 8 passing weeks bank 2 shields; 2 empty weeks; 1 passing week.
+        var dates = mondays(from: (2026, 3, 30), count: 8).flatMap { twoDays(weekOfMonday: $0) }
+        dates += twoDays(weekOfMonday: (2026, 6, 8))   // weeks of May 25 + Jun 1 skipped
+        let state = StreakEngine.streakState(workoutDates: dates, weeklyTarget: 2,
+                                             calendar: cal, asOf: date(2026, 6, 16, 9, 0))
+        #expect(state.weeks == 9)
+        #expect(state.shields == 0)
+    }
+
+    @Test("Target-aware: a 3-day target fails a 2-day week")
+    func targetAware() {
+        let dates = twoDays(weekOfMonday: (2026, 6, 22))
+        let state = StreakEngine.streakState(workoutDates: dates, weeklyTarget: 3,
+                                             calendar: cal, asOf: date(2026, 6, 30, 9, 0))
+        #expect(state.weeks == 0)
+        #expect(state.daysThisWeek == 0)
+        #expect(state.weeklyTarget == 3)
+    }
+
+    @Test("In-progress week extends and reports its day count")
+    func inProgressExtends() {
+        let dates = twoDays(weekOfMonday: (2026, 6, 22)) + twoDays(weekOfMonday: (2026, 6, 29))
+        let state = StreakEngine.streakState(workoutDates: dates, weeklyTarget: 2,
+                                             calendar: cal, asOf: date(2026, 7, 3, 9, 0))
+        #expect(state.weeks == 2)
+        #expect(state.extendedThisWeek)
+        #expect(state.daysThisWeek == 2)
+    }
+
+    @Test("Empty history is a zeroed state")
+    func emptyHistory() {
+        let state = StreakEngine.streakState(workoutDates: [], weeklyTarget: 3,
+                                             calendar: cal, asOf: date(2026, 6, 30))
+        #expect(state.weeks == 0)
+        #expect(state.shields == 0)
+        #expect(!state.extendedThisWeek)
+    }
+}
+
 // MARK: - Goals
 
 @Suite("GoalEvaluator.progress")

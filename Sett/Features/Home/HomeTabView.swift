@@ -16,6 +16,7 @@ struct HomeTabView: View {
     @Query private var latestBodyweight: [BodyweightEntry]
 
     @State private var isShowingSettings = false
+    @State private var isShowingStreak = false
 
     init() {
         let finishedFilter = #Predicate<Workout> { $0.endedAt != nil && $0.deletedAt == nil }
@@ -58,7 +59,12 @@ struct HomeTabView: View {
                         if finishedWorkouts.isEmpty {
                             firstRunCard
                         } else {
-                            SevenSlotBurstRow(trainedDays: trainedDaysThisWeek, goalTarget: weeklyGoalTarget)
+                            if session.rotationCycleSealed {
+                                rotationSealBanner
+                            }
+                            SevenSlotBurstRow(trainedDays: trainedDaysThisWeek,
+                                              goalTarget: weeklyGoalTarget,
+                                              streakWeeks: streakWeeks)
                             NetGlanceStrip()
                             startCard
                         }
@@ -88,6 +94,11 @@ struct HomeTabView: View {
             }
             .sheet(isPresented: $isShowingSettings) {
                 SettingsView()
+            }
+            .sheet(isPresented: $isShowingStreak) {
+                StreakSheet(state: streakState,
+                            mode: services.settings.scheduleMode,
+                            scheduledDays: scheduledDayNames)
             }
         }
         .fullScreenCover(isPresented: onboardingBinding) {
@@ -168,16 +179,7 @@ struct HomeTabView: View {
                     .lineLimit(1)
                 Spacer()
                 phaseBadge
-                if streakWeeks > 0 {
-                    Label("\(streakWeeks) wk", systemImage: "flame.fill")
-                        .font(.footnote.weight(.semibold))
-                        .monospacedDigit()
-                        .foregroundStyle(SettColor.heroCyan) // gold audit: gold is the PL's, streak is ki
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(SettColor.card, in: Capsule())
-                        .accessibilityLabel("\(streakWeeks) week streak")
-                }
+                streakChip
             }
             Text(greeting)
                 .font(.largeTitle.bold())
@@ -186,6 +188,73 @@ struct HomeTabView: View {
                 .minimumScaleFactor(0.7)
         }
         .padding(.top, 8)
+    }
+
+    /// The streak is now a control, not a caption — tap for the rules, this week's
+    /// target, and the shields that keep a vacation from killing the fire. Shown from
+    /// the very first workout (a 0-week streak with a session logged is a fire being
+    /// lit, and the sheet explains how to keep it).
+    @ViewBuilder
+    private var streakChip: some View {
+        if streakWeeks > 0 || !finishedWorkouts.isEmpty {
+            Button {
+                isShowingStreak = true
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "flame.fill")
+                    Text("\(streakWeeks) wk")
+                        .monospacedDigit()
+                    if streakState.shields > 0 {
+                        Image(systemName: "shield.fill")
+                            .font(.system(size: 9))
+                            .foregroundStyle(SettColor.heroCyan.opacity(0.7))
+                    }
+                }
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(SettColor.heroCyan) // gold audit: gold is the PL's, streak is ki
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(SettColor.card, in: Capsule())
+                .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("\(streakWeeks) week streak\(streakState.shields > 0 ? ", \(streakState.shields) shields banked" : "")")
+            .accessibilityHint("Shows streak rules and this week's progress")
+        }
+    }
+
+    /// End-of-rotation hype: the cycle wrapped back to its start — a full lap of the
+    /// split. Gold is sanctioned here (a reward moment, like the weekly burst). One
+    /// tap acknowledges and clears it.
+    private var rotationSealBanner: some View {
+        Button {
+            withAnimation(.snappy) { session.acknowledgeRotationSeal() }
+            Haptics.success()
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "arrow.triangle.2.circlepath")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(SettColor.saiyanGold)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("ROTATION SEALED")
+                        .font(.system(size: 12, weight: .heavy, design: .monospaced))
+                        .kerning(1.5)
+                        .foregroundStyle(SettColor.saiyanGold)
+                    Text(streakWeeks > 1 ? "Full cycle complete — \(streakWeeks) wk streak burning."
+                                         : "Full cycle complete. Back to the top.")
+                        .font(.footnote)
+                        .foregroundStyle(SettColor.bone)
+                }
+                Spacer()
+                Image(systemName: "xmark")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(SettColor.ash)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .hudCard(tint: SettColor.saiyanGold)
+        .accessibilityLabel("Rotation sealed: full cycle complete. Dismisses this banner.")
     }
 
     /// One-tap phase switch — the scoring lens every new workout is stamped with.
@@ -224,13 +293,40 @@ struct HomeTabView: View {
         }
     }
 
-    private var streakWeeks: Int {
-        StreakEngine.streakWeeks(
+    // MARK: Streak — target-aware, shield-forgiving (StreakEngine.streakState)
+
+    /// The week's real commitment: the user's explicit weekly frequency goal (the old
+    /// hardcoded `2` ignored it). In weekday mode the schedule CAPS it — you can't owe
+    /// five days when only three are scheduled — but scheduling six days never raises
+    /// the ask above the goal: the mask says WHICH days, the goal says HOW MANY.
+    private var streakTarget: Int {
+        let goal = max(1, weeklyGoalTarget)
+        if services.settings.scheduleMode == .weekday {
+            let mask = Scheduling.orderedActive(routines).reduce(0) { $0 | $1.daysOfWeekMask }
+            let scheduled = mask.nonzeroBitCount
+            if scheduled > 0 { return min(goal, scheduled) }
+        }
+        return goal
+    }
+
+    private var streakState: StreakEngine.StreakState {
+        StreakEngine.streakState(
             workoutDates: finishedWorkouts.map(\.startedAt),
-            minDaysPerWeek: 2,
+            weeklyTarget: streakTarget,
             calendar: Self.isoCalendar,
             asOf: .now
         )
+    }
+
+    private var streakWeeks: Int { streakState.weeks }
+
+    /// Short names of the scheduled weekdays for the streak sheet's caption —
+    /// Monday-first, matching the ISO weeks the streak itself counts in.
+    private var scheduledDayNames: [String] {
+        let mask = Scheduling.orderedActive(routines).reduce(0) { $0 | $1.daysOfWeekMask }
+        return (0..<7).compactMap { day in
+            TrainDays.isSet(mask, day: day) ? TrainDays.shortNames[day].uppercased() : nil
+        }
     }
 
     // MARK: 7-Slot Burst Row inputs

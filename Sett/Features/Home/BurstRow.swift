@@ -14,13 +14,16 @@ struct SevenSlotBurstRow: View {
     /// Trained days of the current ISO week: 0 = Monday … 6 = Sunday.
     let trainedDays: Set<Int>
     let goalTarget: Int
+    /// Current streak (weeks) — the ceremony's "STREAK EXTENDED" hype line.
+    let streakWeeks: Int
 
     @State private var isClaimed: Bool
     @State private var isShowingCeremony = false
 
-    init(trainedDays: Set<Int>, goalTarget: Int) {
+    init(trainedDays: Set<Int>, goalTarget: Int, streakWeeks: Int = 0) {
         self.trainedDays = trainedDays
         self.goalTarget = goalTarget
+        self.streakWeeks = streakWeeks
         _isClaimed = State(initialValue: UserDefaults.standard.bool(forKey: Self.claimKey))
     }
 
@@ -91,7 +94,7 @@ struct SevenSlotBurstRow: View {
         }
         .settCard()
         .sheet(isPresented: $isShowingCeremony) {
-            BurstCeremonyView()
+            BurstCeremonyView(streakWeeks: streakWeeks)
         }
     }
 
@@ -211,13 +214,17 @@ private struct BurstReadyButton: View {
 /// over an ember halo, mono stat rows beneath, `WEEK SEALED` in the system
 /// voice. Level-up haptic on entry.
 struct BurstCeremonyView: View {
+    /// Streak length INCLUDING this week — the "STREAK EXTENDED" hype line.
+    var streakWeeks: Int = 0
+
     @Environment(\.dismiss) private var dismiss
     @Environment(AppServices.self) private var services
 
     @Query private var weekWorkouts: [Workout]
     @Query private var weekAwards: [BadgeAward]
 
-    init() {
+    init(streakWeeks: Int = 0) {
+        self.streakWeeks = streakWeeks
         let week = SevenSlotBurstRow.isoCalendar.dateInterval(of: .weekOfYear, for: .now)
         let start = week?.start ?? .now
         let end = week?.end ?? .now
@@ -273,7 +280,21 @@ struct BurstCeremonyView: View {
 
             statRows
 
-            SystemMessageView(title: "WEEK SEALED")
+            if streakWeeks > 1 {
+                // The hype line: extending the fire is the headline, not a footnote.
+                HStack(spacing: 8) {
+                    Image(systemName: "flame.fill")
+                        .foregroundStyle(SettColor.saiyanGold)
+                    Text("STREAK EXTENDED — \(streakWeeks) WEEKS")
+                        .font(.system(size: 13, weight: .heavy, design: .monospaced))
+                        .kerning(1.5)
+                        .foregroundStyle(SettColor.saiyanGold)
+                }
+                .shadow(color: SettColor.saiyanGold.opacity(0.5), radius: 6)
+                .accessibilityLabel("Streak extended to \(streakWeeks) weeks")
+            }
+
+            SystemMessageView(title: streakWeeks > 1 ? "THE FIRE GROWS" : "WEEK SEALED")
 
             Spacer()
 
