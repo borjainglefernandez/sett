@@ -20,17 +20,10 @@ struct ExercisePickerSheet: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                ForEach(orderedMuscles, id: \.self) { muscle in
-                    Section(muscle.rawValue.capitalized) {
-                        ForEach(grouped[muscle] ?? []) { exercise in
-                            row(exercise)
-                        }
-                    }
-                }
-                Section {
-                    createRow
-                }
+            MuscleGroupedPicker(exercises: exercises, searchText: searchText) { exercise in
+                row(exercise)
+            } footer: {
+                createRow
             }
             .overlay {
                 if filtered.isEmpty && !searchText.isEmpty {
@@ -83,19 +76,10 @@ struct ExercisePickerSheet: View {
         .buttonStyle(.borderless)
     }
 
-    // MARK: Grouping
-
+    /// Search-miss overlay uses this to know when nothing matched — same rule the
+    /// shared picker filters by, so overlay and list can't disagree.
     private var filtered: [Exercise] {
-        guard !searchText.isEmpty else { return exercises }
-        return exercises.filter { $0.name.localizedStandardContains(searchText) }
-    }
-
-    private var grouped: [Muscle: [Exercise]] {
-        Dictionary(grouping: filtered, by: \.muscle)
-    }
-
-    private var orderedMuscles: [Muscle] {
-        Muscle.allCases.filter { grouped[$0] != nil }
+        ExerciseNameFilter.apply(exercises, query: searchText)
     }
 
     // MARK: Row
