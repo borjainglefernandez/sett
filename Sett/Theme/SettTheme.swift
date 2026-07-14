@@ -251,8 +251,30 @@ public struct CornerTicksShape: Shape {
     }
 }
 
+/// The scouter HUD slab — the exercise cards' void-glass + tinted rim + corner
+/// reticle, extracted so Home's cards can wear the same chrome as the session.
+/// (`settCard` stays the warm stone/gold-groove look for parchment-y content.)
+public struct HUDCardStyle: ViewModifier {
+    var tint: Color = SettColor.heroCyan
+
+    public func body(content: Content) -> some View {
+        content
+            .padding(14)
+            .background {
+                let shape = RoundedRectangle(cornerRadius: 16, style: .continuous)
+                shape.fill(TimeChamber.void.opacity(0.72))
+                shape.strokeBorder(tint.opacity(0.28), lineWidth: 1)
+                CornerTicksShape(length: 6, inset: 7)
+                    .stroke(tint.opacity(0.35), lineWidth: 1)
+            }
+    }
+}
+
 public extension View {
     func settCard() -> some View { modifier(SettCardStyle()) }
+    func hudCard(tint: Color = SettColor.heroCyan) -> some View {
+        modifier(HUDCardStyle(tint: tint))
+    }
 }
 
 // MARK: - Dungeon background (torchlit-center architecture: vignette + grime)

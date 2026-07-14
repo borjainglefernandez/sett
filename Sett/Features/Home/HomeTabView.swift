@@ -50,24 +50,28 @@ struct HomeTabView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    header
-                    if finishedWorkouts.isEmpty {
-                        firstRunCard
-                    } else {
-                        SevenSlotBurstRow(trainedDays: trainedDaysThisWeek, goalTarget: weeklyGoalTarget)
-                        NetGlanceStrip()
-                        startCard
+                ZStack(alignment: .top) {
+                    realmGlow
+                    VStack(alignment: .leading, spacing: 16) {
+                        header
+                        powerCrest
+                        if finishedWorkouts.isEmpty {
+                            firstRunCard
+                        } else {
+                            SevenSlotBurstRow(trainedDays: trainedDaysThisWeek, goalTarget: weeklyGoalTarget)
+                            NetGlanceStrip()
+                            startCard
+                        }
+                        BodyweightChipCard(latest: latestBodyweight.first)
+                        DirectivePanel()
+                        if let insight = insights.first {
+                            insightTeaser(insight)
+                        }
+                        recentSection
                     }
-                    BodyweightChipCard(latest: latestBodyweight.first)
-                    DirectivePanel()
-                    if let insight = insights.first {
-                        insightTeaser(insight)
-                    }
-                    recentSection
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 72) // last Recent row must clear the floating tab bar
                 }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 72) // last Recent row must clear the floating tab bar
             }
             .dungeonBackground()
             .navigationTitle("Home")
@@ -88,6 +92,63 @@ struct HomeTabView: View {
         }
         .fullScreenCover(isPresented: onboardingBinding) {
             OnboardingView()
+        }
+    }
+
+    // MARK: Realm glow — the chamber sky bleeding into home
+
+    /// A dim wash of the user's chamber realm behind the header, fading to void by the
+    /// first card. The session screens live under this sky; home now shares the world
+    /// instead of opening on flat black. Scrolls with content, never intercepts touches.
+    private var realmGlow: some View {
+        Image(ChamberBackground.resolve(services.settings.chamberBackground).assetName)
+            .resizable()
+            .scaledToFill()
+            .frame(height: 300)
+            .frame(maxWidth: .infinity)
+            .clipped()
+            .opacity(0.45)
+            .mask {
+                LinearGradient(stops: [.init(color: .white, location: 0),
+                                       .init(color: .white.opacity(0.5), location: 0.45),
+                                       .init(color: .clear, location: 1)],
+                               startPoint: .top, endPoint: .bottom)
+            }
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
+
+    // MARK: Power crest — the sacred number, finally on home
+
+    /// Current PL in gold under the greeting (gold audit: the power level is the ONE
+    /// gold-led element, so home's single gold moment is exactly here). Display-only;
+    /// the Power tab holds the full character sheet.
+    @ViewBuilder
+    private var powerCrest: some View {
+        let pl = services.progression.snapshotPowerLevel
+        if pl > 0 {
+            HStack(spacing: 10) {
+                SettSigil(size: 20, color: SettColor.saiyanGold)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("POWER LEVEL")
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .kerning(1.8)
+                        .foregroundStyle(SettColor.ash)
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        PowerNumeral(pl, size: .m)
+                        if let peak = services.progression.snapshot?.allTimePeakPL, peak > pl {
+                            Text("PEAK \(peak.formatted())")
+                                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                                .monospacedDigit()
+                                .kerning(1)
+                                .foregroundStyle(SettColor.ash)
+                        }
+                    }
+                }
+                Spacer()
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Power level \(pl)")
         }
     }
 
@@ -195,11 +256,12 @@ struct HomeTabView: View {
         Scheduling.nextRoutine(routines, settings: services.settings)
     }
 
+    /// The NEXT DIRECTIVE launch card — the doorway wears the destination. The routine's
+    /// own chamber-realm art (the same sky the session plays under), scouter reticles,
+    /// and the Train tab's white play control; the surge chip docks inside. The old
+    /// generic blue capsule was the most off-world element on home.
     private var startCard: some View {
-        VStack(spacing: 12) {
-            if services.progression.snapshot?.restedBonusActive == true {
-                restedChip
-            }
+        VStack(spacing: 10) {
             Button {
                 if let routine = todaysRoutine {
                     session.start(routine: routine)
@@ -207,20 +269,89 @@ struct HomeTabView: View {
                     session.quickStart()
                 }
             } label: {
-                Text(todaysRoutine.map { "Start \($0.name)" } ?? "Quick Start")
-                    .font(.headline)
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
-                    .background(Aura.cyan, in: Capsule())
+                launchCardLabel
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel(todaysRoutine.map { "Start \($0.name)" } ?? "Quick start a workout")
             if todaysRoutine != nil {
                 Button("Quick Start") {
                     session.quickStart()
                 }
                 .font(.subheadline.weight(.semibold))
+                .frame(maxWidth: .infinity)
             }
         }
+    }
+
+    private var launchCardLabel: some View {
+        ZStack {
+            Image(launchRealmAsset)
+                .resizable()
+                .aspectRatio(contentMode: .fill)
+            // Legibility: darker on the text side, easing to reveal the realm.
+            LinearGradient(colors: [.black.opacity(0.84), .black.opacity(0.6), .black.opacity(0.28)],
+                           startPoint: .leading, endPoint: .trailing)
+            HStack(spacing: 14) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("NEXT DIRECTIVE")
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .kerning(2)
+                        .foregroundStyle(SettColor.heroCyan)
+                    Text(todaysRoutine?.name ?? "Quick Start")
+                        .font(.system(.title3, design: .rounded).weight(.bold))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                        .shadow(color: .black.opacity(0.6), radius: 3)
+                    Text(launchSubline)
+                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                        .kerning(1)
+                        .foregroundStyle(.white.opacity(0.75))
+                    if services.progression.snapshot?.restedBonusActive == true {
+                        restedChip
+                            .padding(.top, 2)
+                    }
+                }
+                Spacer(minLength: 8)
+                ZStack {
+                    Circle()
+                        .fill(.white)
+                        .frame(width: 54, height: 54)
+                        .shadow(color: .black.opacity(0.4), radius: 6, y: 2)
+                    Image(systemName: "play.fill")
+                        .font(.system(size: 22, weight: .bold))
+                        .foregroundStyle(.black)
+                        .offset(x: 2)
+                }
+                .accessibilityHidden(true)
+            }
+            .padding(.horizontal, 18)
+            .padding(.vertical, 16)
+        }
+        .frame(height: services.progression.snapshot?.restedBonusActive == true ? 148 : 124)
+        .frame(maxWidth: .infinity)
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(SettColor.heroCyan.opacity(0.35), lineWidth: 1)
+            CornerTicksShape(length: 7, inset: 8)
+                .stroke(SettColor.heroCyan.opacity(0.55), lineWidth: 1)
+        }
+        .shadow(color: .black.opacity(0.35), radius: 8, y: 4)
+        .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+
+    /// The realm behind the launch card: the routine's own domain, else the app default.
+    private var launchRealmAsset: String {
+        ChamberBackground.resolve(todaysRoutine?.domainRaw ?? services.settings.chamberBackground).assetName
+    }
+
+    private var launchSubline: String {
+        if let routine = todaysRoutine {
+            let count = routine.orderedExercises.count
+            return "\(count) EXERCISE\(count == 1 ? "" : "S")"
+        }
+        return "EMPTY CHAMBER — LOG AS YOU GO"
     }
 
     /// The rested-bonus mechanic was computed but never shown. Surface it: a full
@@ -325,7 +456,15 @@ struct HomeTabView: View {
     }
 
     private func recentRow(_ workout: Workout) -> some View {
-        HStack {
+        HStack(spacing: 12) {
+            // The session's opening lift wears its warrior medallion — recent rows
+            // read like miniature exercise cards, not a plain text log.
+            if let first = workout.orderedExercises.first {
+                ExerciseIcon(name: first.exerciseNameSnapshot,
+                             equipment: first.equipment,
+                             muscle: first.muscle,
+                             size: 40, color: SettColor.heroCyan)
+            }
             VStack(alignment: .leading, spacing: 2) {
                 Text(workout.title)
                     .font(.subheadline.weight(.semibold))
@@ -342,7 +481,7 @@ struct HomeTabView: View {
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
         }
-        .settCard()
+        .hudCard()
     }
 
     // MARK: Onboarding

@@ -57,7 +57,7 @@ struct BodyweightChipCard: View {
                     .font(.title2)
                     .foregroundStyle(SettColor.heroCyan)
             }
-            .settCard()
+            .hudCard()
         }
         .buttonStyle(.plain)
         .accessibilityLabel(accessibilityText)

@@ -122,7 +122,7 @@ struct DirectivePanel: View {
                 }
             }
         }
-        .settCard()
+        .hudCard()
         .sheet(isPresented: $isLoggingBodyweight) {
             BodyweightLogSheet(latest: latestBodyweight.first)
         }

@@ -105,9 +105,9 @@ struct SevenSlotBurstRow: View {
 
 // MARK: - One forged-medallion slot
 
-/// A circular slot: nested-stone well inside an iron rim with an etched inner
-/// groove. Filled slots hold a small cyan sigil that scale-pops in; today's
-/// slot wears a subtle pulsing cyan ring (static under Reduce Motion).
+/// A day slot in the set-badge language the exercise cards taught: a trained day is a
+/// CHARGED cyan disc (a logged set), today is the targeting reticle (the active row),
+/// an untrained day is a solid ghost ring (a planned set). Days are the week's reps.
 private struct BurstSlot: View {
     let isFilled: Bool
     let isToday: Bool
@@ -118,19 +118,26 @@ private struct BurstSlot: View {
 
     var body: some View {
         ZStack {
-            Circle()
-                .fill(SettColor.cardNested)
-            Circle()
-                .strokeBorder(SettColor.cardBorder, lineWidth: 1.5) // matte iron rim
-            Circle()
-                .strokeBorder(SettColor.etch, lineWidth: 1) // forged inner groove
-                .padding(2.5)
             if isFilled {
-                SettSigil(size: 17, color: SettColor.heroCyan)
+                // Charged — SetIndexBadge's "earned" paint: solid disc, crisp rim,
+                // the sigil punched out dark, a layout-free bloom below.
+                Circle().fill(SettColor.heroCyan.opacity(0.85))
+                Circle().strokeBorder(SettColor.heroCyan, lineWidth: 1.5)
+                SettSigil(size: 17, color: SettColor.etch)
                     .scaleEffect(sigilScale)
+            } else {
+                // Ghost — faint mass + solid iron ring, the "unearned" paint.
+                Circle().fill(TimeChamber.void.opacity(0.35))
+                Circle().strokeBorder(SettColor.iron.opacity(0.5), lineWidth: 1.5)
+            }
+            if isToday {
+                ReticleTicks(arm: 4)
+                    .stroke(SettColor.heroCyan.opacity(0.9), lineWidth: 1)
             }
         }
         .frame(width: 36, height: 36)
+        .compositingGroup()
+        .shadow(color: isFilled ? SettColor.heroCyan.opacity(0.45) : .clear, radius: 3)
         .overlay {
             if isToday {
                 Circle()
