@@ -7,6 +7,8 @@ import SettCore
 /// earned = engraved gold, earned legendary = prismatic, locked = matte iron
 /// in grayscale with its criteria visible — the locked grid IS the empty state.
 struct BadgeCaseView: View {
+    @Environment(AppServices.self) private var services
+
     @Environment(ProgressionStore.self) private var progression
 
     @Query private var awards: [BadgeAward]
@@ -85,6 +87,19 @@ struct BadgeCaseView: View {
                     Image(systemName: "medal.fill")
                         .font(.title2)
                         .foregroundStyle(SettColor.bone)
+                    // Prestige pin — the countable badges never go dead: clearing the
+                    // threshold again stamps ×2, ×3… on the same medal.
+                    if let count = services.progression.snapshot?.badgeCounts[definition.key],
+                       count >= 2 {
+                        Text("×\(count)")
+                            .font(.system(size: 10, weight: .heavy, design: .monospaced))
+                            .monospacedDigit()
+                            .foregroundStyle(SettColor.etch)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(SettColor.saiyanGold, in: Capsule())
+                            .offset(x: 22, y: -22)
+                    }
                 }
                 .frame(width: 64, height: 64)
                 Text(definition.name)

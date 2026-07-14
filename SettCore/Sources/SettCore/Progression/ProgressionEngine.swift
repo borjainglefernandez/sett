@@ -38,12 +38,17 @@ public struct ProgressionSnapshot: Sendable {
     /// (see ProgressionEngine.isRested for the exact predicate). Defaulted so
     /// existing call sites keep compiling.
     public let restedBonusActive: Bool
+    /// Prestige counts for the countable badges (audit: "endless" — re-earning
+    /// stamps a xN pin instead of the badge going dead after one earn).
+    /// Key -> how many times the threshold has been cleared (>=1 once earned).
+    public let badgeCounts: [String: Int]
 
     public init(powerLevel: Int, allTimePeakPL: Int, strengthScore: Int, weeklyVolumeLb: Int,
                 consistencyMultiplier: Double, streakWeeks: Int,
                 characterXP: [CharacterKey: Int], characterLevels: [CharacterKey: Int],
                 tiers: [CharacterKey: TransformationTier], badges: [BadgeGrant],
-                rivalPL: Int, rivalForm: Int, restedBonusActive: Bool = false) {
+                rivalPL: Int, rivalForm: Int, restedBonusActive: Bool = false,
+                badgeCounts: [String: Int] = [:]) {
         self.powerLevel = powerLevel
         self.allTimePeakPL = allTimePeakPL
         self.strengthScore = strengthScore
@@ -57,6 +62,7 @@ public struct ProgressionSnapshot: Sendable {
         self.rivalPL = rivalPL
         self.rivalForm = rivalForm
         self.restedBonusActive = restedBonusActive
+        self.badgeCounts = badgeCounts
     }
 }
 
@@ -146,6 +152,21 @@ public enum ProgressionEngine {
 
         let peak = max(input.previousPeakPL, plEvals.map { $0.pl }.max() ?? 0)
 
+        // Prestige counts — how many times the countable badge thresholds have
+        // been cleared (limit_break per 10 verified PRs, million_pound_club per
+        // 1M lifetime lb, twenty_ton_day per qualifying 20k-lb day).
+        var badgeCounts: [String: Int] = [:]
+        badgeCounts["limit_break"] = analysis.prEvents.count / 10
+        let lifetimeGrams = analysis.effectiveSets.reduce(0) { $0 + $1.sample.weightGrams * $1.sample.reps }
+        badgeCounts["million_pound_club"] = Int(Units.pounds(fromGrams: lifetimeGrams)) / 1_000_000
+        var gramsPerDay: [Date: Int] = [:]
+        for record in analysis.effectiveSets {
+            let day = calendar.startOfDay(for: record.sample.completedAt)
+            gramsPerDay[day, default: 0] += record.sample.weightGrams * record.sample.reps
+        }
+        badgeCounts["twenty_ton_day"] = gramsPerDay.values
+            .count { Units.pounds(fromGrams: $0) >= 20_000 }
+
         // Vexeth pacing script.
         let rival = config.rival
         let startPL = rival["startPL"] as? Int ?? 0
@@ -183,7 +204,8 @@ public enum ProgressionEngine {
             badges: badges,
             rivalPL: rivalPL,
             rivalForm: rivalForm,
-            restedBonusActive: restedActive
+            restedBonusActive: restedActive,
+            badgeCounts: badgeCounts
         )
     }
 

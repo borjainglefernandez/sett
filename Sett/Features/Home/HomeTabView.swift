@@ -17,6 +17,7 @@ struct HomeTabView: View {
 
     @State private var isShowingSettings = false
     @State private var isShowingStreak = false
+    @State private var readingDismissedKey = UserDefaults.standard.string(forKey: "sett.reading.dismissed") ?? ""
 
     init() {
         let finishedFilter = #Predicate<Workout> { $0.endedAt != nil && $0.deletedAt == nil }
@@ -59,6 +60,9 @@ struct HomeTabView: View {
                         if finishedWorkouts.isEmpty {
                             firstRunCard
                         } else {
+                            if shouldShowWeeklyReading {
+                                weeklyReadingCard
+                            }
                             if session.rotationCycleSealed {
                                 rotationSealBanner
                             }
@@ -102,6 +106,7 @@ struct HomeTabView: View {
                     .accessibilityLabel("Settings")
                 }
             }
+            .task { WeeklyReadingNotifier.schedule() }
             .sheet(isPresented: $isShowingSettings) {
                 SettingsView()
             }
@@ -228,6 +233,76 @@ struct HomeTabView: View {
             .buttonStyle(.plain)
             .accessibilityLabel("\(streakWeeks) week streak\(streakState.shields > 0 ? ", \(streakState.shields) shields banked" : "")")
             .accessibilityHint("Shows streak rules and this week's progress")
+        }
+    }
+
+    // MARK: Weekly Power Reading (Monday's scouter report)
+
+    /// Monday-only, dismissible per ISO week — the week opens with a reading, not a
+    /// guilt trip: last week's ΔPL, the form target, the rival gap, the fire.
+    private var shouldShowWeeklyReading: Bool {
+        let isoWeekday = (Calendar.current.component(.weekday, from: .now) + 5) % 7 // 0 = Monday
+        let weekKey = ProgressionStore.isoWeekKey(.now)
+        return isoWeekday == 0 && readingDismissedKey != weekKey
+    }
+
+    private var weeklyReadingCard: some View {
+        let delta = services.progression.weeklyReadingDelta
+        let pl = services.progression.snapshotPowerLevel
+        let form = UserForm.form(forPL: pl)
+        let rival = services.progression.effectiveRival
+        let gap = rival.pl - pl
+        let pace = services.progression.trailingWeeklyPace
+        let growth = services.progression.effectiveRivalGrowth
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Eyebrow("WEEKLY POWER READING", tint: SettColor.heroCyan)
+                Spacer()
+                Button {
+                    let weekKey = ProgressionStore.isoWeekKey(.now)
+                    UserDefaults.standard.set(weekKey, forKey: "sett.reading.dismissed")
+                    withAnimation(.snappy) { readingDismissedKey = weekKey }
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(SettColor.ash)
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Dismiss this week's reading")
+            }
+            readingRow("ΔPL LAST WEEK",
+                       delta.map { "\($0 >= 0 ? "+" : "")\($0.formatted())" } ?? "—",
+                       tint: (delta ?? 0) >= 0 ? SettColor.positive : SettColor.ash)
+            readingRow("FORM", "\(form.title) · \((form.nextPL - pl).formatted()) PL TO NEXT",
+                       tint: SettColor.heroCyan)
+            readingRow("VEXETH",
+                       gap > 0 ? "\(gap.formatted()) PL AHEAD\(pace > growth ? " · CATCH IN \(Int((Double(gap) / Double(pace - growth)).rounded(.up))) WK" : "")"
+                               : "\(abs(gap).formatted()) PL BEHIND YOU",
+                       tint: SettColor.villainCrimson)
+            readingRow("STREAK", "\(streakWeeks) WK · \(streakState.shields) SHIELD\(streakState.shields == 1 ? "" : "S")",
+                       tint: SettColor.heroCyan)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .hudCard()
+        .accessibilityElement(children: .combine)
+    }
+
+    private func readingRow(_ label: String, _ value: String, tint: Color) -> some View {
+        HStack(spacing: 10) {
+            Text(label)
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .kerning(1)
+                .foregroundStyle(SettColor.ash)
+                .frame(width: 118, alignment: .leading)
+            Text(value)
+                .font(.system(size: 11, weight: .heavy, design: .monospaced))
+                .monospacedDigit()
+                .foregroundStyle(tint)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            Spacer(minLength: 0)
         }
     }
 

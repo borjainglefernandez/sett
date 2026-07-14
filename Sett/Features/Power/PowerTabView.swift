@@ -35,7 +35,10 @@ struct PowerTabView: View {
                     }
                     RivalCard(rivalPL: rivalPL,
                               rivalForm: rivalForm,
-                              userPL: progression.snapshotPowerLevel)
+                              userPL: progression.snapshotPowerLevel,
+                              cycle: progression.rivalCycle,
+                              rebirthAnnounce: progression.rivalRebirthAnnounce,
+                              onAcknowledgeRebirth: { progression.acknowledgeRivalRebirth() })
                     badgeCasePreview
                     rosterCard
                 }
@@ -88,12 +91,12 @@ struct PowerTabView: View {
     }
 
     private var rivalPL: Int {
-        if let snapshot = progression.snapshot { return snapshot.rivalPL }
+        if progression.snapshot != nil { return progression.effectiveRival.pl }
         return progression.config?.rival["startPL"] as? Int ?? 0
     }
 
     private var rivalForm: Int {
-        progression.snapshot?.rivalForm ?? 1
+        progression.snapshot != nil ? progression.effectiveRival.form : 1
     }
 
     private var earnedBadgeKeys: Set<String> {
@@ -583,16 +586,43 @@ private struct RivalCard: View {
     let rivalPL: Int
     let rivalForm: Int
     let userPL: Int
+    var cycle: Int = 1
+    var rebirthAnnounce: Bool = false
+    var onAcknowledgeRebirth: () -> Void = {}
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+            if rebirthAnnounce {
+                // The endless race: beating the final form doesn't end the story.
+                Button(action: onAcknowledgeRebirth) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .font(.caption.weight(.heavy))
+                        Text("VEXETH REBORN — CYCLE \(cycle)")
+                            .font(.system(size: 11, weight: .heavy, design: .monospaced))
+                            .kerning(1.5)
+                        Spacer()
+                        Image(systemName: "xmark")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(SettColor.ash)
+                    }
+                    .foregroundStyle(SettColor.villainCrimson)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(SettColor.villainCrimson.opacity(0.12),
+                                in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Vexeth reborn, cycle \(cycle). Dismisses this banner.")
+            }
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("EMPEROR VEXETH")
                         .font(.headline)
                         .kerning(1.2)
                         .foregroundStyle(SettColor.villainCrimson)
-                    Text("the Crimson Star")
+                    Text(cycle > 1 ? "the Crimson Star · Cycle \(cycle)" : "the Crimson Star")
                         .font(.footnote)
                         .foregroundStyle(.white.opacity(0.6))
                 }
@@ -606,7 +636,8 @@ private struct RivalCard: View {
                     .background(SettColor.villainCrimson.opacity(0.15), in: Capsule())
             }
             PowerNumeral(rivalPL, size: .l, color: SettColor.villainCrimson)
-            Text(userPL > rivalPL ? "You've forced my hand." : "He hasn't shown his final form.")
+            Text(rebirthAnnounce ? "\u{201C}You thought that was my ceiling? Cute.\u{201D}"
+                 : userPL > rivalPL ? "You've forced my hand." : "He hasn't shown his final form.")
                 .font(.subheadline.italic())
                 .foregroundStyle(.white.opacity(0.75))
         }

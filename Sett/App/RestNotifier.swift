@@ -49,3 +49,29 @@ enum RestNotifier {
         UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [restID])
     }
 }
+
+
+// MARK: - Weekly Power Reading (Monday morning scouter ping)
+
+/// Schedules the repeating Monday-morning local notification that pairs with home's
+/// Weekly Power Reading card. Idempotent — re-scheduling replaces the previous one.
+enum WeeklyReadingNotifier {
+    private static let id = "sett.weeklyReading"
+
+    static func schedule() {
+        let center = UNUserNotificationCenter.current()
+        center.getNotificationSettings { settings in
+            guard settings.authorizationStatus == .authorized
+                    || settings.authorizationStatus == .provisional else { return }
+            let content = UNMutableNotificationContent()
+            content.title = "Weekly Power Reading"
+            content.body = "The scanner has your week: ΔPL, form progress, and Vexeth's move."
+            content.sound = .default
+            var comps = DateComponents()
+            comps.weekday = 2   // Monday
+            comps.hour = 9
+            let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: true)
+            center.add(UNNotificationRequest(identifier: id, content: content, trigger: trigger))
+        }
+    }
+}
