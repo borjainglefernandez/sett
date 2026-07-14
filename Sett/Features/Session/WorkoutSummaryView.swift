@@ -77,7 +77,7 @@ struct WorkoutSummaryView: View {
                     badgesCard
                         .transition(.opacity.combined(with: .move(edge: .bottom)))
                 }
-                if stage >= .xp && !summary.xpEarned.isEmpty {
+                if ProgressionUIFlags.legacyXPVisible, stage >= .xp, !summary.xpEarned.isEmpty {
                     xpCard
                         .transition(.opacity.combined(with: .move(edge: .bottom)))
                 }
@@ -278,6 +278,7 @@ struct WorkoutSummaryView: View {
                     if powerDelta != 0 {
                         deltaChip
                     }
+                    receiptRows
                 }
             } else {
                 Text("SCANNING…")
@@ -330,6 +331,51 @@ struct WorkoutSummaryView: View {
         } else {
             SacredNumberView(value: displayedPowerLevel, size: .xl)
                 .frame(height: 68)
+        }
+    }
+
+    /// The receipt: WHERE the delta came from (the two levers) and where the
+    /// climb goes next (the endless Forms ladder). PL stops being a black box.
+    @ViewBuilder
+    private var receiptRows: some View {
+        let ssDelta = summary.strengthScoreAfter - summary.strengthScoreBefore
+        let wvlDelta = summary.weeklyVolumeLbAfter - summary.weeklyVolumeLbBefore
+        let form = UserForm.form(forPL: summary.powerLevelAfter)
+        let formBefore = UserForm.form(forPL: summary.powerLevelBefore)
+        VStack(spacing: 5) {
+            if ssDelta != 0 || wvlDelta != 0 {
+                HStack(spacing: 14) {
+                    receiptLever("STRENGTH", delta: ssDelta)
+                    receiptLever("VOLUME", delta: wvlDelta)
+                }
+            }
+            if form.index > formBefore.index {
+                Text("FORM ASCENDED — \(form.title)")
+                    .font(.system(size: 11, weight: .heavy, design: .monospaced))
+                    .kerning(1.5)
+                    .foregroundStyle(SettColor.saiyanGold)
+                    .shadow(color: SettColor.saiyanGold.opacity(0.5), radius: 5)
+            } else {
+                Text("\(form.title) · \((form.nextPL - summary.powerLevelAfter).formatted()) PL TO NEXT FORM")
+                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                    .kerning(1)
+                    .foregroundStyle(SettColor.ash)
+            }
+        }
+        .padding(.top, 2)
+    }
+
+    private func receiptLever(_ label: String, delta: Int) -> some View {
+        HStack(spacing: 4) {
+            Text(label)
+                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .kerning(1)
+                .foregroundStyle(SettColor.ash)
+            Text(delta == 0 ? "—" : "\(delta > 0 ? "+" : "")\(delta.formatted())")
+                .font(.system(size: 10, weight: .heavy, design: .monospaced))
+                .monospacedDigit()
+                .foregroundStyle(delta > 0 ? SettColor.positive
+                                 : delta < 0 ? SettColor.ash : SettColor.iron)
         }
     }
 

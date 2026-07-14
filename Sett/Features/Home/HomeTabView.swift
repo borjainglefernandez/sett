@@ -108,7 +108,8 @@ struct HomeTabView: View {
             .sheet(isPresented: $isShowingStreak) {
                 StreakSheet(state: streakState,
                             mode: services.settings.scheduleMode,
-                            scheduledDays: scheduledDayNames)
+                            scheduledDays: scheduledDayNames,
+                            plMultiplier: services.progression.snapshot?.consistencyMultiplier)
             }
         }
         .fullScreenCover(isPresented: onboardingBinding) {
@@ -157,13 +158,10 @@ struct HomeTabView: View {
                         .foregroundStyle(SettColor.ash)
                     HStack(alignment: .firstTextBaseline, spacing: 10) {
                         PowerNumeral(pl, size: .m)
-                        if let peak = services.progression.snapshot?.allTimePeakPL, peak > pl {
-                            Text("PEAK \(peak.formatted())")
-                                .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                                .monospacedDigit()
-                                .kerning(1)
-                                .foregroundStyle(SettColor.ash)
-                        }
+                        Text(UserForm.form(forPL: pl).title)
+                            .font(.system(size: 10, weight: .heavy, design: .monospaced))
+                            .kerning(1.5)
+                            .foregroundStyle(SettColor.heroCyan)
                     }
                 }
                 Spacer()

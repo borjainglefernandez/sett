@@ -598,6 +598,8 @@ public final class WorkoutSessionStore {
             we.needsPush = true
         }
         let plBefore = progression.snapshotPowerLevel
+        let ssBefore = progression.snapshot?.strengthScore ?? 0
+        let wvlBefore = progression.snapshot?.weeklyVolumeLb ?? 0
 
         // Seal the workout FIRST and require the write to land. If it fails, keep the
         // session presented so the write-fault banner offers retrySave — do NOT credit
@@ -683,7 +685,11 @@ public final class WorkoutSessionStore {
             commentary: commentary,
             commentarySource: source,
             isCasual: isCasual,
-            domainRaw: workout.domainRaw
+            domainRaw: workout.domainRaw,
+            strengthScoreBefore: ssBefore,
+            strengthScoreAfter: progression.snapshot?.strengthScore ?? ssBefore,
+            weeklyVolumeLbBefore: wvlBefore,
+            weeklyVolumeLbAfter: progression.snapshot?.weeklyVolumeLb ?? wvlBefore
         )
         activeWorkout = nil
         isPresentingWorkout = false

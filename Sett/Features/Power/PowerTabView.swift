@@ -30,7 +30,9 @@ struct PowerTabView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     hero
                     characterSheetCard
-                    tierProgressCard
+                    if ProgressionUIFlags.legacyXPVisible {
+                        tierProgressCard
+                    }
                     RivalCard(rivalPL: rivalPL,
                               rivalForm: rivalForm,
                               userPL: progression.snapshotPowerLevel)
@@ -134,9 +136,21 @@ struct PowerTabView: View {
                         .kerning(1.5)
                         .foregroundStyle(SettColor.ash)
                 }
-                Text("\(activeTier.displayName) — \(activeTier.dilation)× dilation")
-                    .font(.system(.subheadline, design: .monospaced).weight(.semibold).smallCaps())
-                    .foregroundStyle(SettColor.heroCyan)
+                // The USER's form on the endless ladder — one title, one next target.
+                let form = UserForm.form(forPL: progression.snapshotPowerLevel)
+                VStack(spacing: 3) {
+                    Text(form.title)
+                        .font(.system(.subheadline, design: .monospaced).weight(.heavy).smallCaps())
+                        .kerning(2)
+                        .foregroundStyle(SettColor.heroCyan)
+                    Text("\((form.nextPL - progression.snapshotPowerLevel).formatted()) PL TO NEXT FORM")
+                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                        .kerning(1)
+                        .foregroundStyle(SettColor.ash)
+                    ProgressView(value: form.progress(progression.snapshotPowerLevel))
+                        .tint(SettColor.heroCyan)
+                        .frame(width: 180)
+                }
             }
         }
         .frame(maxWidth: .infinity)

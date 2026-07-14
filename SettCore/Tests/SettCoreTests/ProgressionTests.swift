@@ -478,3 +478,44 @@ struct RestedBonusTests {
         #expect(!afterGap.restedBonusActive)
     }
 }
+
+
+// MARK: - UserForm ladder (endless)
+
+@Suite("UserForm — the endless transformation ladder")
+struct UserFormTests {
+    @Test("Named rungs resolve at their floors")
+    func namedRungs() {
+        #expect(UserForm.form(forPL: 0).title == "BASE")
+        #expect(UserForm.form(forPL: 1_999).title == "BASE")
+        #expect(UserForm.form(forPL: 2_000).title == "KINDLED")
+        #expect(UserForm.form(forPL: 5_000).title == "ASCENDANT")
+        #expect(UserForm.form(forPL: 8_999).title == "ASCENDANT")
+        #expect(UserForm.form(forPL: 9_000).title == "RADIANT")
+        #expect(UserForm.form(forPL: 15_000).title == "ZENITH")
+    }
+
+    @Test("The ladder never ends — Zenith rolls into II, III, …")
+    func endlessZenith() {
+        #expect(UserForm.form(forPL: 22_499).title == "ZENITH")
+        #expect(UserForm.form(forPL: 22_500).title == "ZENITH II")
+        #expect(UserForm.form(forPL: 30_000).title == "ZENITH III")
+        #expect(UserForm.form(forPL: 97_500).title == "ZENITH XII")
+        #expect(UserForm.form(forPL: 97_500).nextPL == 105_000)
+    }
+
+    @Test("nextPL is always ahead and progress is 0…1")
+    func nextAlwaysAhead() {
+        for pl in [0, 1_500, 4_999, 9_000, 14_999, 15_000, 50_000, 250_000] {
+            let form = UserForm.form(forPL: pl)
+            #expect(form.nextPL > pl)
+            let p = form.progress(pl)
+            #expect(p >= 0 && p <= 1)
+        }
+    }
+
+    @Test("Negative PL clamps to Base")
+    func negativeClamps() {
+        #expect(UserForm.form(forPL: -50).title == "BASE")
+    }
+}

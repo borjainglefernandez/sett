@@ -12,6 +12,9 @@ struct StreakSheet: View {
     let mode: ScheduleMode
     /// Short names of the scheduled weekdays (weekday mode only), e.g. ["MON","WED","FRI"].
     let scheduledDays: [String]
+    /// The streak's consistency multiplier on the power level (1.0…1.5) — the reason
+    /// the fire matters mechanically, not just emotionally. nil hides the row.
+    var plMultiplier: Double? = nil
 
     @Environment(\.dismiss) private var dismiss
 
@@ -67,6 +70,16 @@ struct StreakSheet: View {
                     .font(.system(size: 10, weight: .semibold, design: .monospaced))
                     .kerning(1.5)
                     .foregroundStyle(SettColor.ash)
+            }
+            if let plMultiplier, plMultiplier > 1 {
+                // The mechanical payoff: the streak multiplies the power level.
+                Text("POWER LEVEL ×\(plMultiplier.formatted(.number.precision(.fractionLength(2))))")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .kerning(1.2)
+                    .foregroundStyle(SettColor.heroCyan)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(SettColor.heroCyan.opacity(0.12), in: Capsule())
             }
         }
         .frame(maxWidth: .infinity)
@@ -183,6 +196,7 @@ struct StreakSheet: View {
             rule("flame.fill", "A week extends your streak when you train \(state.weeklyTarget) day\(state.weeklyTarget == 1 ? "" : "s").")
             rule("shield.fill", "Every 4 on-target weeks bank a shield (max \(state.shieldCap)).")
             rule("heart.fill", "Miss a week with a shield banked — it's spent, the fire keeps burning.")
+            rule("bolt.fill", "Every streak week multiplies your power level, up to ×1.5 at 10 weeks.")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .hudCard()

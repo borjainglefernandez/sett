@@ -34,3 +34,11 @@ public final class ProgressionStore {
         snapshot?.characterXP[character] ?? 0
     }
 }
+
+
+/// Progression-redesign switches (audit: "one spine number"). Legacy per-character
+/// XP/levels stay computed by the engine until Phase 3 deletes them; this flag only
+/// controls whether any UI still renders them.
+enum ProgressionUIFlags {
+    static let legacyXPVisible = false
+}

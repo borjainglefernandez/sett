@@ -167,6 +167,12 @@ public struct WorkoutSummaryData: Identifiable, Sendable {
     public let isCasual: Bool
     /// The realm this workout ran in (ChamberBackground.rawValue); nil ⇒ default.
     public let domainRaw: String?
+    /// PL receipt inputs — the two levers, before/after, so the summary can show
+    /// WHERE the delta came from instead of a bare number.
+    public let strengthScoreBefore: Int
+    public let strengthScoreAfter: Int
+    public let weeklyVolumeLbBefore: Int
+    public let weeklyVolumeLbAfter: Int
 
     public init(id: UUID, title: String, durationSeconds: Int,
                 powerLevelBefore: Int, powerLevelAfter: Int,
@@ -174,7 +180,9 @@ public struct WorkoutSummaryData: Identifiable, Sendable {
                 netReps: Int, netVolumeGrams: Int, netIsNew: Bool,
                 newBadgeKeys: [String], xpEarned: [CharacterKey: Int],
                 commentary: String, commentarySource: InsightSource,
-                isCasual: Bool = false, domainRaw: String? = nil) {
+                isCasual: Bool = false, domainRaw: String? = nil,
+                strengthScoreBefore: Int = 0, strengthScoreAfter: Int = 0,
+                weeklyVolumeLbBefore: Int = 0, weeklyVolumeLbAfter: Int = 0) {
         self.id = id
         self.title = title
         self.durationSeconds = durationSeconds
@@ -191,5 +199,9 @@ public struct WorkoutSummaryData: Identifiable, Sendable {
         self.commentarySource = commentarySource
         self.isCasual = isCasual
         self.domainRaw = domainRaw
+        self.strengthScoreBefore = strengthScoreBefore
+        self.strengthScoreAfter = strengthScoreAfter
+        self.weeklyVolumeLbBefore = weeklyVolumeLbBefore
+        self.weeklyVolumeLbAfter = weeklyVolumeLbAfter
     }
 }
