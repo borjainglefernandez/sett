@@ -2,10 +2,14 @@ import SwiftUI
 import AuthenticationServices
 import SettCore
 
-/// First-run flow (design-ux §6), five simple pages: invite code, Sign in with
-/// Apple, units, Oura pitch, meet-your-rival. Local-only in this build — the
-/// invite code and Apple identity are not verified against a server yet.
-/// Presented as a fullScreenCover from Home while `settings.hasOnboarded == false`.
+/// First-run flow (design-ux §6), six pages: invite code, Sign in with Apple, units,
+/// phase, Oura pitch, meet-your-rival. Local-only in this build — the invite code and
+/// Apple identity are not verified against a server yet.
+///
+/// v2: pages are a gated ZStack switch, NOT a paging TabView — the old page style let
+/// a swipe skip the invite and phase gates entirely. Day zero now opens under the
+/// chamber sky with the same marks the rest of the app wears; the rival reveal is the
+/// flow's one crimson moment.
 struct OnboardingView: View {
     @Environment(AppServices.self) private var services
     @Environment(\.dismiss) private var dismiss
@@ -19,16 +23,68 @@ struct OnboardingView: View {
     @State private var displayedPowerLevel = 0
 
     var body: some View {
-        TabView(selection: $page) {
-            invitePage.tag(Page.invite)
-            signInPage.tag(Page.signIn)
-            unitsPage.tag(Page.units)
-            phasePage.tag(Page.phase)
-            ouraPage.tag(Page.oura)
-            rivalPage.tag(Page.rival)
+        ZStack(alignment: .top) {
+            SettColor.screen.ignoresSafeArea()
+            realmGlow
+            VStack(spacing: 0) {
+                progressDots
+                    .padding(.top, 18)
+                Group {
+                    switch page {
+                    case .invite: invitePage
+                    case .signIn: signInPage
+                    case .units: unitsPage
+                    case .phase: phasePage
+                    case .oura: ouraPage
+                    case .rival: rivalPage
+                    }
+                }
+                .transition(.asymmetric(insertion: .move(edge: .trailing).combined(with: .opacity),
+                                        removal: .move(edge: .leading).combined(with: .opacity)))
+            }
         }
-        .tabViewStyle(.page(indexDisplayMode: .never))
-        .background(SettColor.screen.ignoresSafeArea())
+        .animation(.snappy, value: page)
+        .interactiveDismissDisabled()
+    }
+
+    /// The chamber sky over day zero — same treatment as home's header glow.
+    private var realmGlow: some View {
+        Image(ChamberBackground.resolve(services.settings.chamberBackground).assetName)
+            .resizable()
+            .scaledToFill()
+            .frame(height: 300)
+            .frame(maxWidth: .infinity)
+            .clipped()
+            .opacity(page == .rival ? 0.25 : 0.45)   // the rival's crimson owns that page
+            .mask {
+                LinearGradient(stops: [.init(color: .white, location: 0),
+                                       .init(color: .white.opacity(0.5), location: 0.5),
+                                       .init(color: .clear, location: 1)],
+                               startPoint: .top, endPoint: .bottom)
+            }
+            .ignoresSafeArea(edges: .top)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
+
+    /// Six charge dots — the week-slot grammar marking how far into the forge you are.
+    private var progressDots: some View {
+        HStack(spacing: 8) {
+            ForEach(Page.allCases, id: \.self) { step in
+                Circle()
+                    .fill(step.rawValue <= page.rawValue
+                          ? SettColor.heroCyan.opacity(0.85)
+                          : TimeChamber.void.opacity(0.4))
+                    .overlay {
+                        Circle().strokeBorder(step.rawValue <= page.rawValue
+                                              ? SettColor.heroCyan
+                                              : SettColor.iron.opacity(0.5), lineWidth: 1)
+                    }
+                    .frame(width: 8, height: 8)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Step \(page.rawValue + 1) of \(Page.allCases.count)")
     }
 
     // MARK: Page 1 — invite code
@@ -36,25 +92,33 @@ struct OnboardingView: View {
     private var invitePage: some View {
         VStack(spacing: 20) {
             Spacer()
-            auraMark
+            heroMedallion("ExArt_muscle_other")
             Text("Enter your invite code")
-                .font(.title2.bold())
+                .font(.system(.title2, design: .rounded).weight(.bold))
+                .foregroundStyle(SettColor.bone)
             Text("sett is invite-only. Ask a friend who trains.")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(SettColor.ash)
                 .multilineTextAlignment(.center)
             TextField("CHAMBER-XXXXXX", text: $inviteCode)
                 .font(.system(.title3, design: .monospaced))
+                .foregroundStyle(SettColor.bone)
                 .multilineTextAlignment(.center)
                 .textInputAutocapitalization(.characters)
                 .autocorrectionDisabled()
                 .padding(.vertical, 14)
                 .background(SettColor.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .strokeBorder(SettColor.heroCyan.opacity(trimmedCode.count >= 6 ? 0.5 : 0.15),
+                                      lineWidth: 1)
+                }
                 .onChange(of: inviteCode) { _, newValue in
                     let uppercased = newValue.uppercased()
                     if uppercased != newValue { inviteCode = uppercased }
                 }
             Spacer()
+            // TODO: server-side invite validation once auth ships — length is a stub gate.
             continueButton("Continue", enabled: trimmedCode.count >= 6) {
                 advance(to: .signIn)
             }
@@ -66,16 +130,10 @@ struct OnboardingView: View {
         inviteCode.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private var auraMark: some View {
-        Image(systemName: "bolt.fill")
-            .font(.system(size: 44))
-            .foregroundStyle(Aura.cyan)
-            .padding(28)
-            .background(
-                RadialGradient(colors: [SettColor.heroCyan.opacity(0.25), .clear],
-                               center: .center, startRadius: 4, endRadius: 70),
-                in: Circle()
-            )
+    /// A warrior-art medallion instead of a floating SF Symbol — day zero shows the
+    /// same marks the rest of the app wears.
+    private func heroMedallion(_ asset: String) -> some View {
+        ExerciseArtView(asset: asset, size: 84, color: SettColor.heroCyan)
             .accessibilityHidden(true)
     }
 
@@ -84,15 +142,14 @@ struct OnboardingView: View {
     private var signInPage: some View {
         VStack(spacing: 20) {
             Spacer()
-            Image(systemName: "person.crop.circle.badge.checkmark")
-                .font(.system(size: 44))
-                .foregroundStyle(Aura.cyan)
+            heroMedallion("ExArt_muscle_back")
             Text("Your training data, your account.")
-                .font(.title2.bold())
+                .font(.system(.title2, design: .rounded).weight(.bold))
+                .foregroundStyle(SettColor.bone)
                 .multilineTextAlignment(.center)
             Text("Nothing else. No feed, no ads.")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(SettColor.ash)
             Spacer()
             SignInWithAppleButton(.signIn) { request in
                 request.requestedScopes = []
@@ -107,10 +164,9 @@ struct OnboardingView: View {
             }
             .frame(height: 50)
             .clipShape(Capsule())
-            Button("Continue without account") {
+            ghostButton("CONTINUE WITHOUT ACCOUNT") {
                 advance(to: .units)
             }
-            .font(.subheadline.weight(.semibold))
         }
         .padding(24)
     }
@@ -121,19 +177,23 @@ struct OnboardingView: View {
         @Bindable var settings = services.settings
         return VStack(spacing: 20) {
             Spacer()
-            Image(systemName: "scalemass.fill")
-                .font(.system(size: 44))
-                .foregroundStyle(Aura.cyan)
+            EquipmentGlyph(equipment: .barbell, color: SettColor.heroCyan)
+                .frame(width: 74, height: 74)
+                .padding(20)
+                .background {
+                    Circle().fill(TimeChamber.void.opacity(0.6))
+                    Circle().strokeBorder(SettColor.heroCyan.opacity(0.4), lineWidth: 1.5)
+                }
+                .shadow(color: SettColor.heroCyan.opacity(0.35), radius: 10)
+                .accessibilityHidden(true)
             Text("How do you load the bar?")
-                .font(.title2.bold())
-            Picker("Weight unit", selection: $settings.unit) {
-                Text("lb").tag(WeightUnit.lb)
-                Text("kg").tag(WeightUnit.kg)
-            }
-            .pickerStyle(.segmented)
+                .font(.system(.title2, design: .rounded).weight(.bold))
+                .foregroundStyle(SettColor.bone)
+            ChamberSegments(selection: $settings.unit,
+                            options: [(WeightUnit.lb, "lb"), (WeightUnit.kg, "kg")])
             Text("Increment: \(services.settings.displayWeight(services.settings.incrementGrams)) per tap — change it anytime in Settings.")
                 .font(.footnote)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(SettColor.ash)
                 .multilineTextAlignment(.center)
             Spacer()
             continueButton("Continue") {
@@ -147,20 +207,19 @@ struct OnboardingView: View {
         }
     }
 
-    // MARK: Page 3b — training phase
+    // MARK: Page 4 — training phase
 
     private var phasePage: some View {
         VStack(spacing: 20) {
             Spacer()
-            Image(systemName: "target")
-                .font(.system(size: 44))
-                .foregroundStyle(Aura.cyan)
+            heroMedallion("ExArt_muscle_core")
             Text("What are you training for?")
-                .font(.title2.bold())
+                .font(.system(.title2, design: .rounded).weight(.bold))
+                .foregroundStyle(SettColor.bone)
                 .multilineTextAlignment(.center)
             Text("This sets how the Scanner scores you — you can switch anytime.")
                 .font(.footnote)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(SettColor.ash)
                 .multilineTextAlignment(.center)
             VStack(spacing: 10) {
                 ForEach(TrainingPhase.allCases) { phase in
@@ -210,22 +269,30 @@ struct OnboardingView: View {
             }
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(selected ? [.isSelected] : [])
     }
 
-    // MARK: Page 4 — Oura pitch
+    // MARK: Page 5 — Oura pitch
 
     private var ouraPage: some View {
         VStack(spacing: 20) {
             Spacer()
             Image(systemName: "bed.double.fill")
-                .font(.system(size: 44))
-                .foregroundStyle(Color(uiColor: .systemIndigo))
+                .font(.system(size: 40))
+                .foregroundStyle(TimeChamber.indigo)
+                .padding(24)
+                .background {
+                    Circle().fill(TimeChamber.void.opacity(0.6))
+                    Circle().strokeBorder(TimeChamber.indigo.opacity(0.4), lineWidth: 1.5)
+                }
+                .accessibilityHidden(true)
             Text("See how sleep moves your lifts")
-                .font(.title2.bold())
+                .font(.system(.title2, design: .rounded).weight(.bold))
+                .foregroundStyle(SettColor.bone)
                 .multilineTextAlignment(.center)
             Text("Skipping loses nothing — connect Oura anytime in Settings.")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(SettColor.ash)
                 .multilineTextAlignment(.center)
             Spacer()
             Button {
@@ -237,7 +304,7 @@ struct OnboardingView: View {
                     .background(SettColor.card, in: Capsule())
             }
             .disabled(true)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(SettColor.ash)
             continueButton("Skip for now") {
                 advance(to: .rival)
             }
@@ -245,21 +312,18 @@ struct OnboardingView: View {
         .padding(24)
     }
 
-    // MARK: Page 5 — meet your rival
+    // MARK: Page 6 — meet your rival
 
     private var rivalPage: some View {
         VStack(spacing: 24) {
             Spacer()
             rivalCard
             VStack(spacing: 8) {
-                Text("YOUR POWER LEVEL")
-                    .font(.caption2.weight(.semibold))
-                    .kerning(1.5)
-                    .foregroundStyle(.secondary)
+                Eyebrow("YOUR POWER LEVEL")
                 PowerNumeral(displayedPowerLevel, size: .xl)
                 Text("Earn it — every set raises it.")
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(SettColor.ash)
             }
             Spacer()
             continueButton("Begin training") {
@@ -269,28 +333,38 @@ struct OnboardingView: View {
         .padding(24)
     }
 
+    /// The flow's emotional beat — Vexeth wears the ONLY crimson in the app.
     private var rivalCard: some View {
         VStack(spacing: 12) {
-            Image(systemName: "bolt.circle")
-                .font(.system(size: 72))
-                .foregroundStyle(SettColor.villainCrimson)
-                .accessibilityHidden(true)
+            ZStack {
+                Circle()
+                    .fill(RadialGradient(colors: [SettColor.villainCrimson.opacity(0.35),
+                                                  SettColor.villainVoid],
+                                         center: .center, startRadius: 4, endRadius: 60))
+                    .frame(width: 96, height: 96)
+                Circle()
+                    .strokeBorder(SettColor.villainCrimson.opacity(0.8), lineWidth: 1.5)
+                    .frame(width: 96, height: 96)
+                SettSigil(size: 44, color: SettColor.villainCrimson)
+            }
+            .shadow(color: SettColor.villainCrimson.opacity(0.5), radius: 14)
+            .accessibilityHidden(true)
             Text("EMPEROR VEXETH")
-                .font(.title3.weight(.heavy))
+                .font(.system(.title3, design: .monospaced).weight(.heavy))
                 .kerning(2)
-                .foregroundStyle(.white)
+                .foregroundStyle(SettColor.bone)
             Text("the Crimson Star")
                 .font(.footnote)
-                .foregroundStyle(.white.opacity(0.6))
+                .foregroundStyle(SettColor.villainCrimson.opacity(0.8))
             Text("“Power level \(rivalPowerLevel) and climbing. You? Starting from zero. Every set closes the gap — catch me if your species can.”")
                 .font(.subheadline)
                 .italic()
                 .multilineTextAlignment(.center)
-                .foregroundStyle(.white.opacity(0.8))
+                .foregroundStyle(SettColor.ash)
         }
         .frame(maxWidth: .infinity)
-        .padding(24)
-        .background(Color(white: 0.05), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .padding(20)
+        .hudCard(tint: SettColor.villainCrimson)
     }
 
     private var rivalPowerLevel: Int {
@@ -305,15 +379,29 @@ struct OnboardingView: View {
             Haptics.medium()
             action()
         } label: {
-            Text(title)
-                .font(.headline)
-                .foregroundStyle(.white)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 16)
-                .background(Aura.cyan, in: Capsule())
+            Text(title.uppercased())
+                .font(.system(size: 13, weight: .bold, design: .monospaced))
+                .kerning(1.5)
+                .foregroundStyle(SettColor.etch)
+                .frame(maxWidth: .infinity, minHeight: 52)
+                .background(SettColor.heroCyan, in: Capsule())
         }
+        .buttonStyle(.plain)
         .disabled(!enabled)
         .opacity(enabled ? 1 : 0.4)
+    }
+
+    private func ghostButton(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                .kerning(1.5)
+                .foregroundStyle(SettColor.heroCyan)
+                .frame(maxWidth: .infinity, minHeight: 40)
+                .background { Capsule().strokeBorder(SettColor.heroCyan.opacity(0.4), lineWidth: 1) }
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
     }
 
     private func advance(to newPage: Page) {

@@ -487,27 +487,63 @@ struct HomeTabView: View {
             .accessibilityLabel("Rested surge armed. Your next workout earns 1.25 times XP.")
     }
 
+    /// Day zero's launch card wears the same chamber-art doorway as every other day —
+    /// the post-onboarding home continues the pitch instead of dropping to a stock card.
     private var firstRunCard: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "figure.strengthtraining.traditional")
-                .font(.system(size: 44))
-                .foregroundStyle(Aura.cyan)
-            Text("Your training arc starts here")
-                .font(.title3.bold())
-                .multilineTextAlignment(.center)
-            Button {
-                session.quickStart()
-            } label: {
-                Text("Start your first workout")
-                    .font(.headline)
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
-                    .background(Aura.cyan, in: Capsule())
+        Button {
+            session.quickStart()
+        } label: {
+            ZStack {
+                Image(ChamberBackground.resolve(services.settings.chamberBackground).assetName)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                LinearGradient(colors: [.black.opacity(0.84), .black.opacity(0.6), .black.opacity(0.28)],
+                               startPoint: .leading, endPoint: .trailing)
+                HStack(spacing: 14) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("FIRST DIRECTIVE")
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .kerning(2)
+                            .foregroundStyle(SettColor.heroCyan)
+                        Text("Enter the chamber")
+                            .font(.system(.title3, design: .rounded).weight(.bold))
+                            .foregroundStyle(.white)
+                            .shadow(color: .black.opacity(0.6), radius: 3)
+                        Text("YOUR TRAINING ARC STARTS HERE")
+                            .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                            .kerning(1)
+                            .foregroundStyle(.white.opacity(0.75))
+                    }
+                    Spacer(minLength: 8)
+                    ZStack {
+                        Circle()
+                            .fill(SettColor.heroCyan)
+                            .frame(width: 54, height: 54)
+                            .shadow(color: SettColor.heroCyan.opacity(0.5), radius: 7, y: 2)
+                        Image(systemName: "play.fill")
+                            .font(.system(size: 22, weight: .bold))
+                            .foregroundStyle(SettColor.etch)
+                            .offset(x: 2)
+                    }
+                    .accessibilityHidden(true)
+                }
+                .padding(.horizontal, 18)
+                .padding(.vertical, 16)
             }
+            .frame(height: 124)
+            .frame(maxWidth: .infinity)
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(SettColor.heroCyan.opacity(0.35), lineWidth: 1)
+                CornerTicksShape(length: 7, inset: 8)
+                    .stroke(SettColor.heroCyan.opacity(0.55), lineWidth: 1)
+            }
+            .shadow(color: .black.opacity(0.35), radius: 8, y: 4)
+            .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
-        .frame(maxWidth: .infinity)
-        .settCard()
+        .buttonStyle(.plain)
+        .accessibilityLabel("Start your first workout")
     }
 
     // MARK: Insight teaser

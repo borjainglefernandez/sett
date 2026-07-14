@@ -93,6 +93,8 @@ struct DebugSurfaceHost: View {
             }
         case "settings":
             SettingsView()
+        case "onboarding":
+            OnboardingView()
         case "bodyweight":
             Color.clear.sheet(isPresented: .constant(true)) {
                 BodyweightLogSheet(latest: nil)
