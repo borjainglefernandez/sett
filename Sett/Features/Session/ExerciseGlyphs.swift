@@ -1640,3 +1640,67 @@ struct IconLabSheet: View {
     }
 }
 #endif
+
+// MARK: - Equipment glyphs (custom neon-line implements — SF Symbols had no gym gear)
+
+/// Hand-drawn implement marks in the app's thin-neon line style. SF Symbols offers no
+/// barbell / cable stack / machine, so the old icons read as a power plug and a pair of
+/// gears. Drawn in normalized coords via Canvas — crisp at any size, tinted per context.
+struct EquipmentGlyph: View {
+    let equipment: Equipment
+    var color: Color = SettColor.heroCyan
+
+    var body: some View {
+        Canvas { ctx, size in
+            let s = min(size.width, size.height)
+            let line = max(1.4, s * 0.07)
+            var path = Path()
+            var fills = Path()
+            func P(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: x * s, y: y * s) }
+            func plate(_ x: CGFloat, _ w: CGFloat, _ h: CGFloat) {
+                fills.addRoundedRect(in: CGRect(x: (x - w / 2) * s, y: (0.5 - h / 2) * s,
+                                                width: w * s, height: h * s),
+                                     cornerSize: CGSize(width: s * 0.03, height: s * 0.03))
+            }
+            switch equipment {
+            case .barbell:
+                // Long bar + two plates per side.
+                path.move(to: P(0.02, 0.5)); path.addLine(to: P(0.98, 0.5))
+                plate(0.20, 0.07, 0.56); plate(0.30, 0.07, 0.42)
+                plate(0.80, 0.07, 0.56); plate(0.70, 0.07, 0.42)
+            case .dumbbell:
+                // Short handle + one thick block per side.
+                path.move(to: P(0.18, 0.5)); path.addLine(to: P(0.82, 0.5))
+                plate(0.26, 0.13, 0.52); plate(0.74, 0.13, 0.52)
+            case .cable:
+                // High pulley wheel, taut cable to a low handle.
+                path.addEllipse(in: CGRect(x: 0.62 * s, y: 0.06 * s, width: 0.24 * s, height: 0.24 * s))
+                path.move(to: P(0.70, 0.28)); path.addLine(to: P(0.32, 0.78))
+                fills.addRoundedRect(in: CGRect(x: 0.14 * s, y: 0.74 * s, width: 0.28 * s, height: 0.09 * s),
+                                     cornerSize: CGSize(width: s * 0.045, height: s * 0.045))
+            case .machine:
+                // Weight-stack: frame + three slabs, pin through the middle one.
+                path.addRoundedRect(in: CGRect(x: 0.24 * s, y: 0.10 * s, width: 0.52 * s, height: 0.80 * s),
+                                    cornerSize: CGSize(width: s * 0.06, height: s * 0.06))
+                for (i, y) in [0.26, 0.46, 0.66].enumerated() {
+                    fills.addRoundedRect(in: CGRect(x: 0.32 * s, y: y * s, width: 0.36 * s, height: 0.12 * s),
+                                         cornerSize: CGSize(width: s * 0.02, height: s * 0.02))
+                    if i == 1 {
+                        path.move(to: P(0.10, y + 0.06)); path.addLine(to: P(0.32, y + 0.06))
+                    }
+                }
+            case .bodyweight:
+                // A bare figure — head + wide-stance body, no gear at all.
+                path.addEllipse(in: CGRect(x: 0.41 * s, y: 0.06 * s, width: 0.18 * s, height: 0.18 * s))
+                path.move(to: P(0.5, 0.24)); path.addLine(to: P(0.5, 0.58))
+                path.move(to: P(0.18, 0.40)); path.addLine(to: P(0.82, 0.40))     // arms out
+                path.move(to: P(0.5, 0.58)); path.addLine(to: P(0.30, 0.92))
+                path.move(to: P(0.5, 0.58)); path.addLine(to: P(0.70, 0.92))
+            }
+            ctx.stroke(path, with: .color(color), style: StrokeStyle(lineWidth: line, lineCap: .round))
+            ctx.fill(fills, with: .color(color))
+        }
+        .aspectRatio(1, contentMode: .fit)
+        .accessibilityHidden(true)
+    }
+}

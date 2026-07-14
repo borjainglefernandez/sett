@@ -57,7 +57,12 @@ struct NetSummaryCard: View {
                     .kerning(1.5)
                     .foregroundStyle(SettColor.heroCyan)
             } else {
-                HStack(spacing: 1) {
+                HStack(spacing: 3) {
+                    if value != 0 {
+                        Image(systemName: value > 0 ? "arrow.up.right" : "arrow.down.right")
+                            .font(.system(size: 13, weight: .heavy))
+                            .foregroundStyle(color(for: value))
+                    }
                     if value > 0 {
                         Text("+")
                             .font(PowerFont.m())

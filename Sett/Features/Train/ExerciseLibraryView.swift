@@ -255,42 +255,28 @@ struct CreateExerciseSheet: View {
     @State private var name = ""
     @State private var muscle: Muscle = .chest
     @State private var equipment: Equipment = .dumbbell
+    @FocusState private var nameFocused: Bool
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section {
-                    TextField("Exercise name", text: $name)
-                    Picker("Muscle", selection: $muscle) {
-                        ForEach(Muscle.allCases, id: \.self) { muscle in
-                            Text(muscle.rawValue.capitalized).tag(muscle)
-                        }
-                    }
-                    // Custom lifts wear the muscle group's warrior emblem — show the
-                    // badge this exercise will carry, live with the picker.
-                    HStack(spacing: 12) {
-                        ExerciseGlyphView(muscle: muscle)
-                            .frame(width: 44, height: 44)
-                        Text("Battle emblem")
-                            .foregroundStyle(.secondary)
-                            .font(.footnote)
-                        Spacer()
-                    }
-                    Picker("Equipment", selection: $equipment) {
-                        ForEach(Equipment.allCases, id: \.self) { equipment in
-                            Label(equipment.rawValue.capitalized, systemImage: equipment.symbolName)
-                                .tag(equipment)
-                        }
-                    }
-                } footer: {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    forgePreview
+                    nameField
+                    muscleGrid
+                    equipmentRow
                     if isDuplicate {
                         Label("This exercise is already in your library.",
                               systemImage: "exclamationmark.triangle.fill")
+                            .font(.footnote)
                             .foregroundStyle(SettColor.negative)
                     }
                 }
+                .padding(16)
+                .padding(.bottom, 24)
             }
-            .navigationTitle("New Exercise")
+            .dungeonBackground()
+            .navigationTitle("Forge Exercise")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -304,7 +290,138 @@ struct CreateExerciseSheet: View {
             }
             .onAppear { name = initialName }
         }
-        .presentationDetents([.medium, .large])
+        .presentationDetents([.large])
+    }
+
+    // MARK: Live preview — the badge this lift will wear, updating with every choice.
+    // ExerciseIcon resolves name-first, so typing a known movement ("Bench Press")
+    // upgrades the emblem from the muscle default to that movement's warrior art.
+
+    private var forgePreview: some View {
+        HStack(spacing: 14) {
+            ExerciseIcon(name: trimmedName, equipment: equipment, muscle: muscle,
+                         size: 56, color: SettColor.heroCyan)
+                .id("\(trimmedName)|\(muscle.rawValue)")   // re-resolve art on change
+            VStack(alignment: .leading, spacing: 3) {
+                Text(trimmedName.isEmpty ? "Name your lift" : trimmedName)
+                    .font(.headline)
+                    .foregroundStyle(trimmedName.isEmpty ? SettColor.ash : SettColor.bone)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                Text("\(muscle.rawValue.uppercased()) · \(equipment.rawValue.uppercased())")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .kerning(1.2)
+                    .foregroundStyle(SettColor.ash)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(14)
+        .background {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(TimeChamber.void.opacity(0.6))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(SettColor.heroCyan.opacity(0.25), lineWidth: 1)
+                }
+        }
+    }
+
+    private var nameField: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            sectionLabel("NAME")
+            TextField("e.g. Landmine Press", text: $name)
+                .focused($nameFocused)
+                .textInputAutocapitalization(.words)
+                .font(.body)
+                .padding(.horizontal, 12)
+                .frame(height: 44)
+                .background(SettColor.card, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+    }
+
+    // MARK: Muscle grid — every group wears its warrior emblem, tap to choose.
+
+    private var muscleGrid: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            sectionLabel("MUSCLE")
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4),
+                      spacing: 8) {
+                ForEach(Muscle.allCases, id: \.self) { candidate in
+                    choiceChip(isSelected: muscle == candidate) {
+                        muscle = candidate
+                    } content: {
+                        VStack(spacing: 5) {
+                            ExerciseIcon(name: "", equipment: equipment, muscle: candidate,
+                                         size: 40, color: SettColor.heroCyan)
+                            Text(candidate.rawValue.capitalized)
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(muscle == candidate ? SettColor.bone : SettColor.ash)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
+                        }
+                    }
+                    .accessibilityLabel(candidate.rawValue.capitalized)
+                    .accessibilityAddTraits(muscle == candidate ? [.isSelected] : [])
+                }
+            }
+        }
+    }
+
+    // MARK: Equipment row — custom implement glyphs (SF Symbols has no gym gear).
+
+    private var equipmentRow: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            sectionLabel("EQUIPMENT")
+            HStack(spacing: 8) {
+                ForEach(Equipment.allCases, id: \.self) { candidate in
+                    choiceChip(isSelected: equipment == candidate) {
+                        equipment = candidate
+                    } content: {
+                        VStack(spacing: 6) {
+                            EquipmentGlyph(equipment: candidate,
+                                           color: equipment == candidate ? SettColor.heroCyan : SettColor.ash)
+                                .frame(width: 26, height: 26)
+                            Text(candidate.rawValue.capitalized)
+                                .font(.system(size: 9, weight: .semibold))
+                                .foregroundStyle(equipment == candidate ? SettColor.bone : SettColor.ash)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.7)
+                        }
+                    }
+                    .accessibilityLabel(candidate.rawValue.capitalized)
+                    .accessibilityAddTraits(equipment == candidate ? [.isSelected] : [])
+                }
+            }
+        }
+    }
+
+    private func sectionLabel(_ title: String) -> some View {
+        Text(title)
+            .font(.system(size: 11, weight: .bold, design: .monospaced))
+            .kerning(1.5)
+            .foregroundStyle(SettColor.ash)
+    }
+
+    private func choiceChip<Content: View>(isSelected: Bool, action: @escaping () -> Void,
+                                           @ViewBuilder content: () -> Content) -> some View {
+        Button {
+            action()
+            Haptics.selection()
+        } label: {
+            content()
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+                .background {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(isSelected ? SettColor.heroCyan.opacity(0.12) : SettColor.card)
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(isSelected ? SettColor.heroCyan.opacity(0.8)
+                                                 : SettColor.cardBorder.opacity(0.6),
+                                      lineWidth: isSelected ? 1.5 : 1)
+                }
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     private var trimmedName: String {

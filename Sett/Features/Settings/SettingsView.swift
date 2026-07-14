@@ -197,10 +197,6 @@ struct SettingsView: View {
         }
     }
 
-    private var inviteMessage: String {
-        "Join me on sett — my invite code is CHAMBER-XXXXXX"
-    }
-
     private var versionText: String {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"

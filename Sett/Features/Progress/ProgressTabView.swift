@@ -56,12 +56,19 @@ struct ProgressTabView: View {
                         NetSummaryCard(samples: setSamples, period: period,
                                        unit: unit, calendar: Self.isoCalendar,
                                        phase: services.settings.phase)
+                        PRFeedCard(samples: setSamples, exerciseNames: exerciseNames, unit: unit)
                         VolumeChartCard(samples: setSamples, period: period,
                                         unit: unit, calendar: Self.isoCalendar)
-                        BodyweightCard(entries: bodyweightEntries, unit: unit)
+                        MuscleBalanceCard(samples: setSamples, period: period,
+                                          calendar: Self.isoCalendar)
                         E1RMTrendsCard(samples: setSamples, exerciseNames: exerciseNames, unit: unit)
                         SleepImpactCard(setSamples: setSamples, workoutSamples: workoutSamples,
                                         sleepDays: sleepDays, unit: unit, calendar: Self.isoCalendar)
+                    }
+                    // Bodyweight is its own track — a user with one workout but a month
+                    // of scale entries still deserves the chart (it was gated before).
+                    if !bodyweightEntries.isEmpty {
+                        BodyweightCard(entries: bodyweightEntries, unit: unit)
                     }
                     GoalsSection(goals: goals, setSamples: setSamples,
                                  workoutSamples: workoutSamples,
@@ -79,17 +86,35 @@ struct ProgressTabView: View {
         }
     }
 
-    // MARK: Period control (single source of truth for every card)
+    // MARK: Period control (single source of truth for every period-driven card)
 
+    /// Themed capsule segments — the stock white segmented control was the one
+    /// off-world element on the page.
     private var periodPicker: some View {
-        Picker("Period", selection: $period) {
-            Text("W").tag(Period.week)
-            Text("M").tag(Period.month)
-            Text("Y").tag(Period.year)
-        }
-        .pickerStyle(.segmented)
-        .onChange(of: period) {
-            Haptics.selection()
+        HStack(spacing: 6) {
+            ForEach(Period.allCases) { candidate in
+                Button {
+                    period = candidate
+                    Haptics.selection()
+                } label: {
+                    Text(candidate.rawValue.uppercased())
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        .kerning(1.5)
+                        .foregroundStyle(period == candidate ? SettColor.etch : SettColor.ash)
+                        .frame(maxWidth: .infinity, minHeight: 34)
+                        .background {
+                            if period == candidate {
+                                Capsule().fill(SettColor.heroCyan)
+                            } else {
+                                Capsule().strokeBorder(SettColor.cardBorder, lineWidth: 1)
+                            }
+                        }
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(candidate.rawValue.capitalized)
+                .accessibilityAddTraits(period == candidate ? [.isSelected] : [])
+            }
         }
     }
 

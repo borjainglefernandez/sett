@@ -183,6 +183,15 @@ public final class WorkoutSessionStore {
         Haptics.selection()
     }
 
+    /// Stamp a workout's location — active session and finished history alike. The
+    /// gym name is snapshotted so deleting the gym later can't blank old workouts.
+    public func setGym(_ gym: Gym?, for workout: Workout) {
+        workout.gymID = gym?.id
+        workout.gymNameSnapshot = gym?.name
+        touchAndSave(workout)
+        Haptics.selection()
+    }
+
     /// Soft-delete a logged set (a fat-fingered 500 lb entry poisoned ghost autofill
     /// and the power level forever with no way to remove it).
     public func deleteSet(_ set: SetEntry) {

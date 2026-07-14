@@ -12,6 +12,7 @@ struct SessionOverviewSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var isShowingExercisePicker = false
+    @State private var isPickingGym = false
     /// Reorder mode (Mode B): swaps the card ScrollView for a native reorderable List
     /// with a scope toggle — the one place `List`/`.onMove` shines (dedicated, un-nested).
     @State private var isReordering = false
@@ -51,6 +52,13 @@ struct SessionOverviewSheet: View {
             .toolbar { toolbarContent }
             .sheet(isPresented: $isShowingExercisePicker) {
                 ExercisePickerSheet()
+            }
+            .sheet(isPresented: $isPickingGym) {
+                if let workout = session.activeWorkout {
+                    GymPickerSheet(currentID: workout.gymID) { gym in
+                        session.setGym(gym, for: workout)
+                    }
+                }
             }
             .onAppear {
                 #if DEBUG
@@ -256,6 +264,7 @@ struct SessionOverviewSheet: View {
     private func list(_ workout: Workout) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
+                locationRow(workout)
                 ForEach(workout.orderedExercises) { workoutExercise in
                     ExerciseCard(workoutExercise: workoutExercise)
                         // Long-press to lift a card, drag to reorder exercises live.
@@ -295,5 +304,38 @@ struct SessionOverviewSheet: View {
         }
         .combatTextEmitter(combatText)
         .environment(combatText)
+    }
+
+    /// Where this session is being fought — mirrors the finished-workout editor's row,
+    /// so location is settable DURING the workout, not only after.
+    private func locationRow(_ workout: Workout) -> some View {
+        Button { isPickingGym = true } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "mappin.and.ellipse")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(SettColor.heroCyan)
+                Text(workout.gymNameSnapshot?.uppercased() ?? "ADD LOCATION")
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .kerning(1.2)
+                    .foregroundStyle(workout.gymNameSnapshot == nil ? SettColor.ash : SettColor.bone)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(SettColor.iron)
+            }
+            .padding(.horizontal, 12)
+            .frame(height: 38)
+            .background {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(TimeChamber.void.opacity(0.5))
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(SettColor.cardBorder.opacity(0.5), lineWidth: 1)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Location: \(workout.gymNameSnapshot ?? "not set")")
+        .accessibilityHint("Changes this workout's gym")
     }
 }

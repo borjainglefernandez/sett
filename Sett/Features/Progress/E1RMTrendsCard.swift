@@ -49,7 +49,7 @@ struct E1RMTrendsCard: View {
                 HStack(spacing: 12) {
                     ForEach(trends) { trend in
                         NavigationLink {
-                            ChartDetailView(exerciseID: trend.id, name: trend.name)
+                            ChartDetailView(exerciseID: trend.id, name: trend.name, samples: samples)
                         } label: {
                             sparklineTile(trend)
                         }
@@ -67,6 +67,7 @@ struct E1RMTrendsCard: View {
             Text(trend.name)
                 .font(.subheadline.weight(.semibold))
                 .lineLimit(1)
+                .minimumScaleFactor(0.75)   // "Bulgarian Split Squat" fits the 156pt tile
             Chart(trend.points) { point in
                 LineMark(x: .value("Date", point.date),
                          y: .value("e1RM", point.value))

@@ -15,6 +15,14 @@ struct NetGlanceStrip: View {
     @Environment(AppServices.self) private var services
 
     @State private var net = NetSummary(reps: 0, volumeGrams: 0, isNew: false)
+    @State private var week = WeekTotals()
+
+    /// This ISO week's absolute totals — the "how much" beside the net's "vs last week".
+    struct WeekTotals {
+        var workouts = 0
+        var sets = 0
+        var tonnageGrams = 0
+    }
 
     /// Buckets use ISO weeks (Monday start), matching the engines.
     private static let isoCalendar: Calendar = {
@@ -28,42 +36,93 @@ struct NetGlanceStrip: View {
         Int((Double(net.volumeGrams) / services.settings.unit.gramsPerUnit).rounded())
     }
 
+    private var tonnageDisplay: String {
+        let value = Double(week.tonnageGrams) / services.settings.unit.gramsPerUnit
+        return value >= 10_000 ? "\((value / 1000).formatted(.number.precision(.fractionLength(1))))k"
+                               : Int(value.rounded()).formatted()
+    }
+
     var body: some View {
-        HStack(spacing: 12) {
-            Text("NET THIS WEEK")
-                .font(.system(size: 11, weight: .bold, design: .monospaced))
-                .kerning(1.5)
-                .foregroundStyle(SettColor.ash)
-            Spacer(minLength: 12)
-            if net.isNew {
-                Text("NEW TERRITORY")
-                    .font(.system(size: 12, weight: .bold, design: .monospaced))
+        VStack(spacing: 0) {
+            // Absolute totals — three quiet counters for the week so far.
+            HStack(spacing: 0) {
+                counter(value: "\(week.workouts)", caption: "SESSIONS")
+                counterDivider
+                counter(value: "\(week.sets)", caption: "SETS")
+                counterDivider
+                counter(value: tonnageDisplay, caption: "TONNAGE \(services.settings.unit.symbol.uppercased())")
+            }
+            .padding(.vertical, 10)
+
+            Rectangle()
+                .fill(SettColor.saiyanGold.opacity(0.15))
+                .frame(height: 1)
+                .padding(.horizontal, 12)
+
+            // Net vs last week — the original strip, now with directional arrows.
+            HStack(spacing: 12) {
+                Text("NET VS LAST WEEK")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
                     .kerning(1.5)
-                    .foregroundStyle(SettColor.heroCyan)
-            } else {
-                HStack(spacing: 12) {
-                    stat(net.reps, suffix: "REPS")
-                    stat(netVolumeDisplay, suffix: services.settings.unit.symbol.uppercased())
+                    .foregroundStyle(SettColor.ash)
+                Spacer(minLength: 12)
+                if net.isNew {
+                    Text("NEW TERRITORY")
+                        .font(.system(size: 12, weight: .bold, design: .monospaced))
+                        .kerning(1.5)
+                        .foregroundStyle(SettColor.heroCyan)
+                } else {
+                    HStack(spacing: 12) {
+                        stat(net.reps, suffix: "REPS")
+                        stat(netVolumeDisplay, suffix: services.settings.unit.symbol.uppercased())
+                    }
                 }
             }
+            .lineLimit(1)
+            .padding(.horizontal, 14)
+            .frame(minHeight: 38)
         }
-        .lineLimit(1)
-        .padding(.horizontal, 14)
-        .frame(maxWidth: .infinity, minHeight: 44)
+        .frame(maxWidth: .infinity)
         .background(slab)
         .task { reload() }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilitySummary)
     }
 
-    // MARK: One mono stat — signed, grouped, numeric-text rolls
+    // MARK: Counters (absolute) & stats (net)
+
+    private func counter(value: String, caption: String) -> some View {
+        VStack(spacing: 2) {
+            Text(value)
+                .font(.system(size: 17, weight: .heavy, design: .monospaced))
+                .monospacedDigit()
+                .foregroundStyle(SettColor.bone)
+            Text(caption)
+                .font(.system(size: 8, weight: .bold, design: .monospaced))
+                .kerning(1)
+                .foregroundStyle(SettColor.ash)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private var counterDivider: some View {
+        Rectangle()
+            .fill(SettColor.cardBorder.opacity(0.6))
+            .frame(width: 1, height: 26)
+    }
 
     private func stat(_ value: Int, suffix: String) -> some View {
-        Text("\(signed(value)) \(suffix)")
-            .font(.system(size: 12, weight: .bold, design: .monospaced))
-            .monospacedDigit()
-            .foregroundStyle(color(for: value))
-            .contentTransition(.numericText(value: Double(value)))
+        HStack(spacing: 3) {
+            if value != 0 {
+                Image(systemName: value > 0 ? "arrow.up.right" : "arrow.down.right")
+                    .font(.system(size: 9, weight: .heavy))
+            }
+            Text("\(signed(value)) \(suffix)")
+        }
+        .font(.system(size: 12, weight: .bold, design: .monospaced))
+        .monospacedDigit()
+        .foregroundStyle(color(for: value))
+        .contentTransition(.numericText(value: Double(value)))
     }
 
     /// "+1,850" / "-42" / "0" — grouped, explicit plus on positives only.
@@ -109,7 +168,19 @@ struct NetGlanceStrip: View {
             samples: samples, exerciseID: nil, period: .week,
             containing: .now, calendar: Self.isoCalendar
         )
-        withAnimation(.snappy) { net = summary }
+        // Absolute totals for the current ISO week: working sets only. Casual sessions
+        // DO count here (they're real training) — only the net comparison excludes them.
+        var totals = WeekTotals()
+        if let thisWeek = Self.isoCalendar.dateInterval(of: .weekOfYear, for: .now) {
+            let weekSamples = samples.filter { thisWeek.contains($0.completedAt) && !$0.isWarmup }
+            totals.workouts = Set(weekSamples.map(\.workoutID)).count
+            totals.sets = weekSamples.count
+            totals.tonnageGrams = weekSamples.reduce(0) { $0 + $1.weightGrams * $1.reps }
+        }
+        withAnimation(.snappy) {
+            net = summary
+            week = totals
+        }
     }
 
     private var accessibilitySummary: String {

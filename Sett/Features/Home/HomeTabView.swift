@@ -91,24 +91,38 @@ struct HomeTabView: View {
         }
     }
 
-    // MARK: Header (greeting + streak chip)
+    // MARK: Header (date eyebrow + chips, then the greeting on its own row)
 
+    /// The greeting used to share a baseline HStack with two rigid chips, so it was the
+    /// element SwiftUI squeezed — wrapping "Good afternoon" onto two lines. Chips now live
+    /// on the mono date eyebrow, and the greeting gets the full width plus scale-to-fit.
     private var header: some View {
-        HStack(alignment: .firstTextBaseline) {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Text(Date.now.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())
+                        .uppercased())
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .kerning(1.5)
+                    .foregroundStyle(SettColor.ash)
+                    .lineLimit(1)
+                Spacer()
+                phaseBadge
+                if streakWeeks > 0 {
+                    Label("\(streakWeeks) wk", systemImage: "flame.fill")
+                        .font(.footnote.weight(.semibold))
+                        .monospacedDigit()
+                        .foregroundStyle(SettColor.heroCyan) // gold audit: gold is the PL's, streak is ki
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(SettColor.card, in: Capsule())
+                        .accessibilityLabel("\(streakWeeks) week streak")
+                }
+            }
             Text(greeting)
                 .font(.largeTitle.bold())
-            Spacer()
-            phaseBadge
-            if streakWeeks > 0 {
-                Label("\(streakWeeks) wk", systemImage: "flame.fill")
-                    .font(.subheadline.weight(.semibold))
-                    .monospacedDigit()
-                    .foregroundStyle(SettColor.heroCyan) // gold audit: gold is the PL's, streak is ki
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(SettColor.card, in: Capsule())
-                    .accessibilityLabel("\(streakWeeks) week streak")
-            }
+                .foregroundStyle(SettColor.bone)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
         }
         .padding(.top, 8)
     }

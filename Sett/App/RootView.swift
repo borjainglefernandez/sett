@@ -47,14 +47,53 @@ struct RootView: View {
             #endif
         }
         #if DEBUG
-        .overlay {
-            if let flag = ProcessInfo.processInfo.environment["SETT_DEBUG_GLYPHS"], !flag.isEmpty {
-                ExerciseGlyphContactSheet()
-            }
-            if let flag = ProcessInfo.processInfo.environment["SETT_DEBUG_ICONLAB"], !flag.isEmpty {
-                IconLabSheet()
-            }
-        }
+        .overlay { debugOverlays }
         #endif
     }
+
+    #if DEBUG
+    private static let debugGlyphs = ProcessInfo.processInfo.environment["SETT_DEBUG_GLYPHS"] ?? ""
+    private static let debugIconLab = ProcessInfo.processInfo.environment["SETT_DEBUG_ICONLAB"] ?? ""
+    private static let debugSurface = ProcessInfo.processInfo.environment["SETT_DEBUG_SURFACE"] ?? ""
+
+    @ViewBuilder
+    private var debugOverlays: some View {
+        if !Self.debugGlyphs.isEmpty { ExerciseGlyphContactSheet() }
+        if !Self.debugIconLab.isEmpty { IconLabSheet() }
+        if !Self.debugSurface.isEmpty { DebugSurfaceHost(surface: Self.debugSurface) }
+    }
+    #endif
 }
+
+#if DEBUG
+/// Screenshot harness for sheet/push surfaces the simulator can't be clicked into
+/// (SETT_DEBUG_SURFACE=forge|history|detail). Renders the surface full-screen over
+/// the tabs — same env-hook pattern as the glyph sheets.
+struct DebugSurfaceHost: View {
+    let surface: String
+
+    @Query private var finished: [Workout]
+
+    init(surface: String) {
+        self.surface = surface
+        let finishedFilter = #Predicate<Workout> { $0.endedAt != nil && $0.deletedAt == nil }
+        _finished = Query(filter: finishedFilter,
+                          sort: [SortDescriptor(\Workout.startedAt, order: .reverse)])
+    }
+
+    var body: some View {
+        switch surface {
+        case "forge":
+            CreateExerciseSheet(initialName: "")
+        case "history":
+            NavigationStack { HistoryListView() }
+        case "detail":
+            if let workout = finished.first {
+                NavigationStack { WorkoutDetailView(workout: workout) }
+            }
+        default:
+            EmptyView()
+        }
+    }
+}
+#endif

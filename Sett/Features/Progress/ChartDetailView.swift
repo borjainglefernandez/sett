@@ -10,6 +10,12 @@ struct ChartDetailView: View {
     let exerciseID: UUID
     let name: String
 
+    init(exerciseID: UUID, name: String, samples: [SetSample] = []) {
+        self.exerciseID = exerciseID
+        self.name = name
+        _samples = State(initialValue: samples)
+    }
+
     @Environment(AppServices.self) private var services
     @Environment(\.modelContext) private var modelContext
 
@@ -48,7 +54,11 @@ struct ChartDetailView: View {
         .navigationTitle(name)
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
-            samples = SampleExtractor.setSamples(context: modelContext)
+            // The trends card hands its already-extracted samples over; extract only
+            // when deep-linked here without them (full-store re-scan is the fallback).
+            if samples.isEmpty {
+                samples = SampleExtractor.setSamples(context: modelContext)
+            }
         }
         .onChange(of: scrubbed(in: points)?.id) { _, newValue in
             if newValue != nil { Haptics.selection() }

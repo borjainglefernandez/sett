@@ -167,9 +167,19 @@ struct HistoryListView: View {
                         .font(.caption)
                         .monospacedDigit()
                         .foregroundStyle(.secondary)
-                    if !samples.isEmpty {
-                        netChip(ProgressEngine.workoutNet(samples: samples, workoutID: workout.id),
-                                phase: workout.phase)
+                    if workout.isCasual {
+                        // Casual sessions are off the record — the engine returns (0,0)
+                        // for them, so "+0 lb" would be a lie. Say what it is instead.
+                        Text("CASUAL")
+                            .font(.caption2.weight(.bold))
+                            .kerning(0.5)
+                            .foregroundStyle(SettColor.ash)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(SettColor.ash.opacity(0.12), in: Capsule())
+                    } else if !samples.isEmpty {
+                        netChips(ProgressEngine.workoutNet(samples: samples, workoutID: workout.id),
+                                 phase: workout.phase)
                     }
                     if let count = badgeCounts[workout.id], count > 0 {
                         Label("\(count)", systemImage: "medal.fill")
@@ -190,28 +200,38 @@ struct HistoryListView: View {
         }
     }
 
-    /// Net vs previous same-exercise sessions: green up, red down, cyan NEW. On a cut
-    /// workout a lighter session is expected — neutral ash, never red (the tenet).
-    private func netChip(_ net: NetSummary, phase: TrainingPhase) -> some View {
-        Group {
-            if net.isNew {
-                Text("NEW")
-                    .foregroundStyle(SettColor.heroCyan)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(SettColor.heroCyan.opacity(0.15), in: Capsule())
-            } else {
-                let negativeColor = phase == .cutting ? SettColor.ash : SettColor.negative
-                let color = net.volumeGrams >= 0 ? SettColor.positive : negativeColor
-                Text("\(net.volumeGrams >= 0 ? "+" : "")\(netDisplayValue(net.volumeGrams)) \(services.settings.unit.symbol)")
-                    .foregroundStyle(color)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(color.opacity(0.12), in: Capsule())
+    /// Net vs previous same-exercise sessions — BOTH deltas (reps + weight), matching
+    /// the home strip's pair. Green up, red down, cyan NEW. On a cut workout a lighter
+    /// session is expected — neutral ash, never red (the tenet).
+    @ViewBuilder
+    private func netChips(_ net: NetSummary, phase: TrainingPhase) -> some View {
+        if net.isNew {
+            Text("NEW")
+                .foregroundStyle(SettColor.heroCyan)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(SettColor.heroCyan.opacity(0.15), in: Capsule())
+                .font(.caption2.weight(.bold))
+                .monospacedDigit()
+        } else {
+            HStack(spacing: 4) {
+                netChip(value: net.reps, suffix: "reps", phase: phase)
+                netChip(value: netDisplayValue(net.volumeGrams), suffix: services.settings.unit.symbol,
+                        phase: phase)
             }
         }
-        .font(.caption2.weight(.bold))
-        .monospacedDigit()
+    }
+
+    private func netChip(value: Int, suffix: String, phase: TrainingPhase) -> some View {
+        let negativeColor = phase == .cutting ? SettColor.ash : SettColor.negative
+        let color = value >= 0 ? SettColor.positive : negativeColor
+        return Text("\(value >= 0 ? "+" : "")\(value) \(suffix)")
+            .foregroundStyle(color)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(color.opacity(0.12), in: Capsule())
+            .font(.caption2.weight(.bold))
+            .monospacedDigit()
     }
 
     private func netDisplayValue(_ grams: Int) -> Int {

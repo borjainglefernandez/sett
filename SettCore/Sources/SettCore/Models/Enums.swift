@@ -21,12 +21,15 @@ public enum Muscle: String, Codable, Sendable, CaseIterable {
 public enum Equipment: String, Codable, Sendable, CaseIterable {
     case dumbbell, barbell, cable, machine, bodyweight
 
+    /// SF-symbol fallback for contexts that can't render custom views (Menus, Labels).
+    /// The app's own surfaces draw `EquipmentGlyph` instead — SF has no real gym gear
+    /// (the old picks read as a power plug and a pair of gears).
     public var symbolName: String {
         switch self {
         case .dumbbell: "dumbbell.fill"
         case .barbell: "figure.strengthtraining.traditional"
-        case .cable: "cable.connector"
-        case .machine: "gearshape.2.fill"
+        case .cable: "point.topleft.down.curvedto.point.bottomright.up.fill"
+        case .machine: "square.stack.3d.up.fill"
         case .bodyweight: "figure.core.training"
         }
     }
