@@ -24,16 +24,10 @@ public final class ProgressionStore {
         checkRivalRebirth()
     }
 
-    public func tier(for character: CharacterKey) -> TransformationTier {
-        snapshot?.tiers[character] ?? .base
-    }
-
-    public func level(for character: CharacterKey) -> Int {
-        snapshot?.characterLevels[character] ?? 1
-    }
-
-    public func xp(for character: CharacterKey) -> Int {
-        snapshot?.characterXP[character] ?? 0
+    /// The USER's transformation frame (cast collapse: per-character tiers are gone;
+    /// the avatar wears the user's own form, a pure function of PL).
+    public var userFormTier: TransformationTier {
+        TransformationTier(rawValue: min(UserForm.form(forPL: snapshotPowerLevel).index, 4)) ?? .base
     }
 
     // MARK: - Rival Rebirth (the endless race)
@@ -171,10 +165,3 @@ public final class ProgressionStore {
     }
 }
 
-
-/// Progression-redesign switches (audit: "one spine number"). Legacy per-character
-/// XP/levels stay computed by the engine until Phase 3 deletes them; this flag only
-/// controls whether any UI still renders them.
-enum ProgressionUIFlags {
-    static let legacyXPVisible = false
-}

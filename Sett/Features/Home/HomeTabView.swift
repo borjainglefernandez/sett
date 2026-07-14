@@ -547,7 +547,7 @@ struct HomeTabView: View {
     /// The rested-bonus mechanic was computed but never shown. Surface it: a full
     /// rest day arms a 1.25× XP surge on the next workout. Cyan (ki), not gold.
     private var restedChip: some View {
-        Label("SURGE ARMED · 1.25× XP", systemImage: "bolt.fill")
+        Label("SURGE ARMED · REST BANKED", systemImage: "bolt.fill")
             .font(.system(size: 11, weight: .bold, design: .monospaced))
             .kerning(1)
             .foregroundStyle(SettColor.heroCyan)
@@ -557,7 +557,7 @@ struct HomeTabView: View {
                 Capsule().fill(SettColor.heroCyan.opacity(0.12))
                 Capsule().strokeBorder(SettColor.heroCyan.opacity(0.4), lineWidth: 1)
             }
-            .accessibilityLabel("Rested surge armed. Your next workout earns 1.25 times XP.")
+            .accessibilityLabel("Rested surge armed. You come back sharper after a real rest day.")
     }
 
     /// Day zero's launch card wears the same chamber-art doorway as every other day —

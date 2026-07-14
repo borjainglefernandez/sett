@@ -98,13 +98,8 @@ struct PowerLevelTests {
         // XP: day 1 = 50 + 4×2 + 25 = 83; day 2 = 50 + 6×2 + 25 = 87, and Wednesday
         // follows a true rest day (Tuesday) inside an active period, so the rested
         // bonus applies: round(87 × 1.25) = 109 -> vego 192.
-        #expect(snapshot.characterXP[.vego] == 192)
         // Nyra: ignition badge (bronze 100), no completed streak weeks yet.
-        #expect(snapshot.characterXP[.nyra] == 100)
         // Barok tonnage drip: 4,500 lb -> 4 XP, 6,429 lb -> 6 XP.
-        #expect(snapshot.characterXP[.barok] == 10)
-        #expect(snapshot.characterLevels[.vego] == 1)
-        #expect(snapshot.tiers[.vego] == .base)
 
         // Vexeth: 3 days since first workout -> week 0 -> startPL; user below him.
         #expect(snapshot.rivalPL == 3000)
@@ -158,7 +153,7 @@ struct JunkDefenseTests {
         #expect(snapshot.weeklyVolumeLb == 1653)
     }
 
-    @Test("Second workout of the same day yields no effective volume and decayed XP")
+    @Test("Second workout of the same day yields no effective volume")
     func secondSameDayWorkout() throws {
         let config = try loadConfig()
         let w1 = workout(UUID(), start: date(2025, 6, 2, 10))
@@ -173,7 +168,6 @@ struct JunkDefenseTests {
         // One distinct qualifying day -> no streak yet.
         #expect(snapshot.streakWeeks == 0)
         // XP: w1 = 50 + 6 + 25 = 81; w2 nets zero vs w1 -> (50 + 6) × 0.25 = 14.
-        #expect(snapshot.characterXP[.vego] == 95)
     }
 }
 
@@ -294,55 +288,13 @@ struct DeterminismTests {
         #expect(first.weeklyVolumeLb == second.weeklyVolumeLb)
         #expect(first.streakWeeks == second.streakWeeks)
         #expect(first.badges == second.badges)
-        #expect(first.characterXP == second.characterXP)
-        #expect(first.characterLevels == second.characterLevels)
-        #expect(first.tiers == second.tiers)
+        #expect(first.badgeCounts == second.badgeCounts)
         #expect(first.rivalPL == second.rivalPL)
         #expect(first.rivalForm == second.rivalForm)
     }
 }
 
 // MARK: - Levels & tier gates
-
-@Suite("ProgressionEngine — levels and tiers")
-struct LevelTierTests {
-
-    @Test("Level curve: cumulative 100 × L^1.8")
-    func levelCurve() throws {
-        let config = try loadConfig()
-        let level5XP = Int((100.0 * pow(5.0, 1.8)).rounded())
-        #expect(ProgressionEngine.level(forXP: 0, config: config) == 1)
-        #expect(ProgressionEngine.level(forXP: level5XP - 1, config: config) == 4)
-        #expect(ProgressionEngine.level(forXP: level5XP, config: config) == 5)
-        #expect(ProgressionEngine.level(forXP: 10_000_000, config: config) == 40)
-    }
-
-    @Test("Tier gates require the keystone badge, not just the level")
-    func tierGateNeedsKeystone() throws {
-        let config = try loadConfig()
-        // Vego's Kindled gate is L5 + new_ceiling.
-        #expect(ProgressionEngine.tier(for: .vego, level: 5, earnedBadgeKeys: [],
-                                       config: config) == .base)
-        #expect(ProgressionEngine.tier(for: .vego, level: 5, earnedBadgeKeys: ["new_ceiling"],
-                                       config: config) == .kindled)
-        // The ladder is sequential: L12 without limit_break stays Kindled.
-        #expect(ProgressionEngine.tier(for: .vego, level: 12, earnedBadgeKeys: ["new_ceiling"],
-                                       config: config) == .kindled)
-        #expect(ProgressionEngine.tier(for: .vego, level: 12,
-                                       earnedBadgeKeys: ["new_ceiling", "limit_break"],
-                                       config: config) == .ascendant)
-        // Level alone is never enough below the first gate.
-        #expect(ProgressionEngine.tier(for: .barok, level: 2, earnedBadgeKeys: [],
-                                       config: config) == .base)
-        // Zyn uses domain-badge counts instead of a fixed keystone.
-        #expect(ProgressionEngine.tier(for: .zyn, level: 5, earnedBadgeKeys: [],
-                                       config: config) == .kindled)
-        #expect(ProgressionEngine.tier(for: .zyn, level: 5, earnedBadgeKeys: ["momentum"],
-                                       config: config) == .ascendant)
-    }
-}
-
-// MARK: - Reconciler (SwiftData bridge)
 
 @Suite("ProgressionReconciler")
 struct ReconcilerTests {
@@ -396,7 +348,7 @@ struct ReconcilerTests {
         // SaiyanState cache was refreshed.
         let state = context.saiyanState()
         #expect(state.powerLevel == revokedSnapshot.powerLevel)
-        #expect(state.characterXPJSON.contains("\"vego\""))
+        #expect(state.characterXPJSON == "{}")
     }
 }
 
@@ -407,53 +359,25 @@ struct RestedBonusTests {
 
     /// Two identical 3-set workouts. First workout: 50 + 3×2 + 25 (net) = 81 XP.
     /// Second (identical volume, no net bonus): 50 + 3×2 = 56 XP raw.
-    private func twoWorkoutVegoXP(secondDay: Int, asOfDay: Int) throws -> Int {
+    /// restedBonusActive evaluated on the given day, with one prior workout on Jun 2 —
+    /// the XP economy is gone, but the REST-GAP RULES still gate the surge state.
+    private func restedActive(onDay day: Int) throws -> Bool {
         let config = try loadConfig()
         let w1 = workout(UUID(), start: date(2025, 6, 2, 18))          // Monday
-        let w2 = workout(UUID(), start: date(2025, 6, secondDay, 18))
-        let allSets = sets(benchID, muscle: .chest, grams: 100_000, reps: 5, count: 3, workout: w1)
-            + sets(benchID, muscle: .chest, grams: 100_000, reps: 5, count: 3, workout: w2)
-        let snapshot = ProgressionEngine.compute(
-            input: input(workouts: [w1, w2], sets: allSets),
-            config: config, calendar: madridCalendar(), asOf: date(2025, 6, asOfDay, 20))
-        return snapshot.characterXP[.vego] ?? 0
-    }
-
-    @Test("A single rest day before an identical workout multiplies its XP by 1.25")
-    func singleRestDayBoost() throws {
-        // Rested: Mon + Wed (Tue is a true rest day inside an active period).
-        // Second workout: round(56 × 1.25) = 70 -> vego 81 + 70 = 151.
-        let rested = try twoWorkoutVegoXP(secondDay: 4, asOfDay: 4)
-        #expect(rested == 151)
-        // Consecutive: Mon + Tue -> 81 + 56 = 137. Delta = 14 = 0.25 × 56.
-        let consecutive = try twoWorkoutVegoXP(secondDay: 3, asOfDay: 3)
-        #expect(rested - consecutive == 14)
-    }
-
-    @Test("First workout after a 21-day gap earns no rested bonus")
-    func longGapIsNotRested() throws {
-        // Jun 2 -> Jun 23: Jun 22 was rest, but the trailing 14 days before it
-        // (Jun 8–21) held zero qualifying workouts -> comeback, no bonus.
-        #expect(try twoWorkoutVegoXP(secondDay: 23, asOfDay: 23) == 137)
-        // Boundary: a 15-day gap (previous workout exactly 14 days before the
-        // rest day) is still inside the active period -> bonus applies.
-        #expect(try twoWorkoutVegoXP(secondDay: 17, asOfDay: 17) == 151)
-        // A 16-day gap falls just outside -> no bonus.
-        #expect(try twoWorkoutVegoXP(secondDay: 18, asOfDay: 18) == 137)
-    }
-
-    @Test("Consecutive training days earn no rested bonus")
-    func consecutiveDaysNoBonus() throws {
-        #expect(try twoWorkoutVegoXP(secondDay: 3, asOfDay: 3) == 137)
-        // The very first workout ever has no preceding training -> no bonus:
-        // 81, not round(81 × 1.25).
-        let config = try loadConfig()
-        let w1 = workout(UUID(), start: date(2025, 6, 2, 18))
         let allSets = sets(benchID, muscle: .chest, grams: 100_000, reps: 5, count: 3, workout: w1)
         let snapshot = ProgressionEngine.compute(
             input: input(workouts: [w1], sets: allSets),
-            config: config, calendar: madridCalendar(), asOf: date(2025, 6, 2, 20))
-        #expect(snapshot.characterXP[.vego] == 81)
+            config: config, calendar: madridCalendar(), asOf: date(2025, 6, day, 10))
+        return snapshot.restedBonusActive
+    }
+
+    @Test("Rest-gap rules: 2–15 day gaps arm the surge; longer or same-day do not")
+    func restGapRules() throws {
+        #expect(try restedActive(onDay: 3) == false)    // consecutive day — no rest yet
+        #expect(try restedActive(onDay: 4) == true)     // one full rest day
+        #expect(try restedActive(onDay: 17) == true)    // 15-day gap — still active period
+        #expect(try restedActive(onDay: 18) == false)   // 16-day gap — a comeback, not a surge
+        #expect(try restedActive(onDay: 23) == false)   // 21-day gap
     }
 
     @Test("restedBonusActive mirrors the predicate for the day containing asOf")

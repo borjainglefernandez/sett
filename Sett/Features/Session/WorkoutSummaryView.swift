@@ -13,7 +13,6 @@ import SettCore
 ///    0.8 s with `CEILING BROKEN` beneath the scan card;
 /// 3. net progress vs previous same-exercise sessions;
 /// 4. badges earned (gold medallions, only when non-empty);
-/// 5. XP earned per character (only when non-empty), with a "How XP works" link;
 /// 6. AI commentary + star rating + Done.
 /// Tap anywhere skips straight to the final stage. Reduce Motion direct-sets the
 /// final state: no scanline, no scramble, no roll, no cracks.
@@ -75,10 +74,6 @@ struct WorkoutSummaryView: View {
                 }
                 if stage >= .badges && !summary.newBadgeKeys.isEmpty {
                     badgesCard
-                        .transition(.opacity.combined(with: .move(edge: .bottom)))
-                }
-                if ProgressionUIFlags.legacyXPVisible, stage >= .xp, !summary.xpEarned.isEmpty {
-                    xpCard
                         .transition(.opacity.combined(with: .move(edge: .bottom)))
                 }
                 if stage >= .commentary {
@@ -505,57 +500,6 @@ struct WorkoutSummaryView: View {
         progression.config?.badge(key)?.name ?? key
     }
 
-    // MARK: Stage 4 — XP earned
-
-    /// Characters that gained XP this workout, in roster order (Vego first).
-    private var xpEntries: [(character: CharacterKey, xp: Int)] {
-        CharacterKey.allCases.compactMap { character in
-            summary.xpEarned[character].map { (character, $0) }
-        }
-    }
-
-    private var xpCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Label {
-                Eyebrow("XP EARNED", tint: SettColor.bone)
-            } icon: {
-                Image(systemName: "bolt.fill")
-                    .font(.footnote.weight(.bold))
-                    .foregroundStyle(SettColor.heroCyan)
-            }
-            VStack(alignment: .leading, spacing: 8) {
-                ForEach(xpEntries, id: \.character) { entry in
-                    xpRow(entry)
-                }
-            }
-            Button {
-                showingHowXPWorks = true
-            } label: {
-                Text("How XP works")
-                    .font(.footnote)
-                    .underline()
-                    .foregroundStyle(.secondary)
-            }
-            .buttonStyle(.plain)
-            .accessibilityHint("Opens an explainer of how XP and Power Level are earned")
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .settCard()
-    }
-
-    private func xpRow(_ entry: (character: CharacterKey, xp: Int)) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text("⚡ +\(entry.xp) XP")
-                .font(.subheadline.weight(.bold))
-                .monospacedDigit()
-                .foregroundStyle(SettColor.saiyanGold)
-            Text("— \(entry.character.displayName)")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(entry.character.displayName) earned \(entry.xp) XP")
-    }
 
     // MARK: Stage 5 — commentary + wrap-up
 

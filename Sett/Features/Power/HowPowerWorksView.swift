@@ -1,11 +1,12 @@
 import SwiftUI
 import SettCore
 
-/// The XP transparency sheet: a scrollable, config-driven explainer of how XP is
-/// earned and how it differs from Power Level. Every number shown is read from
-/// progression_config.json via ProgressionStore, so the prose can never drift
-/// from the engine — only structure and flavor text live here. Reached from the
-/// Power tab's info button and the Power Scan's "How XP works" footnote.
+/// The Scouter Manual: how the ONE number works. Post-collapse there is a single
+/// spine — Power Level — with exactly three levers (strength, volume, streak), an
+/// endless Forms ladder above it, and Vexeth pacing the race. Every number shown is
+/// read from progression_config.json via ProgressionStore, so the prose can never
+/// drift from the engine — only structure and flavor text live here. Reached from
+/// the Power tab's info button.
 struct HowPowerWorksView: View {
     @Environment(ProgressionStore.self) private var progression
     @Environment(\.dismiss) private var dismiss
@@ -14,12 +15,11 @@ struct HowPowerWorksView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 12) {
-                    workoutXPCard
-                    whatCountsCard
-                    restDayCard
-                    badgesCard
-                    goalsCard
                     powerLevelCard
+                    whatCountsCard
+                    formsCard
+                    surgeCard
+                    rivalCard
                 }
                 .padding(16)
             }
@@ -34,54 +34,36 @@ struct HowPowerWorksView: View {
         }
     }
 
-    // MARK: Config lookups (fallbacks mirror the shipped progression_config.json)
-
     private var config: ProgressionConfig? { progression.config }
 
-    private func xpInt(_ key: String, _ fallback: Int) -> Int {
-        config?.xp[key] as? Int ?? fallback
-    }
+    // MARK: The spine — PL and its three levers
 
-    private func xpPercent(_ key: String, _ fallback: Double) -> Int {
-        Int(((config?.xp[key] as? Double ?? fallback) * 100).rounded())
-    }
-
-    private func goalXP(_ key: String, _ fallback: Int) -> Int {
-        (config?.xp["goalCompletionXP"] as? [String: Int])?[key] ?? fallback
-    }
-
-    private func badgeXP(_ rarity: BadgeRarity) -> Int {
-        if let config, config.badgeXP(rarity: rarity) > 0 {
-            return config.badgeXP(rarity: rarity)
-        }
-        switch rarity {
-        case .bronze: return 100
-        case .silver: return 250
-        case .gold: return 600
-        case .legendary: return 1500
-        }
-    }
-
-    // MARK: Sections
-
-    private var workoutXPCard: some View {
-        let setCap = xpInt("perEffectiveSetCap", 60)
-        let prCap = xpInt("verifiedPRCapPerWorkout", 3)
+    private var powerLevelCard: some View {
+        let pl = config?.powerLevel
+        let strengthDays = pl?.strengthWindowDays ?? 90
+        let volumeDays = pl?.volumeWindowDays ?? 28
+        let weeklyPercent = Int(((pl?.consistencyPerWeek ?? 0.05) * 100).rounded())
+        let maxWeeks = pl?.consistencyMaxWeeks ?? 10
         return VStack(alignment: .leading, spacing: 10) {
-            Label("Workout XP", systemImage: "bolt.fill")
+            Label("The One Number", systemImage: "bolt.fill")
                 .font(.headline)
-            valueRow("Finish a qualifying workout", "+\(xpInt("workoutBase", 50)) XP")
-            valueRow("Each effective set (up to +\(setCap))", "+\(xpInt("perEffectiveSet", 2)) XP")
-            valueRow("Beat your last session (positive net)", "+\(xpInt("positiveNetBonus", 25)) XP")
-            valueRow("Each verified PR (max \(prCap))", "+\(xpInt("perVerifiedPR", 10)) XP")
+            bullet("""
+                Your Power Level has exactly three levers — STRENGTH, VOLUME, and \
+                your STREAK. Nothing else moves it.
+                """)
+            bullet("STRENGTH: your best verified lift per muscle group over the last \(strengthDays) days.")
+            bullet("VOLUME: the work you've moved over the last \(volumeDays) days (diminishing returns — double volume doesn't double power).")
+            bullet("STREAK: each consistent week multiplies the total by +\(weeklyPercent)%, up to \(maxWeeks) weeks (×1.5).")
             footnote("""
-                Workout XP levels Vego, the Ember Prince. The rest of the roster earns XP \
-                from their own domains — tonnage, streaks, goals, sleep, variety, comebacks.
+                The windows roll, so power must be MAINTAINED — a long break lets it \
+                fade, and coming back rebuilds it fast.
                 """)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .settCard()
     }
+
+    // MARK: What counts (anti-cheese, unchanged rules)
 
     private var whatCountsCard: some View {
         let effective = config?.effectiveSet
@@ -103,85 +85,54 @@ struct HowPowerWorksView: View {
                 """)
             bullet("The first \(perExercise) sets per exercise count, up to \(perWorkout) per workout.")
             bullet("A qualifying workout has \(minSets)+ effective sets and runs at least \(minMinutes) minutes.")
-            bullet("Only your first qualifying workout of the day earns full XP.")
+            bullet("A surprise PR is provisional until a later session confirms it — no fat-finger power.")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .settCard()
     }
 
-    private var restDayCard: some View {
-        let restedPercent = Int((((config?.xp["restedBonusMultiplier"] as? Double ?? 1.25) - 1.0) * 100).rounded())
-        return VStack(alignment: .leading, spacing: 10) {
+    // MARK: The Forms ladder (endless)
+
+    private var formsCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("Transformation Forms", systemImage: "flame.fill")
+                .font(.headline)
+            valueRow("KINDLED", "2,000 PL")
+            valueRow("ASCENDANT", "5,000 PL")
+            valueRow("RADIANT", "9,000 PL")
+            valueRow("ZENITH", "15,000 PL")
+            valueRow("ZENITH II, III, …", "every 7,500 PL after")
+            footnote("The ladder never ends — there is always a next form.")
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .settCard()
+    }
+
+    // MARK: The surge (rest-day respect, post-XP)
+
+    private var surgeCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
             Label("Rest-Day Respect", systemImage: "moon.zzz.fill")
                 .font(.headline)
-            valueRow("2nd workout in a day", "\(xpPercent("secondWorkoutSameDayFraction", 0.25))% XP")
-            valueRow("3rd+ workout in a day", "\(xpPercent("thirdWorkoutSameDayFraction", 0.0))% XP")
-            valueRow("XP days per rolling 7", "max \(xpInt("maxXPDaysPerRolling7", 6))")
-            valueRow("Daily workout XP cap", "\(xpInt("dailyWorkoutXPCap", 300)) XP")
-            valueRow("Rested bonus", "+\(restedPercent)% workout XP")
-            footnote("""
-                +\(restedPercent)% workout XP the day after a true rest day — recovery is a resource. \
-                Grinding all seven days doesn't out-earn training smart. Rest is part of the program.
-                """)
+            bullet("A full rest day arms the SURGE — you return sharper, and the scanner knows it.")
+            bullet("Rest can't break your streak week: only missed sessions can, and shields absorb even those.")
+            footnote("Recovery is training. The chamber counts it.")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .settCard()
     }
 
-    private var badgesCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Label("Badges", systemImage: "medal.fill")
-                .font(.headline)
-            ForEach(BadgeRarity.allCases, id: \.self) { rarity in
-                valueRow(rarity.rawValue.capitalized, "+\(badgeXP(rarity)) XP")
-            }
-            footnote("Badge XP goes to the character who owns the badge — the Badge Case shows who claims what.")
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .settCard()
-    }
+    // MARK: The rival (endless race)
 
-    private var goalsCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Label("Goals", systemImage: "target")
-                .font(.headline)
-            valueRow("Weekly frequency goal, each week hit", "+\(goalXP("frequency_week", 40)) XP")
-            valueRow("Frequency goal finished", "+\(goalXP("frequency_finish", 100)) XP")
-            valueRow("PR target reached", "+\(goalXP("pr_target", 150)) XP")
-            valueRow("Volume target reached", "+\(goalXP("volume_target", 100)) XP")
-            footnote("""
-                Every goal completion also echoes +\(xpInt("goalTorrenEcho", 25)) XP \
-                to Torren Vex, the Stern Mentor.
-                """)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .settCard()
-    }
-
-    private var powerLevelCard: some View {
-        let power = config?.powerLevel
-        let strengthWeight = Int(power?.strengthWeight ?? 4)
-        let volumeWeight = Int(power?.volumeWeight ?? 8)
-        let strengthDays = power?.strengthWindowDays ?? 90
-        let volumeDays = power?.volumeWindowDays ?? 28
-        let weeklyPercent = Int(((power?.consistencyPerWeek ?? 0.05) * 100).rounded())
-        let maxWeeks = power?.consistencyMaxWeeks ?? 10
+    private var rivalCard: some View {
+        let growth = (config?.rival["weeklyGrowth"] as? Int) ?? 350
         return VStack(alignment: .leading, spacing: 10) {
-            Label("Power Level ≠ XP", systemImage: "speedometer")
+            Label("Emperor Vexeth", systemImage: "arrow.triangle.2.circlepath")
                 .font(.headline)
-            Text("PL = (\(strengthWeight) × Strength + \(volumeWeight) × √Volume) × Consistency")
-                .font(.subheadline.weight(.semibold))
-                .monospacedDigit()
-            bullet("""
-                Strength reads your best lifts from the last \(strengthDays) days; \
-                volume reads the last \(volumeDays).
-                """)
-            bullet("Consistency multiplies the total — +\(weeklyPercent)% per consistent week, up to \(maxWeeks) weeks.")
-            bullet("""
-                Power Level is recomputed from your training data on every scan, so it can dip \
-                when you ease off. XP never goes down — it accumulates and levels each character \
-                toward their next transformation.
-                """)
+                .foregroundStyle(SettColor.villainCrimson)
+            bullet("Vexeth climbs ~\(growth) PL a week and reveals stronger forms as you close in.")
+            bullet("Beat his final form and he REBIRTHS above you — faster or slower depending on YOUR recent pace.")
+            footnote("The race has no finish line. That's the point.")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .settCard()
@@ -190,33 +141,34 @@ struct HowPowerWorksView: View {
     // MARK: Row helpers
 
     private func valueRow(_ label: String, _ value: String) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
+        HStack {
             Text(label)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-            Spacer(minLength: 0)
+                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                .kerning(1)
+                .foregroundStyle(SettColor.bone)
+            Spacer()
             Text(value)
-                .font(.subheadline.weight(.semibold))
+                .font(.system(size: 12, weight: .semibold, design: .monospaced))
                 .monospacedDigit()
-                .foregroundStyle(SettColor.saiyanGold)
+                .foregroundStyle(SettColor.heroCyan)
         }
+        .accessibilityElement(children: .combine)
     }
 
     private func bullet(_ text: String) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text("•")
-                .font(.subheadline)
-                .foregroundStyle(.tertiary)
+        HStack(alignment: .top, spacing: 8) {
+            Text("·")
+                .font(.headline)
+                .foregroundStyle(SettColor.heroCyan)
             Text(text)
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(SettColor.bone)
         }
     }
 
     private func footnote(_ text: String) -> some View {
         Text(text)
             .font(.footnote)
-            .foregroundStyle(.tertiary)
-            .padding(.top, 2)
+            .foregroundStyle(SettColor.ash)
     }
 }

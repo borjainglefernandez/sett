@@ -34,8 +34,6 @@ public struct ProgressionConfig {
     public let e1rm: E1RM
     public let powerLevel: PowerLevel
     public let badges: [BadgeDef]
-    public let xp: [String: Any]
-    public let tiers: [String: Any]
     public let rival: [String: Any]
 
     public static func load() throws -> ProgressionConfig {
@@ -93,8 +91,6 @@ public struct ProgressionConfig {
             }
         }
         self.badges = defs.sorted { $0.key < $1.key }
-        self.xp = json["xp"] as? [String: Any] ?? [:]
-        self.tiers = json["tiers"] as? [String: Any] ?? [:]
         self.rival = json["rival"] as? [String: Any] ?? [:]
     }
 
@@ -102,12 +98,8 @@ public struct ProgressionConfig {
         badges.first { $0.key == key }
     }
 
-    public func badgeXP(rarity: BadgeRarity) -> Int {
-        let table = xp["badgeXP"] as? [String: Int]
-        return table?[rarity.rawValue] ?? 0
-    }
 }
 
-// `raw`/`xp`/`tiers`/`rival` hold [String: Any] parsed once at startup and never mutated;
+// `raw`/`rival` hold [String: Any] parsed once at startup and never mutated;
 // the type is safe to pass across actors in practice.
 extension ProgressionConfig: @unchecked Sendable {}

@@ -611,25 +611,16 @@ public final class WorkoutSessionStore {
         guard persist() else { return }
         advanceRotationIfNeeded(finished: workout)
 
-        // Transformation tier of the ACTIVE character: same before/after diff as
-        // badges/XP — the summary's ceiling-break stage keys off this delta.
-        let activeCharacter = context.saiyanState().characterKey
-        let tierBefore = progression.tier(for: activeCharacter)
+        // Cast collapse: the ceiling-break stage now keys off the USER's Forms
+        // ladder (a pure function of PL) — tierBefore/After carry form INDICES.
+        let formBefore = UserForm.form(forPL: plBefore).index
 
         let badgesBefore = earnedBadgeKeys()
-        let xpBefore = progression.snapshot?.characterXP ?? [:]
         progression.recompute(context: context)
         let badgesAfter = earnedBadgeKeys()
         let newBadges = badgesAfter.subtracting(badgesBefore).sorted()
-        let tierAfter = progression.tier(for: activeCharacter)
-
-        // XP transparency: same before/after diff as badges, per character.
-        let xpAfter = progression.snapshot?.characterXP ?? [:]
-        var xpEarned: [CharacterKey: Int] = [:]
-        for (character, xp) in xpAfter {
-            let delta = xp - (xpBefore[character] ?? 0)
-            if delta > 0 { xpEarned[character] = delta }
-        }
+        let formAfter = UserForm.form(forPL: progression.snapshotPowerLevel).index
+        let xpEarned: [CharacterKey: Int] = [:]   // the XP economy is gone
 
         // Net vs previous same-exercise sessions (workout-level rollup). Casual
         // ("off the record") workouts skip net computation entirely — no nets of
@@ -675,8 +666,8 @@ public final class WorkoutSessionStore {
             durationSeconds: max(0, duration),
             powerLevelBefore: plBefore,
             powerLevelAfter: progression.snapshotPowerLevel,
-            tierBefore: tierBefore.rawValue,
-            tierAfter: tierAfter.rawValue,
+            tierBefore: formBefore,
+            tierAfter: formAfter,
             netReps: netReps,
             netVolumeGrams: netVolumeGrams,
             netIsNew: netIsNew,

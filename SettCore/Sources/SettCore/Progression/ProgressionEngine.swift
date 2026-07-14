@@ -28,9 +28,6 @@ public struct ProgressionSnapshot: Sendable {
     public let weeklyVolumeLb: Int
     public let consistencyMultiplier: Double
     public let streakWeeks: Int
-    public let characterXP: [CharacterKey: Int]
-    public let characterLevels: [CharacterKey: Int]  // from 100 * L^1.8 cumulative curve
-    public let tiers: [CharacterKey: TransformationTier]
     public let badges: [BadgeGrant]        // ALL currently-earned badges (derived, idempotent)
     public let rivalPL: Int                // Vexeth's scripted PL as of now
     public let rivalForm: Int              // 1...3
@@ -45,8 +42,7 @@ public struct ProgressionSnapshot: Sendable {
 
     public init(powerLevel: Int, allTimePeakPL: Int, strengthScore: Int, weeklyVolumeLb: Int,
                 consistencyMultiplier: Double, streakWeeks: Int,
-                characterXP: [CharacterKey: Int], characterLevels: [CharacterKey: Int],
-                tiers: [CharacterKey: TransformationTier], badges: [BadgeGrant],
+                badges: [BadgeGrant],
                 rivalPL: Int, rivalForm: Int, restedBonusActive: Bool = false,
                 badgeCounts: [String: Int] = [:]) {
         self.powerLevel = powerLevel
@@ -55,9 +51,6 @@ public struct ProgressionSnapshot: Sendable {
         self.weeklyVolumeLb = weeklyVolumeLb
         self.consistencyMultiplier = consistencyMultiplier
         self.streakWeeks = streakWeeks
-        self.characterXP = characterXP
-        self.characterLevels = characterLevels
-        self.tiers = tiers
         self.badges = badges
         self.rivalPL = rivalPL
         self.rivalForm = rivalForm
@@ -134,21 +127,6 @@ public enum ProgressionEngine {
             if let grant = evaluator.grant(for: def) { badges.append(grant) }
         }
         badges.sort { ($0.earnedAt, $0.key) < ($1.earnedAt, $1.key) }
-        let earnedKeys = Set(badges.map(\.key))
-
-        let characterXP = computeXP(analysis: analysis, qualifying: qualifying,
-                                    badges: badges, netPositive: netPositive,
-                                    input: input, config: config,
-                                    calendar: calendar, asOf: asOf)
-
-        var characterLevels: [CharacterKey: Int] = [:]
-        var tiers: [CharacterKey: TransformationTier] = [:]
-        for character in CharacterKey.allCases {
-            let characterLevel = level(forXP: characterXP[character] ?? 0, config: config)
-            characterLevels[character] = characterLevel
-            tiers[character] = tier(for: character, level: characterLevel,
-                                    earnedBadgeKeys: earnedKeys, config: config)
-        }
 
         let peak = max(input.previousPeakPL, plEvals.map { $0.pl }.max() ?? 0)
 
@@ -159,13 +137,7 @@ public enum ProgressionEngine {
         badgeCounts["limit_break"] = analysis.prEvents.count / 10
         let lifetimeGrams = analysis.effectiveSets.reduce(0) { $0 + $1.sample.weightGrams * $1.sample.reps }
         badgeCounts["million_pound_club"] = Int(Units.pounds(fromGrams: lifetimeGrams)) / 1_000_000
-        var gramsPerDay: [Date: Int] = [:]
-        for record in analysis.effectiveSets {
-            let day = calendar.startOfDay(for: record.sample.completedAt)
-            gramsPerDay[day, default: 0] += record.sample.weightGrams * record.sample.reps
-        }
-        badgeCounts["twenty_ton_day"] = gramsPerDay.values
-            .count { Units.pounds(fromGrams: $0) >= 20_000 }
+        badgeCounts["explorer"] = Set(analysis.effectiveSets.map(\.sample.exerciseID)).count / 20
 
         // Vexeth pacing script.
         let rival = config.rival
@@ -198,9 +170,6 @@ public enum ProgressionEngine {
             weeklyVolumeLb: Int(current.wvlLb.rounded()),
             consistencyMultiplier: current.cm,
             streakWeeks: current.streak,
-            characterXP: characterXP,
-            characterLevels: characterLevels,
-            tiers: tiers,
             badges: badges,
             rivalPL: rivalPL,
             rivalForm: rivalForm,
@@ -495,218 +464,6 @@ public enum ProgressionEngine {
         let raw = (plc.strengthWeight * ssLb + plc.volumeWeight * wvlLb.squareRoot()) * cm
         let pl = qualifyingDates.isEmpty ? 0 : Int(raw.rounded())
         return PLBreakdown(pl: pl, ssLb: ssLb, wvlLb: wvlLb, cm: cm, streak: streak)
-    }
-
-    // MARK: - XP economy
-
-    static func computeXP(analysis: Analysis, qualifying: [Session], badges: [BadgeGrant],
-                          netPositive: [UUID: Bool], input: ProgressionInput,
-                          config: ProgressionConfig, calendar: Calendar,
-                          asOf: Date) -> [CharacterKey: Int] {
-        var xp: [CharacterKey: Int] = [:]
-        for character in CharacterKey.allCases { xp[character] = 0 }
-
-        var prCountByWorkout: [UUID: Int] = [:]
-        for event in analysis.prEvents {
-            prCountByWorkout[event.workoutID, default: 0] += 1
-        }
-
-        // Workout XP -> vego, with same-day decay, daily cap, and the
-        // max-XP-earning-days-per-rolling-7 rule.
-        let base = config.xpInt("workoutBase", 50)
-        let perSet = config.xpInt("perEffectiveSet", 2)
-        let perSetCap = config.xpInt("perEffectiveSetCap", 60)
-        let netBonus = config.xpInt("positiveNetBonus", 25)
-        let perPR = config.xpInt("perVerifiedPR", 10)
-        let prCap = config.xpInt("verifiedPRCapPerWorkout", 3)
-        let secondFraction = config.xpDouble("secondWorkoutSameDayFraction", 0.25)
-        let thirdFraction = config.xpDouble("thirdWorkoutSameDayFraction", 0.0)
-        let maxDaysPer7 = config.xpInt("maxXPDaysPerRolling7", 6)
-        let dailyCap = config.xpInt("dailyWorkoutXPCap", 300)
-        let restedMultiplier = config.xpDouble("restedBonusMultiplier", 1.25)
-
-        var earningDayStarts: [Date] = []
-        var previousQualifyingDayStart: Date?
-        var vegoXP = 0
-        var index = 0
-        let sessions = analysis.sessions
-        while index < sessions.count {
-            let dayKey = sessions[index].dayKey
-            let dayStart = sessions[index].dayStart
-            // Rested bonus (exact predicate documented on isRested): boosts the
-            // workout-XP components before same-day decay; dailyCap still caps.
-            let rested = isRested(dayStart: dayStart,
-                                  previousQualifyingDayStart: previousQualifyingDayStart,
-                                  calendar: calendar)
-            var dayXP = 0
-            var rank = 0
-            var next = index
-            while next < sessions.count, sessions[next].dayKey == dayKey {
-                let session = sessions[next]
-                rank += 1
-                let fraction: Double = rank == 1 ? 1.0 : (rank == 2 ? secondFraction : thirdFraction)
-                if fraction > 0 {
-                    var raw = base
-                    raw += min(perSet * session.candidateSetCount, perSetCap)
-                    if netPositive[session.workout.id] == true { raw += netBonus }
-                    raw += perPR * min(prCountByWorkout[session.workout.id] ?? 0, prCap)
-                    let boosted = Double(raw) * (rested ? restedMultiplier : 1.0)
-                    dayXP += Int((boosted * fraction).rounded())
-                }
-                next += 1
-            }
-            dayXP = min(dayXP, dailyCap)
-            if dayXP > 0 {
-                // Rolling 7-day window: this day plus the previous 6 may hold at
-                // most `maxXPDaysPerRolling7` earning days.
-                let rollingWindowDays = 7
-                let recent = earningDayStarts.count {
-                    daysBetween($0, dayStart, calendar: calendar) <= rollingWindowDays - 1
-                }
-                if recent + 1 <= maxDaysPer7 {
-                    vegoXP += dayXP
-                    earningDayStarts.append(dayStart)
-                }
-            }
-            previousQualifyingDayStart = dayStart
-            index = next
-        }
-        xp[.vego, default: 0] += vegoXP
-
-        // Badge XP -> owning character.
-        for grant in badges {
-            guard let def = config.badge(grant.key) else { continue }
-            xp[def.character, default: 0] += config.badgeXP(rarity: def.rarity)
-        }
-
-        // Goal completion XP -> vego, with a Torren echo.
-        let qualDaysPerWeek = qualifyingDaysPerWeek(qualifying: qualifying, calendar: calendar)
-        let torrenEcho = config.xpInt("goalTorrenEcho", 25)
-        for goal in input.goals {
-            guard let completedAt = goal.completedAt, completedAt <= asOf else { continue }
-            switch goal.kind {
-            case .frequency:
-                var achievedWeeks = 0
-                for weekStart in weekStarts(from: goal.startDate, upToWeekContaining: completedAt,
-                                            calendar: calendar, includeFinal: true) {
-                    let ordinal = weekOrdinal(weekStart, calendar: calendar)
-                    if (qualDaysPerWeek[ordinal]?.count ?? 0) >= goal.targetValue { achievedWeeks += 1 }
-                }
-                xp[.vego, default: 0] += achievedWeeks * config.goalXPInt("frequency_week", 40)
-                xp[.vego, default: 0] += config.goalXPInt("frequency_finish", 100)
-            case .prTarget:
-                xp[.vego, default: 0] += config.goalXPInt("pr_target", 150)
-            case .volumeTarget:
-                xp[.vego, default: 0] += config.goalXPInt("volume_target", 100)
-            }
-            xp[.torren, default: 0] += torrenEcho
-        }
-
-        // Domain drip.
-        let barokPerK = config.dripInt("barokPer1000LbTonnage", 1)
-        let barokCap = config.dripInt("barokPerWorkoutCap", 30)
-        let torrenPerOnPlan = config.dripInt("torrenPerOnPlanWorkout", 15)
-        let nyraPerWeek = config.dripInt("nyraPerStreakWeek", 30)
-        let ziaPerNight = config.dripInt("ziaPerSleepNight", 2)
-        let ziaWeeklyCap = config.dripInt("ziaSleepWeeklyCap", 14)
-        let gosiPerNewExercise = config.dripInt("gosiPerNewExercise", 10)
-        let zynPerOffHours = config.dripInt("zynPerOffHoursWorkout", 10)
-        let zynPerComeback = config.dripInt("zynPerComeback", 50)
-        let dawnBeforeHour = config.badge("dawn_patrol")?.params["beforeHour"] ?? 7
-        let nightAfterHour = config.badge("midnight_oil")?.params["afterHour"] ?? 21
-        let comebackGapDays = config.badge("return_to_form")?.params["gapDays"] ?? 21
-
-        for session in qualifying {
-            let tonnageLb = Units.pounds(fromGrams: session.effectiveTonnageGrams)
-            xp[.barok, default: 0] += min(Int(tonnageLb / 1000.0) * barokPerK, barokCap)
-            if session.workout.routineID != nil {
-                xp[.torren, default: 0] += torrenPerOnPlan
-            }
-            let hour = calendar.component(.hour, from: session.workout.startedAt)
-            if hour < dawnBeforeHour || hour >= nightAfterHour {
-                xp[.zyn, default: 0] += zynPerOffHours
-            }
-        }
-
-        // Nyra: completed weeks with enough distinct qualifying days.
-        if let firstDate = qualifying.first?.workout.startedAt {
-            for weekStart in weekStarts(from: firstDate, upToWeekContaining: asOf,
-                                        calendar: calendar, includeFinal: false) {
-                let ordinal = weekOrdinal(weekStart, calendar: calendar)
-                if (qualDaysPerWeek[ordinal]?.count ?? 0) >= config.powerLevel.streakMinDaysPerWeek {
-                    xp[.nyra, default: 0] += nyraPerWeek
-                }
-            }
-        }
-
-        // Zia: synced sleep nights, weekly-capped.
-        let asOfDayKey = calendar.dateKey(for: asOf)
-        var nightsPerWeek: [Int: Int] = [:]
-        for night in input.sleep where night.dateKey <= asOfDayKey {
-            guard let date = dateFromKey(night.dateKey, calendar: calendar) else { continue }
-            nightsPerWeek[weekOrdinal(date, calendar: calendar), default: 0] += 1
-        }
-        for (_, count) in nightsPerWeek {
-            xp[.zia, default: 0] += min(count * ziaPerNight, ziaWeeklyCap)
-        }
-
-        // Gosi: distinct exercises with at least one effective set.
-        let distinctExercises = Set(analysis.effectiveSets.map(\.sample.exerciseID))
-        xp[.gosi, default: 0] += distinctExercises.count * gosiPerNewExercise
-
-        // Zyn: comeback events (first workout after a long gap).
-        let trainedDays = distinctQualifyingDayStarts(qualifying: qualifying)
-        for pairIndex in 0..<max(0, trainedDays.count - 1)
-        where daysBetween(trainedDays[pairIndex], trainedDays[pairIndex + 1], calendar: calendar) >= comebackGapDays {
-            xp[.zyn, default: 0] += zynPerComeback
-        }
-
-        return xp
-    }
-
-    // MARK: - Levels & tiers
-
-    /// Highest level whose cumulative XP requirement (levelCurveBase * L^exponent)
-    /// is met; the floor is level 1.
-    static func level(forXP xp: Int, config: ProgressionConfig) -> Int {
-        let base = config.xpDouble("levelCurveBase", 100.0)
-        let exponent = config.xpDouble("levelCurveExponent", 1.8)
-        let maxLevel = config.xpInt("maxLevel", 40)
-        var level = 1
-        var candidate = 1
-        while candidate <= maxLevel {
-            let needed = Int((base * pow(Double(candidate), exponent)).rounded())
-            if xp >= needed {
-                level = candidate
-                candidate += 1
-            } else {
-                break
-            }
-        }
-        return level
-    }
-
-    /// Walks the tier ladder in order; each gate needs the level AND its
-    /// keystone badge (or domain-badge count). The first unmet gate stops the climb.
-    static func tier(for character: CharacterKey, level: Int,
-                     earnedBadgeKeys: Set<String>, config: ProgressionConfig) -> TransformationTier {
-        guard let gates = config.tiers[character.rawValue] as? [String: Any] else { return .base }
-        let domainCount = earnedBadgeKeys.count { config.badge($0)?.character == character }
-        var result = TransformationTier.base
-        for tier in TransformationTier.allCases where tier != .base {
-            guard let gate = gates[tier.displayName.lowercased()] as? [String: Any],
-                  let requiredLevel = gate["level"] as? Int else { break }
-            var met = level >= requiredLevel
-            if let keystone = gate["keystone"] as? String {
-                met = met && earnedBadgeKeys.contains(keystone)
-            }
-            if let requiredCount = gate["domainBadgeCount"] as? Int {
-                met = met && domainCount >= requiredCount
-            }
-            guard met else { break }
-            result = tier
-        }
-        return result
     }
 
     // MARK: - Shared date helpers
@@ -1227,23 +984,7 @@ extension ProgressionConfig {
                 dict["minPriorDistinctDaySessions"] as? Int ?? 3)
     }
 
-    func xpInt(_ key: String, _ fallback: Int) -> Int {
-        if let value = xp[key] as? Int { return value }
-        if let value = xp[key] as? Double { return Int(value) }
-        return fallback
-    }
 
-    func xpDouble(_ key: String, _ fallback: Double) -> Double {
-        if let value = xp[key] as? Double { return value }
-        if let value = xp[key] as? Int { return Double(value) }
-        return fallback
-    }
 
-    func dripInt(_ key: String, _ fallback: Int) -> Int {
-        ((xp["drip"] as? [String: Any])?[key] as? Int) ?? fallback
-    }
 
-    func goalXPInt(_ key: String, _ fallback: Int) -> Int {
-        ((xp["goalCompletionXP"] as? [String: Any])?[key] as? Int) ?? fallback
-    }
 }

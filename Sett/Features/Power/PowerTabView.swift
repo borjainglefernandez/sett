@@ -30,9 +30,6 @@ struct PowerTabView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     hero
                     characterSheetCard
-                    if ProgressionUIFlags.legacyXPVisible {
-                        tierProgressCard
-                    }
                     RivalCard(rivalPL: rivalPL,
                               rivalForm: rivalForm,
                               userPL: progression.snapshotPowerLevel,
@@ -74,16 +71,10 @@ struct PowerTabView: View {
         saiyanStates.first?.characterKey ?? .vego
     }
 
+    /// Cast collapse: the frame follows the USER's transformation form (pure
+    /// function of PL) — characters are patrons, not parallel ladders.
     private var activeTier: TransformationTier {
-        progression.tier(for: activeCharacter)
-    }
-
-    private var currentXP: Int {
-        progression.xp(for: activeCharacter)
-    }
-
-    private var currentLevel: Int {
-        progression.level(for: activeCharacter)
+        progression.userFormTier
     }
 
     private var peakPL: Int {
@@ -245,100 +236,6 @@ struct PowerTabView: View {
         radarShares = volumes.map { $0 / peak }
     }
 
-    // MARK: (3) Tier progress
-
-    private struct TierGate {
-        let tier: TransformationTier
-        let level: Int
-        let keystone: String?
-        let domainBadgeCount: Int?
-    }
-
-    /// Parses the raw `tiers` dict from progression_config.json for the active
-    /// character: keys kindled/ascendant/radiant/zenith, each `{level, keystone? | domainBadgeCount?}`.
-    private var nextGate: TierGate? {
-        guard let config = progression.config,
-              let characterTiers = config.tiers[activeCharacter.rawValue] as? [String: Any],
-              let next = TransformationTier(rawValue: activeTier.rawValue + 1),
-              let gate = characterTiers[next.displayName.lowercased()] as? [String: Any],
-              let level = gate["level"] as? Int
-        else { return nil }
-        return TierGate(tier: next,
-                        level: level,
-                        keystone: gate["keystone"] as? String,
-                        domainBadgeCount: gate["domainBadgeCount"] as? Int)
-    }
-
-    /// Cumulative XP for a level on the 100 × L^1.8 curve.
-    private func xpNeeded(forLevel level: Int) -> Int {
-        Int((100.0 * pow(Double(level), 1.8)).rounded())
-    }
-
-    /// Raw XP fraction toward the gate's level — may exceed 1 when the level
-    /// is banked but the keystone isn't; the gauge shows the surplus as gold
-    /// overfill (its three extra cells span 25% of the frame, hence ×4).
-    private func xpFraction(for gate: TierGate) -> Double {
-        let needed = xpNeeded(forLevel: gate.level)
-        guard needed > 0 else { return 1 }
-        return Double(currentXP) / Double(needed)
-    }
-
-    private var tierProgressCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Next Transformation")
-                .font(.title3.weight(.semibold))
-            if let gate = nextGate {
-                Text("\(gate.tier.displayName) — \(gate.tier.dilation)× dilation")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(SettColor.heroCyan)
-                let fraction = xpFraction(for: gate)
-                KiGauge(filled: min(1, fraction),
-                        segments: 12,
-                        overfill: min(1, max(0, fraction - 1) * 4))
-                Text("\(currentXP.formatted()) / \(xpNeeded(forLevel: gate.level).formatted()) XP")
-                    .font(.footnote)
-                    .monospacedDigit()
-                    .foregroundStyle(SettColor.ash)
-                gateRow(met: currentLevel >= gate.level, text: "Reach level \(gate.level)")
-                keystoneRow(gate)
-            } else {
-                Label("Zenith — \(TransformationTier.zenith.dilation)× dilation. The summit.",
-                      systemImage: "sparkles")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(SettColor.heroCyan)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .settCard()
-    }
-
-    private func gateRow(met: Bool, text: String) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: met ? "checkmark.circle.fill" : "circle.dashed")
-                .foregroundStyle(met ? SettColor.heroCyan : SettColor.ash)
-            Text(text)
-                .font(.footnote)
-            Spacer(minLength: 0)
-        }
-    }
-
-    @ViewBuilder
-    private func keystoneRow(_ gate: TierGate) -> some View {
-        if let keystone = gate.keystone {
-            gateRow(met: earnedBadgeKeys.contains(keystone),
-                    text: "Keystone: \(badgeName(keystone))")
-        } else if let required = gate.domainBadgeCount {
-            let earned = domainBadgeEarnedCount(for: activeCharacter)
-            gateRow(met: earned >= required,
-                    text: "Keystone: \(earned) of \(required) \(shortName(activeCharacter)) badges")
-        }
-    }
-
-    private func domainBadgeEarnedCount(for character: CharacterKey) -> Int {
-        guard let config = progression.config else { return 0 }
-        return earnedBadgeKeys.filter { config.badge($0)?.character == character }.count
-    }
-
     // MARK: (5) Badge case preview
 
     private var latestAwards: [BadgeAward] {
@@ -422,31 +319,23 @@ struct PowerTabView: View {
         .settCard()
     }
 
-    /// Unlocked once the character has transformed at least once; Vego is always yours.
-    private func isUnlocked(_ character: CharacterKey) -> Bool {
-        character == .vego || progression.tier(for: character) > .base
-    }
-
+    /// Cast collapse: every patron is available from day one — they are voices and
+    /// badge domains now, not locked ladders. The avatar is a cosmetic identity.
     private func rosterEntry(_ character: CharacterKey) -> some View {
-        let unlocked = isUnlocked(character)
         let isActive = character == activeCharacter
         return Button {
             activate(character)
         } label: {
             VStack(spacing: 6) {
-                if unlocked {
-                    CharacterAvatarView(character: character, tier: progression.tier(for: character))
-                } else {
-                    lockedSilhouette
-                }
+                CharacterAvatarView(character: character,
+                                    tier: isActive ? activeTier : .base)
                 Text(shortName(character))
                     .font(.caption2.weight(isActive ? .bold : .regular))
-                    .foregroundStyle(isActive ? SettColor.heroCyan : (unlocked ? SettColor.bone : SettColor.ash))
+                    .foregroundStyle(isActive ? SettColor.heroCyan : SettColor.bone)
             }
         }
         .buttonStyle(.plain)
-        .disabled(!unlocked)
-        .accessibilityLabel(rosterAccessibilityLabel(character, unlocked: unlocked, isActive: isActive))
+        .accessibilityLabel(rosterAccessibilityLabel(character, unlocked: true, isActive: isActive))
     }
 
     private var lockedSilhouette: some View {
@@ -477,7 +366,7 @@ struct PowerTabView: View {
         guard character != activeCharacter else { return }
         let state = modelContext.saiyanState()
         state.characterKey = character
-        state.transformationTier = progression.tier(for: character)
+        state.transformationTier = progression.userFormTier
         state.updatedAt = .now
         state.needsPush = true
         try? modelContext.save()

@@ -35,13 +35,12 @@ public enum ProgressionReconciler {
         // SaiyanState display cache.
         state.powerLevel = snapshot.powerLevel
         state.allTimePeakPL = snapshot.allTimePeakPL
-        state.transformationTier = snapshot.tiers[state.characterKey] ?? .base
-        var xpByKey: [String: Int] = [:]
-        for (character, xp) in snapshot.characterXP { xpByKey[character.rawValue] = xp }
-        if let data = try? JSONEncoder().encode(xpByKey),
-           let json = String(data: data, encoding: .utf8) {
-            state.characterXPJSON = json
-        }
+        // Cast collapse: per-character tiers/XP are gone — the avatar's frame now
+        // follows the USER's transformation form (a pure function of PL). The
+        // legacy XP JSON cache is cleared but the column stays for sync stability.
+        let formIndex = UserForm.form(forPL: snapshot.powerLevel).index
+        state.transformationTier = TransformationTier(rawValue: min(formIndex, 4)) ?? .base
+        state.characterXPJSON = "{}"
         state.updatedAt = now
         state.needsPush = true
 
