@@ -1475,8 +1475,11 @@ struct IconTreatmentView: View {
 }
 
 #if DEBUG
-/// Side-by-side comparison of icon-legibility treatments. Shown via SETT_DEBUG_ICONLAB=1.
+/// Side-by-side comparison of icon-legibility treatments. Shown via SETT_DEBUG_ICONLAB=1;
+/// =2 shows the "AI art vs muscle-tinted vector glyph" comparison (the research POC).
 struct IconLabSheet: View {
+    var page = ProcessInfo.processInfo.environment["SETT_DEBUG_ICONLAB"] ?? "1"
+
     /// Representative + worst-case exercises (shrugs was the tightest/faintest).
     private let samples: [(String, Color)] = [
         ("Flat Bench Press", SettColor.heroCyan),
@@ -1487,16 +1490,108 @@ struct IconLabSheet: View {
         ("Shrugs", SettColor.heroCyan),
     ]
 
+    /// POC set spread across muscle groups, each in its proposed tier colour.
+    private let poc: [(name: String, muscle: Muscle, tier: Color)] = [
+        ("Flat Bench Press", .chest, SettColor.heroCyan),
+        ("Squat", .legs, TimeChamber.teal),
+        ("Deadlift", .back, TimeChamber.indigo),
+        ("Shoulder Press", .shoulders, TimeChamber.scouterAmber),
+        ("Bicep Curl", .biceps, TimeChamber.scouterGreen),
+        ("Tricep Extension", .triceps, TimeChamber.iceBlue),
+        ("Lat Pulldown", .back, TimeChamber.indigo),
+        ("Crunches", .core, TimeChamber.hotGold),
+    ]
+
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                header
-                block(size: 44, caption: "AT 44pt  (exercise card / player header)")
-                block(size: 28, caption: "AT 28pt  (dense lists — the hard case)")
+            if page == "2" {
+                pocBody
+            } else {
+                VStack(alignment: .leading, spacing: 16) {
+                    header
+                    block(size: 44, caption: "AT 44pt  (exercise card / player header)")
+                    block(size: 28, caption: "AT 28pt  (dense lists — the hard case)")
+                }
+                .padding(14)
             }
-            .padding(14)
         }
         .dungeonBackground()
+    }
+
+    // MARK: POC — AI art vs muscle-tinted vector glyph (SETT_DEBUG_ICONLAB=2)
+
+    private var pocBody: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("ART  vs  MUSCLE-TINTED VECTOR GLYPH")
+                    .font(.system(size: 12, weight: .heavy, design: .monospaced)).kerning(1.5)
+                    .foregroundStyle(SettColor.bone)
+                Text("glyph is resolution-free — same crispness at every size")
+                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(SettColor.ash)
+            }
+            HStack(spacing: 10) {
+                Text("").frame(width: 66)
+                ForEach(["ART 40", "GLYPH 40", "GLYPH 28", "GLYPH 20"], id: \.self) {
+                    Text($0).font(.system(size: 8, weight: .bold, design: .monospaced)).kerning(0.5)
+                        .foregroundStyle(SettColor.ash).frame(maxWidth: .infinity)
+                }
+            }
+            ForEach(poc, id: \.name) { item in
+                HStack(spacing: 10) {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(item.name.uppercased())
+                            .font(.system(size: 8, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(SettColor.bone).lineLimit(2)
+                        Text(item.muscle.rawValue.uppercased())
+                            .font(.system(size: 7, weight: .bold, design: .monospaced))
+                            .foregroundStyle(item.tier)
+                    }
+                    .frame(width: 66, alignment: .leading)
+                    // Current AI art @40 for reference
+                    Group {
+                        if let asset = ExerciseArt.movementAsset(for: item.name) {
+                            ExerciseArtView(asset: asset, size: 40, color: item.tier)
+                        } else { placeholder(40) }
+                    }.frame(maxWidth: .infinity)
+                    // Muscle-tinted vector glyph in the same tier-ringed medallion, 3 sizes
+                    glyphMedallion(item, size: 40).frame(maxWidth: .infinity)
+                    glyphMedallion(item, size: 28).frame(maxWidth: .infinity)
+                    glyphMedallion(item, size: 20).frame(maxWidth: .infinity)
+                }
+            }
+            Text("Squint at this. The glyph should stay a clean tier-coloured silhouette at 20pt where the art is a smudge.")
+                .font(.system(size: 8, weight: .medium, design: .monospaced))
+                .foregroundStyle(SettColor.ash).padding(.top, 4)
+        }
+        .padding(14)
+    }
+
+    private func placeholder(_ s: CGFloat) -> some View {
+        Circle().strokeBorder(SettColor.ash.opacity(0.3), lineWidth: 1).frame(width: s, height: s)
+    }
+
+    /// The vector glyph on the same near-void tier-ringed disc the art medallion uses.
+    private func glyphMedallion(_ item: (name: String, muscle: Muscle, tier: Color), size: CGFloat) -> some View {
+        ZStack {
+            Circle().fill(RadialGradient(
+                colors: [item.tier.opacity(0.16), TimeChamber.void.opacity(0.98)],
+                center: .center, startRadius: 0, endRadius: size * 0.6))
+            glyph(for: item, color: item.tier)
+                .frame(width: size * 0.82, height: size * 0.82)
+        }
+        .frame(width: size, height: size)
+        .clipShape(Circle())
+        .overlay { Circle().strokeBorder(item.tier.opacity(0.9), lineWidth: max(1.5, size / 15)) }
+        .shadow(color: item.tier.opacity(0.4), radius: size * 0.14)
+    }
+
+    @ViewBuilder private func glyph(for item: (name: String, muscle: Muscle, tier: Color), color: Color) -> some View {
+        if let key = ExerciseGlyphKey.forName(item.name) {
+            ExerciseGlyphView(key: key, color: color)
+        } else {
+            ExerciseGlyphView(muscle: item.muscle, color: color)
+        }
     }
 
     private var header: some View {
