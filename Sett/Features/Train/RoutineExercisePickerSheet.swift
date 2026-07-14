@@ -50,18 +50,14 @@ struct RoutineExercisePickerSheet: View {
             }
             .overlay {
                 if filtered.isEmpty && !searchText.isEmpty {
-                    ContentUnavailableView {
-                        Label("No exercise named “\(searchText)”", systemImage: "magnifyingglass")
-                    } actions: {
-                        Button {
-                            isCreating = true
-                        } label: {
-                            Label("Create “\(searchText)”", systemImage: "plus")
-                        }
-                        .buttonStyle(.borderedProminent)
+                    EmptyChamber(title: "No match",
+                                 message: "No exercise named “\(searchText)”.",
+                                 actionLabel: "Forge “\(searchText)”") {
+                        isCreating = true
                     }
                 }
             }
+            .dungeonBackground()
             .searchable(text: $searchText, prompt: "Search exercises")
             .navigationTitle(allowsMultiple ? "Add Exercises" : "Replace Exercise")
             .navigationBarTitleDisplayMode(.inline)

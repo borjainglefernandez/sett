@@ -28,18 +28,14 @@ struct ExercisePickerSheet: View {
             .overlay {
                 if filtered.isEmpty && !searchText.isEmpty {
                     // Not in the catalog? Forge it without leaving the workout.
-                    ContentUnavailableView {
-                        Label("No exercise named “\(searchText)”", systemImage: "magnifyingglass")
-                    } actions: {
-                        Button {
-                            isCreating = true
-                        } label: {
-                            Label("Create “\(searchText)”", systemImage: "plus")
-                        }
-                        .buttonStyle(.borderedProminent)
+                    EmptyChamber(title: "No match",
+                                 message: "No exercise named “\(searchText)”.",
+                                 actionLabel: "Forge “\(searchText)”") {
+                        isCreating = true
                     }
                 }
             }
+            .dungeonBackground()
             .searchable(text: $searchText, prompt: "Search exercises")
             .navigationTitle("Add Exercise")
             .navigationBarTitleDisplayMode(.inline)

@@ -348,6 +348,116 @@ public struct ChamberSegments<Value: Hashable>: View {
     }
 }
 
+/// The mid-flow sheet shell. Every quick sheet the session or home presents (numeric
+/// pad, note, fix-set, machine setup, bodyweight) wears this instead of stock iOS nav
+/// chrome: a mono kerned title row flanked by a ghost CANCEL and a cyan commit capsule,
+/// content below, the chamber behind. Tapping a scouter numeral no longer cuts to
+/// another operating system.
+public struct ChamberSheet<Content: View>: View {
+    let title: String
+    var commitLabel: String
+    var canCommit: Bool
+    let onCommit: () -> Void
+    @ViewBuilder let content: () -> Content
+
+    @Environment(\.dismiss) private var dismiss
+
+    public init(title: String, commitLabel: String = "SAVE", canCommit: Bool = true,
+                onCommit: @escaping () -> Void, @ViewBuilder content: @escaping () -> Content) {
+        self.title = title
+        self.commitLabel = commitLabel
+        self.canCommit = canCommit
+        self.onCommit = onCommit
+        self.content = content
+    }
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 12) {
+                Button { dismiss() } label: {
+                    Text("CANCEL")
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .kerning(1)
+                        .foregroundStyle(SettColor.ash)
+                        .frame(minWidth: 64, minHeight: 30)
+                        .background { Capsule().strokeBorder(SettColor.cardBorder, lineWidth: 1) }
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                Spacer()
+                Text(title.uppercased())
+                    .font(.system(size: 13, weight: .bold, design: .monospaced))
+                    .kerning(3)
+                    .foregroundStyle(SettColor.bone)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                Spacer()
+                Button {
+                    onCommit()
+                    dismiss()
+                } label: {
+                    Text(commitLabel.uppercased())
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .kerning(1)
+                        .foregroundStyle(SettColor.etch)
+                        .frame(minWidth: 64, minHeight: 30)
+                        .background(SettColor.heroCyan.opacity(canCommit ? 1 : 0.35), in: Capsule())
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .disabled(!canCommit)
+            }
+            content()
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background { DungeonBackground().ignoresSafeArea() }
+    }
+}
+
+/// The app's ± stepper grammar (the session's flanking micro-steppers) as a standalone
+/// control — replaces stock `Stepper` inside themed sheets.
+public struct ChamberStepper: View {
+    @Binding var value: Int
+    var range: ClosedRange<Int>
+    var step: Int = 1
+
+    public init(value: Binding<Int>, in range: ClosedRange<Int>, step: Int = 1) {
+        self._value = value
+        self.range = range
+        self.step = step
+    }
+
+    public var body: some View {
+        HStack(spacing: 14) {
+            flank("minus") { value = max(range.lowerBound, value - step) }
+            Text("\(value)")
+                .font(.system(.title3, design: .monospaced).weight(.bold))
+                .monospacedDigit()
+                .foregroundStyle(SettColor.bone)
+                .frame(minWidth: 44)
+                .contentTransition(.numericText(value: Double(value)))
+            flank("plus") { value = min(range.upperBound, value + step) }
+        }
+    }
+
+    private func flank(_ symbol: String, action: @escaping () -> Void) -> some View {
+        Button {
+            withAnimation(.snappy(duration: 0.15)) { action() }
+            Haptics.selection()
+        } label: {
+            Image(systemName: symbol)
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(SettColor.heroCyan)
+                .frame(width: 34, height: 34)
+                .background { Circle().strokeBorder(SettColor.heroCyan.opacity(0.4), lineWidth: 1) }
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(symbol == "plus" ? "Increment" : "Decrement")
+    }
+}
+
 /// The themed empty state — replaces stock `ContentUnavailableView` so an empty screen
 /// still lives in the chamber: a quiet sigil, a mono title, ash body, optional cyan CTA.
 public struct EmptyChamber: View {

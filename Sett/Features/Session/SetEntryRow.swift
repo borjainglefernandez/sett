@@ -266,10 +266,10 @@ struct SetNoteSheet: View {
     @State private var text = ""
     @FocusState private var isFocused: Bool
 
-    // ONE commit path — the nav-bar Save. It sits above the keyboard so there is no
+    // ONE commit path — the shell's SAVE. It sits above the keyboard so there is no
     // need for a keyboard "Done" (a multi-line editor's Return inserts newlines).
     var body: some View {
-        NavigationStack {
+        ChamberSheet(title: title, onCommit: save) {
             VStack(alignment: .leading, spacing: 14) {
                 TextEditor(text: $text)
                     .font(.subheadline)
@@ -299,22 +299,10 @@ struct SetNoteSheet: View {
                 }
                 Spacer(minLength: 0)
             }
-            .padding(16)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .navigationTitle(title)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { save() }.fontWeight(.semibold)
-                }
-            }
-            .onAppear {
-                text = initialText
-                isFocused = true
-            }
+        }
+        .onAppear {
+            text = initialText
+            isFocused = true
         }
         .presentationDetents([.medium, .large])
     }
@@ -322,7 +310,6 @@ struct SetNoteSheet: View {
     private func save() {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         onSave(trimmed.isEmpty ? nil : trimmed)
-        dismiss()
     }
 }
 
@@ -346,32 +333,20 @@ struct NumericPadSheet: View {
     @FocusState private var isFocused: Bool
 
     var body: some View {
-        NavigationStack {
+        ChamberSheet(title: title, commitLabel: "DONE", onCommit: { onCommit(text) }) {
             TextField(title, text: $text)
                 .keyboardType(keyboard)
                 .font(.system(.largeTitle, design: .rounded, weight: .bold))
                 .monospacedDigit()
                 .multilineTextAlignment(.center)
+                .foregroundStyle(SettColor.bone)
                 .focused($isFocused)
-                .padding(16)
-                .navigationTitle(title)
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Cancel") { dismiss() }
-                    }
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Done") {
-                            onCommit(text)
-                            dismiss()
-                        }
-                        .fontWeight(.semibold)
-                    }
-                }
-                .onAppear {
-                    text = initialText
-                    isFocused = true
-                }
+                .frame(maxWidth: .infinity)
+                .padding(.top, 6)
+        }
+        .onAppear {
+            text = initialText
+            isFocused = true
         }
         .presentationDetents([.height(220)])
     }

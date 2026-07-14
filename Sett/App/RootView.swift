@@ -93,6 +93,10 @@ struct DebugSurfaceHost: View {
             }
         case "settings":
             SettingsView()
+        case "bodyweight":
+            Color.clear.sheet(isPresented: .constant(true)) {
+                BodyweightLogSheet(latest: nil)
+            }
         case "picker":
             ExercisePickerSheet()
         case "routinepicker":

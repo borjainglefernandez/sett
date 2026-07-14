@@ -631,12 +631,8 @@ struct SetValuesEditSheet: View {
     @State private var isWarmup = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("FIX SET")
-                .font(.system(size: 13, weight: .bold, design: .monospaced))
-                .kerning(3)
-                .foregroundStyle(SettColor.bone)
-            HStack(alignment: .top, spacing: 12) {
+        ChamberSheet(title: "Fix Set", onCommit: save) {
+            HStack(alignment: .top, spacing: 16) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("WEIGHT (\(unit.symbol))")
                         .font(.system(size: 10, weight: .semibold, design: .monospaced))
@@ -652,28 +648,18 @@ struct SetValuesEditSheet: View {
                     Text("REPS")
                         .font(.system(size: 10, weight: .semibold, design: .monospaced))
                         .foregroundStyle(SettColor.ash)
-                    Stepper(value: $reps, in: 0...100) {
-                        Text("\(reps)")
-                            .font(.system(.title3, design: .monospaced))
-                            .foregroundStyle(SettColor.bone)
-                            .monospacedDigit()
-                    }
+                    // The session's ± flank grammar, not a stock Stepper.
+                    ChamberStepper(value: $reps, in: 0...100)
                 }
             }
-            Toggle("Warm-up", isOn: $isWarmup)
-                .font(.subheadline)
-                .tint(TimeChamber.teal)
-            Button(action: save) {
-                Text("Save")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity, minHeight: 44)
-                    .background(Aura.cyan, in: Capsule())
+            Toggle(isOn: $isWarmup) {
+                Text("WARM-UP")
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .kerning(1.5)
+                    .foregroundStyle(SettColor.ash)
             }
-            .buttonStyle(.plain)
+            .tint(TimeChamber.teal)
         }
-        .padding(20)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .presentationDetents([.height(300)])
         .onAppear {
             weightText = WeightFormat.compact(grams: set.weightGrams, unit: unit)
@@ -686,7 +672,6 @@ struct SetValuesEditSheet: View {
         let value = Double(weightText.replacingOccurrences(of: ",", with: ".")) ?? 0
         onSave(Units.grams(fromDisplay: max(0, value), unit: unit), max(0, reps), isWarmup)
         Haptics.selection()
-        dismiss()
     }
 }
 
@@ -705,11 +690,7 @@ struct MachineSetupSheet: View {
     @FocusState private var isFocused: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("MACHINE SETUP")
-                .font(.system(size: 13, weight: .bold, design: .monospaced))
-                .kerning(3)
-                .foregroundStyle(SettColor.bone)
+        ChamberSheet(title: "Machine Setup", onCommit: save) {
             TextField("seat 4 · back 3 · pin 8", text: $text)
                 .font(.system(.subheadline, design: .monospaced))
                 .foregroundStyle(SettColor.bone)
@@ -718,17 +699,7 @@ struct MachineSetupSheet: View {
                 .onSubmit(save)
                 .padding(12)
                 .background(SettColor.cardNested, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-            Button(action: save) {
-                Text("Save")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity, minHeight: 44)
-                    .background(Aura.cyan, in: Capsule())
-            }
-            .buttonStyle(.plain)
         }
-        .padding(20)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .presentationDetents([.height(220)])
         .onAppear {
             text = exercise.instructions ?? ""
@@ -743,7 +714,6 @@ struct MachineSetupSheet: View {
         exercise.needsPush = true
         try? modelContext.save()
         Haptics.selection()
-        dismiss()
     }
 }
 

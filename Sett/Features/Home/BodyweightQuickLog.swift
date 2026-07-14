@@ -94,9 +94,7 @@ struct BodyweightLogSheet: View {
     private var stepGrams: Int { unit == .kg ? 100 : 45 }
 
     var body: some View {
-        VStack(spacing: 20) {
-            Text("Bodyweight")
-                .font(.headline)
+        ChamberSheet(title: "Bodyweight", commitLabel: "LOG", onCommit: save) {
             HStack(spacing: 16) {
                 stepperButton(systemName: "minus", delta: -stepGrams)
                 VStack(spacing: 8) {
@@ -124,19 +122,8 @@ struct BodyweightLogSheet: View {
                 .frame(maxWidth: .infinity)
                 stepperButton(systemName: "plus", delta: stepGrams)
             }
-            Button {
-                save()
-            } label: {
-                Text("Save")
-                    .font(.headline)
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
-                    .background(Aura.cyan, in: Capsule())
-            }
+            .padding(.top, 10)
         }
-        .padding(20)
-        .frame(maxHeight: .infinity)
         .presentationDetents([.height(280)])
         .onAppear {
             grams = latest?.weightGrams ?? 79_000
@@ -158,9 +145,12 @@ struct BodyweightLogSheet: View {
         } label: {
             Image(systemName: systemName)
                 .font(.title2.weight(.semibold))
-                .foregroundStyle(.primary)
+                .foregroundStyle(SettColor.heroCyan)
                 .frame(width: 56, height: 56)
-                .background(SettColor.cardNested, in: Circle())
+                .background {
+                    Circle().fill(SettColor.cardNested)
+                    Circle().strokeBorder(SettColor.heroCyan.opacity(0.35), lineWidth: 1)
+                }
         }
         .buttonStyle(.plain)
         .accessibilityLabel(delta < 0 ? "Decrease weight" : "Increase weight")
@@ -171,6 +161,5 @@ struct BodyweightLogSheet: View {
         modelContext.insert(entry)
         try? modelContext.save()
         Haptics.success()
-        dismiss()
     }
 }
