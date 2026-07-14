@@ -46,6 +46,13 @@ public final class WorkoutSessionStore {
     // MARK: Lifecycle
 
     private func resumeOngoingWorkoutIfAny() {
+        #if DEBUG
+        // Screenshot harness: a resurrected demo workout's fullScreenCover was
+        // occluding every SETT_DEBUG_SURFACE capture.
+        if let flag = ProcessInfo.processInfo.environment["SETT_DEBUG_SURFACE"], !flag.isEmpty {
+            return
+        }
+        #endif
         let descriptor = FetchDescriptor<Workout>(predicate: #Predicate { $0.endedAt == nil && $0.deletedAt == nil })
         guard let ongoing = (try? context.fetch(descriptor))?.first else { return }
         // Abandoned? A workout with no activity for 6h+ was almost certainly left when

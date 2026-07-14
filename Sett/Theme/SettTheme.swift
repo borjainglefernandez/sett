@@ -277,6 +277,128 @@ public extension View {
     }
 }
 
+// MARK: - Shared vocabulary (one source for the marks every screen kept re-rolling)
+
+/// The mono kerned section label — the app's most-copied five lines, now one view.
+/// INK RULE (documented here because this is the vocabulary file): text sitting ON a
+/// heroCyan fill is always `SettColor.etch` — never white, never black.
+public struct Eyebrow: View {
+    let text: String
+    var tint: Color
+
+    public init(_ text: String, tint: Color = SettColor.ash) {
+        self.text = text
+        self.tint = tint
+    }
+
+    public var body: some View {
+        Text(text)
+            .font(.system(size: 11, weight: .bold, design: .monospaced))
+            .kerning(1.5)
+            .foregroundStyle(tint)
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
+    }
+}
+
+/// The themed segmented control (extracted from Progress's period picker) — replaces
+/// every stock white `.pickerStyle(.segmented)`, which was the single most repeated
+/// off-world element. Mono uppercase, selected = cyan capsule with etch ink.
+public struct ChamberSegments<Value: Hashable>: View {
+    @Binding var selection: Value
+    let options: [(value: Value, label: String)]
+    /// Compact = shorter capsules for secondary controls (e.g. schedule mode).
+    var compact: Bool = false
+
+    public init(selection: Binding<Value>, options: [(value: Value, label: String)],
+                compact: Bool = false) {
+        self._selection = selection
+        self.options = options
+        self.compact = compact
+    }
+
+    public var body: some View {
+        HStack(spacing: 6) {
+            ForEach(options, id: \.value) { option in
+                Button {
+                    selection = option.value
+                    Haptics.selection()
+                } label: {
+                    Text(option.label.uppercased())
+                        .font(.system(size: compact ? 10 : 11, weight: .bold, design: .monospaced))
+                        .kerning(compact ? 1 : 1.5)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                        .foregroundStyle(selection == option.value ? SettColor.etch : SettColor.ash)
+                        .frame(maxWidth: .infinity, minHeight: compact ? 28 : 34)
+                        .background {
+                            if selection == option.value {
+                                Capsule().fill(SettColor.heroCyan)
+                            } else {
+                                Capsule().strokeBorder(SettColor.cardBorder, lineWidth: 1)
+                            }
+                        }
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(option.label)
+                .accessibilityAddTraits(selection == option.value ? [.isSelected] : [])
+            }
+        }
+    }
+}
+
+/// The themed empty state — replaces stock `ContentUnavailableView` so an empty screen
+/// still lives in the chamber: a quiet sigil, a mono title, ash body, optional cyan CTA.
+public struct EmptyChamber: View {
+    let title: String
+    var message: String? = nil
+    var actionLabel: String? = nil
+    var action: (() -> Void)? = nil
+
+    public init(title: String, message: String? = nil,
+                actionLabel: String? = nil, action: (() -> Void)? = nil) {
+        self.title = title
+        self.message = message
+        self.actionLabel = actionLabel
+        self.action = action
+    }
+
+    public var body: some View {
+        VStack(spacing: 10) {
+            SettSigil(size: 30, color: SettColor.ash.opacity(0.7))
+            Text(title.uppercased())
+                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                .kerning(2)
+                .foregroundStyle(SettColor.ash)
+                .multilineTextAlignment(.center)
+            if let message {
+                Text(message)
+                    .font(.footnote)
+                    .foregroundStyle(SettColor.ash.opacity(0.8))
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 280)
+            }
+            if let actionLabel, let action {
+                Button(action: action) {
+                    Text(actionLabel.uppercased())
+                        .font(.system(size: 12, weight: .bold, design: .monospaced))
+                        .kerning(1.5)
+                        .foregroundStyle(SettColor.etch)
+                        .padding(.horizontal, 18)
+                        .frame(minHeight: 40)
+                        .background(SettColor.heroCyan, in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 6)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 40)
+        .accessibilityElement(children: .combine)
+    }
+}
+
 // MARK: - Dungeon background (torchlit-center architecture: vignette + grime)
 
 /// Full-bleed screen backdrop, v3: warm near-black stone, a radial VIGNETTE

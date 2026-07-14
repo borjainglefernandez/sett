@@ -663,6 +663,11 @@ struct SetPlayerView: View {
                         RoundedRectangle(cornerRadius: 14, style: .continuous)
                             .strokeBorder(liveTier.color.opacity(0.3), lineWidth: 1)
                     }
+                    .overlay {
+                        // Completes the hudCard grammar — same reticle as the cards.
+                        CornerTicksShape(length: 6, inset: 7)
+                            .stroke(liveTier.color.opacity(0.4), lineWidth: 1)
+                    }
             }
         }
     }

@@ -192,16 +192,8 @@ struct WorkoutDetailView: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background {
-            let tint = topID == nil ? SettColor.heroCyan : TimeChamber.scouterAmber
-            let shape = RoundedRectangle(cornerRadius: 16, style: .continuous)
-            shape.fill(TimeChamber.void.opacity(0.72))
-            shape.strokeBorder(tint.opacity(0.28), lineWidth: 1)
-            CornerTicksShape(length: 6, inset: 7)
-                .stroke(tint.opacity(0.35), lineWidth: 1)
-        }
+        .hudCard(tint: topID == nil ? SettColor.heroCyan : TimeChamber.scouterAmber)
     }
 
     private func setRow(_ set: SetEntry, in workoutExercise: WorkoutExercise,

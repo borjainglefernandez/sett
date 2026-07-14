@@ -62,9 +62,8 @@ struct ExerciseLibraryView: View {
             .overlay {
                 if filtered.isEmpty {
                     if searchText.isEmpty {
-                        ContentUnavailableView("No exercises",
-                                               systemImage: "dumbbell.fill",
-                                               description: Text("Try a different filter."))
+                        EmptyChamber(title: "No exercises here",
+                                     message: "Try a different filter.")
                     } else {
                         searchMissView
                     }
@@ -116,7 +115,7 @@ struct ExerciseLibraryView: View {
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
                 .background(isSelected ? SettColor.heroCyan : SettColor.card, in: Capsule())
-                .foregroundStyle(isSelected ? Color.white : Color.primary)
+                .foregroundStyle(isSelected ? SettColor.etch : SettColor.bone)
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
@@ -315,15 +314,7 @@ struct CreateExerciseSheet: View {
             }
             Spacer(minLength: 0)
         }
-        .padding(14)
-        .background {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(TimeChamber.void.opacity(0.6))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .strokeBorder(SettColor.heroCyan.opacity(0.25), lineWidth: 1)
-                }
-        }
+        .hudCard()
     }
 
     private var nameField: some View {

@@ -369,9 +369,13 @@ struct WorkoutSummaryView: View {
 
     private var netCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("Net Progress",
-                  systemImage: summary.netVolumeGrams >= 0 ? "arrow.up.right" : "arrow.down.right")
-                .font(.title3.weight(.semibold))
+            Label {
+                Eyebrow("NET PROGRESS", tint: SettColor.bone)
+            } icon: {
+                Image(systemName: summary.netVolumeGrams >= 0 ? "arrow.up.right" : "arrow.down.right")
+                    .font(.footnote.weight(.bold))
+                    .foregroundStyle(SettColor.heroCyan)
+            }
             if summary.netIsNew {
                 Text("NEW TERRITORY")
                     .font(.headline)
@@ -418,9 +422,13 @@ struct WorkoutSummaryView: View {
 
     private var badgesCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("Badges Earned", systemImage: "medal.fill")
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(SettColor.bone)
+            Label {
+                Eyebrow("BADGES EARNED", tint: SettColor.bone)
+            } icon: {
+                Image(systemName: "medal.fill")
+                    .font(.footnote.weight(.bold))
+                    .foregroundStyle(SettColor.saiyanGold)
+            }
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .top, spacing: 16) {
                     ForEach(summary.newBadgeKeys, id: \.self) { key in
@@ -462,9 +470,13 @@ struct WorkoutSummaryView: View {
 
     private var xpCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("XP Earned", systemImage: "bolt.fill")
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(SettColor.bone)
+            Label {
+                Eyebrow("XP EARNED", tint: SettColor.bone)
+            } icon: {
+                Image(systemName: "bolt.fill")
+                    .font(.footnote.weight(.bold))
+                    .foregroundStyle(SettColor.heroCyan)
+            }
             VStack(alignment: .leading, spacing: 8) {
                 ForEach(xpEntries, id: \.character) { entry in
                     xpRow(entry)
@@ -503,8 +515,13 @@ struct WorkoutSummaryView: View {
 
     private var commentaryCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("Scanner Report", systemImage: "sparkles")
-                .font(.title3.weight(.semibold))
+            Label {
+                Eyebrow("SCANNER REPORT", tint: SettColor.bone)
+            } icon: {
+                Image(systemName: "sparkles")
+                    .font(.footnote.weight(.bold))
+                    .foregroundStyle(SettColor.heroCyan)
+            }
             Text(summary.commentary)
                 .font(.body)
             Text(summary.commentarySource == .onDevice ? "Generated on device" : "sett scanner")

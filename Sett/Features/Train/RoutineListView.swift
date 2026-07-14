@@ -36,12 +36,9 @@ struct RoutineListView: View {
             } else {
                 List {
                     Section {
-                        Picker("Schedule", selection: $settings.scheduleMode) {
-                            ForEach(ScheduleMode.allCases) { mode in
-                                Text(mode.title).tag(mode)
-                            }
-                        }
-                        .pickerStyle(.segmented)
+                        ChamberSegments(selection: $settings.scheduleMode,
+                                        options: ScheduleMode.allCases.map { ($0, $0.title) },
+                                        compact: true)
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
                         .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
@@ -212,7 +209,7 @@ struct RoutineListView: View {
                 Text("NEXT UP")
                     .font(.system(size: 10, weight: .heavy, design: .rounded))
                     .kerning(1)
-                    .foregroundStyle(.black)
+                    .foregroundStyle(SettColor.etch)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 3)
                     .background(Aura.cyan, in: Capsule())
@@ -243,10 +240,10 @@ struct RoutineListView: View {
         } label: {
             Image(systemName: "play.fill")
                 .font(.title3.weight(.bold))
-                .foregroundStyle(.black)
+                .foregroundStyle(SettColor.etch)
                 .frame(width: 52, height: 52)
-                .background(.white, in: Circle())
-                .shadow(color: .black.opacity(0.3), radius: 4)
+                .background(SettColor.heroCyan, in: Circle())
+                .shadow(color: SettColor.heroCyan.opacity(0.45), radius: 6)
         }
         .buttonStyle(.borderless)
         .accessibilityLabel("Start \(routine.name)")

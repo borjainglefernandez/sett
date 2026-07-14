@@ -19,11 +19,13 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 Section {
-                    Picker("Weight unit", selection: $settings.unit) {
-                        Text("lb").tag(WeightUnit.lb)
-                        Text("kg").tag(WeightUnit.kg)
+                    VStack(alignment: .leading, spacing: 8) {
+                        Eyebrow("WEIGHT UNIT")
+                        ChamberSegments(selection: $settings.unit,
+                                        options: [(WeightUnit.lb, "lb"), (WeightUnit.kg, "kg")],
+                                        compact: true)
                     }
-                    .pickerStyle(.segmented)
+                    .padding(.vertical, 4)
                     Picker("Weight increment", selection: $settings.incrementGrams) {
                         ForEach(incrementOptions, id: \.self) { grams in
                             Text(settings.displayWeight(grams)).tag(grams)
@@ -32,11 +34,13 @@ struct SettingsView: View {
                     Stepper(value: $settings.defaultRestSeconds, in: 30...300, step: 5) {
                         LabeledContent("Default rest", value: restText)
                     }
-                    Picker("Workout view", selection: $settings.startsInList) {
-                        Text("Scanner").tag(false)
-                        Text("List").tag(true)
+                    VStack(alignment: .leading, spacing: 8) {
+                        Eyebrow("WORKOUT VIEW")
+                        ChamberSegments(selection: $settings.startsInList,
+                                        options: [(false, "Scanner"), (true, "List")],
+                                        compact: true)
                     }
-                    .pickerStyle(.segmented)
+                    .padding(.vertical, 4)
                 } header: {
                     sectionHeader("UNITS")
                 } footer: {
@@ -48,12 +52,13 @@ struct SettingsView: View {
                 .listRowSeparatorTint(SettColor.cardBorder)
 
                 Section {
-                    Picker("Phase", selection: phaseBinding) {
-                        ForEach(TrainingPhase.allCases) { phase in
-                            Text(phase.title).tag(phase)
-                        }
+                    VStack(alignment: .leading, spacing: 8) {
+                        Eyebrow("PHASE")
+                        ChamberSegments(selection: phaseBinding,
+                                        options: TrainingPhase.allCases.map { ($0, $0.title) },
+                                        compact: true)
                     }
-                    .pickerStyle(.segmented)
+                    .padding(.vertical, 4)
                     HStack(spacing: 8) {
                         Image(systemName: settings.phase.symbolName)
                             .foregroundStyle(SettColor.heroCyan)

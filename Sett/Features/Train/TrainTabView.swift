@@ -15,14 +15,10 @@ struct TrainTabView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                Picker("Section", selection: $segment) {
-                    ForEach(Segment.allCases) { segment in
-                        Text(segment.rawValue).tag(segment)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
+                ChamberSegments(selection: $segment,
+                                options: Segment.allCases.map { ($0, $0.rawValue) })
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
 
                 switch segment {
                 case .routines:
@@ -34,9 +30,6 @@ struct TrainTabView: View {
             .dungeonBackground()
             .navigationTitle("Train")
             .navigationBarTitleDisplayMode(.inline)
-            .onChange(of: segment) {
-                Haptics.selection()
-            }
         }
     }
 }

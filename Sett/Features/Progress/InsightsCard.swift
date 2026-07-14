@@ -83,7 +83,7 @@ struct InsightsCard: View {
             .background(SettColor.cardNested, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             .overlay(alignment: .leading) {
                 Capsule()
-                    .fill(SettColor.saiyanGold)
+                    .fill(SettColor.heroCyan)
                     .frame(width: 3)
                     .padding(.vertical, 10)
                     .padding(.leading, 6)

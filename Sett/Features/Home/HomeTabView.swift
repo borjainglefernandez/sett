@@ -62,11 +62,21 @@ struct HomeTabView: View {
                             if session.rotationCycleSealed {
                                 rotationSealBanner
                             }
-                            SevenSlotBurstRow(trainedDays: trainedDaysThisWeek,
-                                              goalTarget: weeklyGoalTarget,
-                                              streakWeeks: streakWeeks)
-                            NetGlanceStrip()
-                            startCard
+                            // A zero week means the call to action outranks the zeros:
+                            // the launch card rides above the stat slabs until a session lands.
+                            if trainedDaysThisWeek.isEmpty {
+                                startCard
+                                SevenSlotBurstRow(trainedDays: trainedDaysThisWeek,
+                                                  goalTarget: weeklyGoalTarget,
+                                                  streakWeeks: streakWeeks)
+                                NetGlanceStrip()
+                            } else {
+                                SevenSlotBurstRow(trainedDays: trainedDaysThisWeek,
+                                                  goalTarget: weeklyGoalTarget,
+                                                  streakWeeks: streakWeeks)
+                                NetGlanceStrip()
+                                startCard
+                            }
                         }
                         BodyweightChipCard(latest: latestBodyweight.first)
                         DirectivePanel()
@@ -370,10 +380,21 @@ struct HomeTabView: View {
             .buttonStyle(.plain)
             .accessibilityLabel(todaysRoutine.map { "Start \($0.name)" } ?? "Quick start a workout")
             if todaysRoutine != nil {
-                Button("Quick Start") {
+                // Ghost HUD control — the session's WARM-UP pill grammar, not a bare link.
+                Button {
                     session.quickStart()
+                } label: {
+                    Text("QUICK START")
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        .kerning(1.5)
+                        .foregroundStyle(SettColor.heroCyan)
+                        .frame(minWidth: 150, minHeight: 36)
+                        .background {
+                            Capsule().strokeBorder(SettColor.heroCyan.opacity(0.4), lineWidth: 1)
+                        }
+                        .contentShape(Capsule())
                 }
-                .font(.subheadline.weight(.semibold))
+                .buttonStyle(.plain)
                 .frame(maxWidth: .infinity)
             }
         }
@@ -411,12 +432,12 @@ struct HomeTabView: View {
                 Spacer(minLength: 8)
                 ZStack {
                     Circle()
-                        .fill(.white)
+                        .fill(SettColor.heroCyan)
                         .frame(width: 54, height: 54)
-                        .shadow(color: .black.opacity(0.4), radius: 6, y: 2)
+                        .shadow(color: SettColor.heroCyan.opacity(0.5), radius: 7, y: 2)
                     Image(systemName: "play.fill")
                         .font(.system(size: 22, weight: .bold))
-                        .foregroundStyle(.black)
+                        .foregroundStyle(SettColor.etch)
                         .offset(x: 2)
                 }
                 .accessibilityHidden(true)
@@ -560,6 +581,10 @@ struct HomeTabView: View {
                              equipment: first.equipment,
                              muscle: first.muscle,
                              size: 40, color: SettColor.heroCyan)
+            } else {
+                // Fixed 40pt ghost slot so empty workouts don't break the row grid.
+                SettSigil(size: 22, color: SettColor.iron.opacity(0.6))
+                    .frame(width: 40, height: 40)
             }
             VStack(alignment: .leading, spacing: 2) {
                 Text(workout.title)

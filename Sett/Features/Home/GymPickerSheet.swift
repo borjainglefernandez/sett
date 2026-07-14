@@ -44,7 +44,7 @@ struct GymPickerSheet: View {
                         }
                     }
                 }
-                Section("New gym") {
+                Section {
                     HStack(spacing: 10) {
                         TextField("Gym name", text: $newName)
                             .focused($newNameFocused)
@@ -54,6 +54,8 @@ struct GymPickerSheet: View {
                             .fontWeight(.semibold)
                             .disabled(trimmedNewName.isEmpty)
                     }
+                } header: {
+                    Eyebrow("NEW GYM")
                 }
                 .listRowBackground(SettColor.card)
             }

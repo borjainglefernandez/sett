@@ -54,12 +54,16 @@ struct NetGlanceStrip: View {
             }
             .padding(.vertical, 10)
 
-            Rectangle()
-                .fill(SettColor.saiyanGold.opacity(0.15))
-                .frame(height: 1)
-                .padding(.horizontal, 12)
+            if week.sets > 0 {
+                Rectangle()
+                    .fill(SettColor.saiyanGold.opacity(0.15))
+                    .frame(height: 1)
+                    .padding(.horizontal, 12)
+            }
 
-            // Net vs last week — the original strip, now with directional arrows.
+            // Net vs last week — hidden until the week has work to compare (an all-red
+            // "-294 REPS" over three zeros read as punishment for opening the app).
+            if week.sets > 0 {
             HStack(spacing: 12) {
                 Text("NET VS LAST WEEK")
                     .font(.system(size: 10, weight: .bold, design: .monospaced))
@@ -81,6 +85,7 @@ struct NetGlanceStrip: View {
             .lineLimit(1)
             .padding(.horizontal, 14)
             .frame(minHeight: 38)
+            }
         }
         .frame(maxWidth: .infinity)
         .background(slab)

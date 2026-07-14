@@ -98,11 +98,10 @@ struct SessionOverviewSheet: View {
     }
 
     private var scopePicker: some View {
-        Picker("Reorder", selection: $reorderScope) {
-            Text("Exercises").tag(ReorderScope.exercises)
-            Text("Sets").tag(ReorderScope.sets)
-        }
-        .pickerStyle(.segmented)
+        ChamberSegments(selection: $reorderScope,
+                        options: [(ReorderScope.exercises, "Exercises"),
+                                  (ReorderScope.sets, "Sets")],
+                        compact: true)
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
         .background(alignment: .bottom) {
@@ -213,10 +212,11 @@ struct SessionOverviewSheet: View {
     private var restStrip: some View {
         TimelineView(.periodic(from: .now, by: 0.5)) { context in
             let remaining = restRemaining(at: context.date)
+            let tierColor = (session.lastReadback?.outcome.auraTier ?? .base).color
             HStack(spacing: 12) {
                 Image(systemName: "timer")
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(TimeChamber.scouterGreen)
+                    .foregroundStyle(tierColor)
                 Text("REST")
                     .font(.system(size: 11, weight: .bold, design: .monospaced))
                     .kerning(2)
@@ -234,7 +234,7 @@ struct SessionOverviewSheet: View {
             .padding(.vertical, 10)
             .background(alignment: .bottom) {
                 Rectangle().fill(TimeChamber.void.opacity(0.94)).ignoresSafeArea(edges: .top)
-                Rectangle().fill(TimeChamber.scouterGreen.opacity(0.4)).frame(height: 1)
+                Rectangle().fill(tierColor.opacity(0.4)).frame(height: 1)
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Rest, \(restTimeText(remaining)) remaining")

@@ -46,13 +46,17 @@ struct HistoryListView: View {
                         }
                     } header: {
                         HStack {
-                            Text(monthTitle(group.key))
+                            Eyebrow(monthTitle(group.key).uppercased())
                             Spacer()
-                            Text("\(group.workouts.count) workout\(group.workouts.count == 1 ? "" : "s")")
+                            Text("\(group.workouts.count) WORKOUT\(group.workouts.count == 1 ? "" : "S")")
+                                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                                .kerning(1)
                                 .monospacedDigit()
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(SettColor.ash)
                         }
                     }
+                    .listRowBackground(SettColor.card)
+                    .listRowSeparatorTint(SettColor.cardBorder)
                 }
             } else {
                 Section {
@@ -60,17 +64,19 @@ struct HistoryListView: View {
                         row(workout)
                     }
                 }
+                .listRowBackground(SettColor.card)
+                .listRowSeparatorTint(SettColor.cardBorder)
             }
         }
+        .scrollContentBackground(.hidden)
+        .dungeonBackground()
         .overlay {
             if workouts.isEmpty {
-                ContentUnavailableView(
-                    "No workouts yet",
-                    systemImage: "figure.strengthtraining.traditional",
-                    description: Text("Your history writes itself.")
-                )
+                EmptyChamber(title: "No workouts yet",
+                             message: "Your history writes itself.")
             } else if displayedWorkouts.isEmpty && !searchText.isEmpty {
-                ContentUnavailableView.search(text: searchText)
+                EmptyChamber(title: "No match",
+                             message: "No workout named \u{201C}\(searchText)\u{201D}.")
             }
         }
         .searchable(text: $searchText, prompt: "Search workouts")
@@ -150,6 +156,16 @@ struct HistoryListView: View {
             WorkoutDetailView(workout: workout)
         } label: {
             HStack(spacing: 12) {
+                if let first = workout.orderedExercises.first {
+                    ExerciseIcon(name: first.exerciseNameSnapshot,
+                                 equipment: first.equipment,
+                                 muscle: first.muscle,
+                                 size: 40, color: SettColor.heroCyan)
+                } else {
+                    // Fixed 40pt slot so rows keep one grid even with no exercises.
+                    SettSigil(size: 22, color: SettColor.iron.opacity(0.6))
+                        .frame(width: 40, height: 40)
+                }
                 VStack(alignment: .leading, spacing: 3) {
                     Text(workout.title)
                         .font(.subheadline.weight(.semibold))

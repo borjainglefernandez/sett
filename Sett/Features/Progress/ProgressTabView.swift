@@ -88,34 +88,10 @@ struct ProgressTabView: View {
 
     // MARK: Period control (single source of truth for every period-driven card)
 
-    /// Themed capsule segments — the stock white segmented control was the one
-    /// off-world element on the page.
+    /// The shared themed segments (this picker was the donor for `ChamberSegments`).
     private var periodPicker: some View {
-        HStack(spacing: 6) {
-            ForEach(Period.allCases) { candidate in
-                Button {
-                    period = candidate
-                    Haptics.selection()
-                } label: {
-                    Text(candidate.rawValue.uppercased())
-                        .font(.system(size: 11, weight: .bold, design: .monospaced))
-                        .kerning(1.5)
-                        .foregroundStyle(period == candidate ? SettColor.etch : SettColor.ash)
-                        .frame(maxWidth: .infinity, minHeight: 34)
-                        .background {
-                            if period == candidate {
-                                Capsule().fill(SettColor.heroCyan)
-                            } else {
-                                Capsule().strokeBorder(SettColor.cardBorder, lineWidth: 1)
-                            }
-                        }
-                        .contentShape(Capsule())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(candidate.rawValue.capitalized)
-                .accessibilityAddTraits(period == candidate ? [.isSelected] : [])
-            }
-        }
+        ChamberSegments(selection: $period,
+                        options: Period.allCases.map { ($0, $0.rawValue) })
     }
 
     // MARK: Empty state — "Charts unlock after 2 workouts"
@@ -128,7 +104,7 @@ struct ProgressTabView: View {
                 ForEach(Array(Self.placeholderBars.enumerated()), id: \.offset) { item in
                     BarMark(x: .value("Period", item.offset),
                             y: .value("Volume", item.element))
-                        .foregroundStyle(Color(uiColor: .systemGray4))
+                        .foregroundStyle(SettColor.iron.opacity(0.6))
                         .cornerRadius(3)
                 }
             }
