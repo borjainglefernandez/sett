@@ -91,6 +91,8 @@ struct DebugSurfaceHost: View {
             if let workout = finished.first {
                 NavigationStack { WorkoutDetailView(workout: workout) }
             }
+        case "settings":
+            SettingsView()
         case "picker":
             ExercisePickerSheet()
         case "routinepicker":
