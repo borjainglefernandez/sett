@@ -26,12 +26,21 @@ struct HistoryListView: View {
         case volume = "Volume"
         case power = "Power"
         case sets = "Sets"
+        case reps = "Reps"
         case duration = "Duration"
         case rating = "Rating"
         var id: String { rawValue }
     }
 
+    /// Quick filters that don't need a value; gyms are added dynamically.
+    private enum QuickFilter: Hashable {
+        case all, rated, prs, casual
+        case gym(String)
+    }
+
     @State private var sort: HistorySort = .date
+    @State private var ascending = false
+    @State private var filter: QuickFilter = .all
     @State private var searchText = ""
     /// Extracted once per appearance/delete; workoutNet is pure over these.
     @State private var samples: [SetSample] = []
@@ -70,6 +79,7 @@ struct HistoryListView: View {
         }
         .scrollContentBackground(.hidden)
         .dungeonBackground()
+        .safeAreaInset(edge: .top, spacing: 0) { filterBar }
         .overlay {
             if workouts.isEmpty {
                 EmptyChamber(title: "No workouts yet",
@@ -93,20 +103,34 @@ struct HistoryListView: View {
         if !searchText.isEmpty {
             result = result.filter { $0.title.localizedStandardContains(searchText) }
         }
-        switch sort {
-        case .date:
-            return result // already startedAt desc from the query
-        case .rating:
-            return result.sorted { ($0.ratingHalfStars ?? -1) > ($1.ratingHalfStars ?? -1) }
-        case .duration:
-            return result.sorted { $0.durationSeconds > $1.durationSeconds }
-        case .volume:
-            return result.sorted { workoutVolumeGrams($0) > workoutVolumeGrams($1) }
-        case .power:
-            return result.sorted { workoutTopE1RM($0) > workoutTopE1RM($1) }
-        case .sets:
-            return result.sorted { workoutSetCount($0) > workoutSetCount($1) }
+        switch filter {
+        case .all: break
+        case .rated: result = result.filter { ($0.ratingHalfStars ?? 0) > 0 }
+        case .prs: result = result.filter { (badgeCounts[$0.id] ?? 0) > 0 }
+        case .casual: result = result.filter(\.isCasual)
+        case .gym(let name): result = result.filter { $0.gymNameSnapshot == name }
         }
+        // A metric to rank by; date uses startedAt directly.
+        let ranked: [Workout]
+        switch sort {
+        case .date:     ranked = result.sorted { $0.startedAt > $1.startedAt }
+        case .rating:   ranked = result.sorted { ($0.ratingHalfStars ?? -1) > ($1.ratingHalfStars ?? -1) }
+        case .duration: ranked = result.sorted { $0.durationSeconds > $1.durationSeconds }
+        case .volume:   ranked = result.sorted { workoutVolumeGrams($0) > workoutVolumeGrams($1) }
+        case .power:    ranked = result.sorted { workoutTopE1RM($0) > workoutTopE1RM($1) }
+        case .sets:     ranked = result.sorted { workoutSetCount($0) > workoutSetCount($1) }
+        case .reps:     ranked = result.sorted { workoutRepCount($0) > workoutRepCount($1) }
+        }
+        return ascending ? ranked.reversed() : ranked
+    }
+
+    private func workoutRepCount(_ w: Workout) -> Int {
+        workingSets(w).reduce(0) { $0 + $1.reps }
+    }
+
+    /// Distinct gyms present in history — one filter chip each.
+    private var presentGyms: [String] {
+        Array(Set(workouts.compactMap(\.gymNameSnapshot))).sorted()
     }
 
     // MARK: Per-workout metrics (computed for sorting; history is small)
@@ -142,11 +166,79 @@ struct HistoryListView: View {
                         Text(option.rawValue).tag(option)
                     }
                 }
+                Divider()
+                Toggle(isOn: $ascending) {
+                    Label("Ascending", systemImage: "arrow.up")
+                }
             } label: {
                 Image(systemName: "arrow.up.arrow.down")
             }
             .accessibilityLabel("Sort")
         }
+    }
+
+    // MARK: Filter bar (quick chips + a live count/tonnage readout)
+
+    private var filterBar: some View {
+        VStack(spacing: 8) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    filterChip("ALL", active: filter == .all) { filter = .all }
+                    filterChip("RATED", active: filter == .rated) { filter = .rated }
+                    filterChip("PRS", active: filter == .prs) { filter = .prs }
+                    filterChip("CASUAL", active: filter == .casual) { filter = .casual }
+                    ForEach(presentGyms, id: \.self) { gym in
+                        filterChip(gym.uppercased(), active: filter == .gym(gym)) { filter = .gym(gym) }
+                    }
+                }
+                .padding(.horizontal, 16)
+            }
+            HStack(spacing: 6) {
+                Text("\(displayedWorkouts.count) SHOWN")
+                Text("·").foregroundStyle(SettColor.iron)
+                Text("\(tonnageText) \(services.settings.unit.symbol.uppercased()) TOTAL")
+            }
+            .font(.system(size: 10, weight: .semibold, design: .monospaced))
+            .kerning(1)
+            .foregroundStyle(SettColor.ash)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 16)
+        }
+        .padding(.vertical, 8)
+        .background {
+            Rectangle().fill(TimeChamber.void.opacity(0.6)).ignoresSafeArea(edges: .top)
+            Rectangle().fill(SettColor.cardBorder.opacity(0.5)).frame(height: 1)
+                .frame(maxHeight: .infinity, alignment: .bottom)
+        }
+    }
+
+    private func filterChip(_ label: String, active: Bool, action: @escaping () -> Void) -> some View {
+        Button {
+            action()
+            Haptics.selection()
+        } label: {
+            Text(label)
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .kerning(1)
+                .foregroundStyle(active ? SettColor.etch : SettColor.ash)
+                .lineLimit(1)
+                .padding(.horizontal, 12)
+                .frame(height: 30)
+                .background {
+                    if active { Capsule().fill(SettColor.heroCyan) }
+                    else { Capsule().strokeBorder(SettColor.cardBorder, lineWidth: 1) }
+                }
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(active ? [.isSelected] : [])
+    }
+
+    private var tonnageText: String {
+        let grams = displayedWorkouts.reduce(0) { $0 + workoutVolumeGrams($1) }
+        let value = Double(grams) / services.settings.unit.gramsPerUnit
+        return value >= 10_000 ? "\((value / 1000).formatted(.number.precision(.fractionLength(1))))k"
+                               : Int(value.rounded()).formatted()
     }
 
     // MARK: Rows

@@ -53,6 +53,10 @@ struct RoutineEditorView: View {
     @State private var setupDraftID: RoutineDraftExercise.ID?
     /// This routine's Time Chamber realm (ChamberBackground.rawValue); nil ⇒ default.
     @State private var domainRaw: String?
+    /// This routine's default gym (stamped onto every workout it starts).
+    @State private var defaultGymID: UUID?
+    @State private var defaultGymName: String?
+    @State private var isPickingGym = false
     @State private var hasLoadedDraft = false
     @State private var editMode: EditMode = .inactive
 
@@ -77,6 +81,14 @@ struct RoutineEditorView: View {
                 ChamberDomainStrip(selection: $domainRaw, allowsDefault: true, circular: true)
             } header: {
                 sectionLabel("REALM")
+            }
+            .listRowBackground(Color.clear)
+            .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+
+            Section {
+                gymControl
+            } header: {
+                sectionLabel("DEFAULT GYM")
             }
             .listRowBackground(Color.clear)
             .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
@@ -140,6 +152,12 @@ struct RoutineEditorView: View {
         .sheet(item: $setupTarget, onDismiss: refreshSetupMirror) { exercise in
             MachineSetupSheet(exercise: exercise)
         }
+        .sheet(isPresented: $isPickingGym) {
+            GymPickerSheet(currentID: defaultGymID) { gym in
+                defaultGymID = gym?.id
+                defaultGymName = gym?.name
+            }
+        }
         .onAppear(perform: loadDraftIfNeeded)
     }
 
@@ -202,6 +220,31 @@ struct RoutineEditorView: View {
         .padding(.top, 4)
     }
 
+    // MARK: Default gym (stamped onto every workout this routine starts)
+
+    private var gymControl: some View {
+        Button { isPickingGym = true } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "mappin.and.ellipse")
+                    .foregroundStyle(SettColor.heroCyan).font(.caption)
+                Text(defaultGymName ?? "No default location")
+                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                    .foregroundStyle(defaultGymName == nil ? SettColor.ash : SettColor.bone)
+                    .lineLimit(1)
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(SettColor.iron)
+            }
+            .padding(.horizontal, 14)
+            .frame(height: 44)
+            .settCard()
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Default gym: \(defaultGymName ?? "not set")")
+    }
+
     // MARK: Default rest (applies to every exercise)
 
     private var restControl: some View {
@@ -212,7 +255,7 @@ struct RoutineEditorView: View {
                 .foregroundStyle(SettColor.ash)
             Spacer(minLength: 8)
             stepButton("minus") {
-                defaultRestSeconds = max(15, defaultRestSeconds - 15); Haptics.selection()
+                defaultRestSeconds = max(RestTuning.range.lowerBound, defaultRestSeconds - RestTuning.step); Haptics.selection()
             }
             Text("\(defaultRestSeconds)s")
                 .font(.system(size: 13, weight: .semibold, design: .monospaced))
@@ -220,7 +263,7 @@ struct RoutineEditorView: View {
                 .monospacedDigit()
                 .frame(minWidth: 42)
             stepButton("plus") {
-                defaultRestSeconds = min(600, defaultRestSeconds + 15); Haptics.selection()
+                defaultRestSeconds = min(RestTuning.range.upperBound, defaultRestSeconds + RestTuning.step); Haptics.selection()
             }
         }
         .padding(.vertical, 2)
@@ -419,6 +462,8 @@ struct RoutineEditorView: View {
         name = routine.name
         daysOfWeekMask = routine.daysOfWeekMask
         domainRaw = routine.domainRaw
+        defaultGymID = routine.defaultGymID
+        defaultGymName = routine.defaultGymNameSnapshot
         drafts = routine.orderedExercises.map { re in
             let catalog = catalogExercise(forID: re.exerciseID)
             return RoutineDraftExercise(
@@ -483,6 +528,8 @@ struct RoutineEditorView: View {
             routine.name = trimmedName
             routine.daysOfWeekMask = daysOfWeekMask
             routine.domainRaw = domainRaw
+            routine.defaultGymID = defaultGymID
+            routine.defaultGymNameSnapshot = defaultGymName
             reconcileExercises(into: routine, now: now)
             routine.updatedAt = now
             routine.needsPush = true
@@ -490,6 +537,8 @@ struct RoutineEditorView: View {
             let created = Routine(name: trimmedName, daysOfWeekMask: daysOfWeekMask,
                                   orderIndex: nextOrderIndex(), now: now)
             created.domainRaw = domainRaw
+            created.defaultGymID = defaultGymID
+            created.defaultGymNameSnapshot = defaultGymName
             modelContext.insert(created)
             for (index, draft) in drafts.enumerated() {
                 guard let exercise = resolveExercise(for: draft) else { continue }

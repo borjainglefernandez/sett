@@ -31,7 +31,7 @@ struct SettingsView: View {
                             Text(settings.displayWeight(grams)).tag(grams)
                         }
                     }
-                    Stepper(value: $settings.defaultRestSeconds, in: 30...300, step: 5) {
+                    Stepper(value: $settings.defaultRestSeconds, in: RestTuning.range, step: RestTuning.step) {
                         LabeledContent("Default rest", value: restText)
                     }
                     VStack(alignment: .leading, spacing: 8) {

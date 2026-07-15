@@ -349,6 +349,14 @@ public struct ChamberSegments<Value: Hashable>: View {
     }
 }
 
+/// Rest-timer tuning — ONE source so Settings, the routine editor, and the in-session
+/// ±buttons all step by the same amount over the same range (they had drifted to 5s in
+/// Settings but 15s in the routine editor, with different floors/ceilings).
+public enum RestTuning {
+    public static let step = 5
+    public static let range = 15...600
+}
+
 /// The mid-flow sheet shell. Every quick sheet the session or home presents (numeric
 /// pad, note, fix-set, machine setup, bodyweight) wears this instead of stock iOS nav
 /// chrome: a mono kerned title row flanked by a ghost CANCEL and a cyan commit capsule,

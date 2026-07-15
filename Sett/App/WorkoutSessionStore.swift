@@ -107,6 +107,8 @@ public final class WorkoutSessionStore {
         workout.routineID = routine.id
         workout.routineNameSnapshot = routine.name
         workout.domainRaw = routine.domainRaw   // the routine's realm (nil ⇒ app default)
+        workout.gymID = routine.defaultGymID    // the routine's home gym (nil ⇒ unset)
+        workout.gymNameSnapshot = routine.defaultGymNameSnapshot
         workout.phaseRaw = settings.trainingPhase
         workout.bodyweightGrams = latestBodyweightGrams()
         context.insert(workout)
@@ -153,10 +155,18 @@ public final class WorkoutSessionStore {
     }
     #endif
 
+    /// Default working-set target for a plan-less exercise (quick start / mid-session
+    /// add), so the scanner reads "SET 1/3" and the exercise has a definitive end
+    /// instead of opening new sets forever. The user can still add more past it.
+    public static let quickAddTargetSets = 3
+
     public func addExercise(_ exercise: Exercise) {
         guard let workout = activeWorkout else { return }
         let index = (workout.orderedExercises.last?.orderIndex ?? -1) + 1
         let workoutExercise = WorkoutExercise(orderIndex: index, exercise: exercise)
+        // No routine plan stands behind a mid-session add — give it its own target so
+        // the queue advances past it instead of looping the same lift indefinitely.
+        workoutExercise.targetSets = Self.quickAddTargetSets
         workoutExercise.workout = workout
         context.insert(workoutExercise)
         touchAndSave(workout)
@@ -390,6 +400,8 @@ public final class WorkoutSessionStore {
     /// `RoutineExercise.plannedSetCount`. 0 for quick-start workouts or exercises added
     /// mid-session that the routine never planned (the queue then follows logged+1).
     public func plannedSetCount(for workoutExercise: WorkoutExercise) -> Int {
+        // A self-target (quick-start / mid-session add) wins — there's no routine behind it.
+        if workoutExercise.targetSets > 0 { return workoutExercise.targetSets }
         guard let re = routineExercise(for: workoutExercise) else { return 0 }
         // Legacy rows may predate plannedSetCount; fall back to old PlannedSet rows.
         return re.plannedSetCount > 0 ? re.plannedSetCount : re.orderedPlannedSets.count

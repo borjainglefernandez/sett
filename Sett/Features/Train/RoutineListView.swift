@@ -36,19 +36,22 @@ struct RoutineListView: View {
             } else {
                 List {
                     Section {
-                        ChamberSegments(selection: $settings.scheduleMode,
-                                        options: ScheduleMode.allCases.map { ($0, $0.title) },
-                                        compact: true)
+                        VStack(alignment: .leading, spacing: 8) {
+                            Eyebrow("SCHEDULING")
+                            ChamberSegments(selection: $settings.scheduleMode,
+                                            options: ScheduleMode.allCases.map { ($0, $0.title) })
+                            Text(isRotation
+                                 ? "ROTATION — your split in order. Finish the next-up routine and the cycle advances; the day doesn't matter."
+                                 : "WEEKDAY — each routine runs on the days you assign it. Today's routine is the one that's up.")
+                                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                                .foregroundStyle(SettColor.ash)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .padding(14)
+                        .hudCard()
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
-                        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
-                    } footer: {
-                        if isRotation {
-                            Text("Your split, in order. Finishing the next-up routine advances the cycle — the day doesn't matter.")
-                                .font(.system(size: 11, design: .monospaced))
-                                .foregroundStyle(SettColor.iron)
-                                .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 8, trailing: 16))
-                        }
+                        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 10, trailing: 16))
                     }
                     ForEach(routines) { routine in
                         row(routine)

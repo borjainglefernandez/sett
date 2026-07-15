@@ -137,6 +137,10 @@ public final class WorkoutExercise {
     public var equipmentRaw: String = ""
     public var notes: String?
     public var restSeconds: Int?
+    /// The exercise's own working-set target, used when there's no routine plan behind
+    /// it (quick-start workouts, and exercises added mid-session). 0 ⇒ no self-target,
+    /// fall back to the routine's plan. Stored default keeps the migration lightweight.
+    public var targetSets: Int = 0
     public var createdAt: Date
     public var updatedAt: Date
     public var deletedAt: Date?
@@ -232,6 +236,11 @@ public final class Routine {
     /// The Time Chamber realm for this routine (ChamberBackground.rawValue); nil ⇒
     /// the app's default realm. Optional so lightweight migration backfills nil.
     public var domainRaw: String? = nil
+    /// Default gym for workouts started from this routine — stamped onto the workout at
+    /// start so location isn't re-entered every session. nil ⇒ no default. Name is
+    /// snapshotted alongside the id so deleting the gym can't blank the routine.
+    public var defaultGymID: UUID? = nil
+    public var defaultGymNameSnapshot: String? = nil
     public var createdAt: Date
     public var updatedAt: Date
     public var deletedAt: Date?
