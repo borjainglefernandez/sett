@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 import SettCore
 
 // MARK: - Recent PRs (the gold moments Progress never showed)
@@ -9,6 +10,7 @@ import SettCore
 /// doc is explicit that PRs ignore the off-the-record flag. Hidden entirely until a
 /// second data point exists for something (a first-ever session is "NEW", not a PR).
 struct PRFeedCard: View {
+    @Environment(\.modelContext) private var modelContext
     let samples: [SetSample]
     let exerciseNames: [UUID: String]
     let unit: WeightUnit
@@ -16,6 +18,7 @@ struct PRFeedCard: View {
     private struct PREvent: Identifiable {
         let id = UUID()
         let exerciseID: UUID
+        let workoutID: UUID
         let date: Date
         let pwr: Int
     }
@@ -32,6 +35,7 @@ struct PRFeedCard: View {
                 if e1RM > prior {
                     best[sample.exerciseID] = e1RM
                     found.append(PREvent(exerciseID: sample.exerciseID,
+                                         workoutID: sample.workoutID,
                                          date: sample.completedAt,
                                          pwr: Int(Units.pounds(fromGrams: e1RM).rounded())))
                 }
@@ -54,33 +58,61 @@ struct PRFeedCard: View {
                         .foregroundStyle(SettColor.saiyanGold)
                 }
                 ForEach(events) { event in
-                    HStack(spacing: 10) {
-                        Image(systemName: "medal.fill")
-                            .font(.caption)
-                            .foregroundStyle(SettColor.saiyanGold)
-                            .frame(width: 18)
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(exerciseNames[event.exerciseID] ?? "Unknown exercise")
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(SettColor.bone)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.75)
-                            Text(event.date.formatted(date: .abbreviated, time: .omitted))
-                                .font(.caption2)
-                                .foregroundStyle(SettColor.ash)
-                        }
-                        Spacer(minLength: 8)
-                        Text("e1RM \(event.pwr)")
-                            .font(.system(size: 13, weight: .heavy, design: .monospaced))
-                            .monospacedDigit()
-                            .foregroundStyle(SettColor.bone)
-                    }
-                    .frame(minHeight: 34)
+                    prRow(event)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .settCard()
-            .accessibilityElement(children: .combine)
         }
+    }
+
+    /// A PR moment — tap to open the workout it was set in.
+    @ViewBuilder
+    private func prRow(_ event: PREvent) -> some View {
+        NavigationLink {
+            if let workout = workout(id: event.workoutID) {
+                WorkoutDetailView(workout: workout)
+            } else {
+                EmptyChamber(title: "Workout unavailable",
+                             message: "This session is no longer on record.")
+            }
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "medal.fill")
+                    .font(.caption)
+                    .foregroundStyle(SettColor.saiyanGold)
+                    .frame(width: 18)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(exerciseNames[event.exerciseID] ?? "Unknown exercise")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(SettColor.bone)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                    Text(event.date.formatted(date: .abbreviated, time: .omitted))
+                        .font(.caption2)
+                        .foregroundStyle(SettColor.ash)
+                }
+                Spacer(minLength: 8)
+                Text("e1RM \(event.pwr)")
+                    .font(.system(size: 13, weight: .heavy, design: .monospaced))
+                    .monospacedDigit()
+                    .foregroundStyle(SettColor.bone)
+                Image(systemName: "chevron.right")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(SettColor.iron)
+            }
+            .frame(minHeight: 34)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
+        .accessibilityHint("Opens the workout this PR was set in")
+    }
+
+    /// The finished workout a PR was set in, fetched by its loose id.
+    private func workout(id: UUID) -> Workout? {
+        var descriptor = FetchDescriptor<Workout>(predicate: #Predicate { $0.id == id })
+        descriptor.fetchLimit = 1
+        return (try? modelContext.fetch(descriptor))?.first
     }
 }

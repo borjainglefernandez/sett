@@ -73,6 +73,8 @@ struct DebugSurfaceHost: View {
     let surface: String
 
     @Query private var finished: [Workout]
+    @Query private var allExercises: [Exercise]
+    @Query private var allInsights: [AIInsight]
 
     init(surface: String) {
         self.surface = surface
@@ -103,6 +105,16 @@ struct DebugSurfaceHost: View {
             ExercisePickerSheet()
         case "routinepicker":
             RoutineExercisePickerSheet { _ in }
+        case "exercisedetail":
+            if let ex = mostLoggedExercise() {
+                NavigationStack { ExerciseDetailView(exercise: ex) }
+            }
+        case "insightdetail":
+            if let digest = allInsights.first(where: { $0.kind == .weeklyDigest }) ?? allInsights.first {
+                NavigationStack { InsightDetailView(insight: digest) }
+            }
+        case "goalprtarget":
+            GoalEditorSheet(initialKind: .prTarget)
         case "streak":
             StreakSheet(
                 state: StreakEngine.streakState(
@@ -115,6 +127,17 @@ struct DebugSurfaceHost: View {
         default:
             EmptyView()
         }
+    }
+
+    /// The exercise with the most logged sets across finished workouts — the one whose
+    /// detail charts have the richest history to eyeball.
+    private func mostLoggedExercise() -> Exercise? {
+        var counts: [UUID: Int] = [:]
+        for workout in finished {
+            for we in workout.orderedExercises { counts[we.exerciseID, default: 0] += we.orderedSets.count }
+        }
+        guard let topID = counts.max(by: { $0.value < $1.value })?.key else { return allExercises.first }
+        return allExercises.first { $0.id == topID }
     }
 }
 #endif

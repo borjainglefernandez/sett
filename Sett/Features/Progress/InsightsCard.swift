@@ -64,10 +64,7 @@ struct InsightsCard: View {
                         .rotationEffect(.degrees(isExpanded ? 180 : 0))
                 }
                 if isExpanded {
-                    Text(LocalizedStringKey(insight.body))
-                        .font(.subheadline)
-                        .foregroundStyle(.primary)
-                        .multilineTextAlignment(.leading)
+                    InsightProse(insight.body)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 } else {
                     Text(firstLine(of: insight.body))
@@ -114,5 +111,61 @@ struct InsightsCard: View {
 
     private func firstLine(of text: String) -> String {
         text.split(whereSeparator: \.isNewline).first.map(String.init) ?? text
+    }
+}
+
+// MARK: - Insight prose (lightweight markdown → styled blocks)
+
+/// Renders an AI insight's markdown as real blocks: `## X` becomes a cyan section
+/// header, blank lines separate paragraphs, `- ` becomes a bullet, and inline
+/// **bold**/*italic* still resolve per line. Plain `Text(LocalizedStringKey:)` left the
+/// literal "##" showing; `AttributedString(markdown:)` dropped the headers entirely.
+struct InsightProse: View {
+    let markdown: String
+    var bodyFont: Font
+
+    init(_ markdown: String, bodyFont: Font = .subheadline) {
+        self.markdown = markdown
+        self.bodyFont = bodyFont
+    }
+
+    private enum Block { case heading(String), bullet(String), paragraph(String) }
+
+    private var blocks: [Block] {
+        markdown.split(separator: "\n", omittingEmptySubsequences: true).compactMap { raw in
+            let line = raw.trimmingCharacters(in: .whitespaces)
+            if line.isEmpty { return nil }
+            if line.hasPrefix("## ") { return .heading(String(line.dropFirst(3))) }
+            if line.hasPrefix("# ") { return .heading(String(line.dropFirst(2))) }
+            if line.hasPrefix("- ") || line.hasPrefix("* ") { return .bullet(String(line.dropFirst(2))) }
+            return .paragraph(line)
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
+                switch block {
+                case .heading(let text):
+                    Text(text)
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(SettColor.heroCyan)
+                        .padding(.top, 2)
+                case .bullet(let text):
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text("•").foregroundStyle(SettColor.heroCyan)
+                        Text(LocalizedStringKey(text)).foregroundStyle(SettColor.bone)
+                    }
+                    .font(bodyFont)
+                    .fixedSize(horizontal: false, vertical: true)
+                case .paragraph(let text):
+                    Text(LocalizedStringKey(text))
+                        .font(bodyFont)
+                        .foregroundStyle(SettColor.bone)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

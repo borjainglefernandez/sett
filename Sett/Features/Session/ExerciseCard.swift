@@ -26,9 +26,6 @@ struct ExerciseCard: View {
     @State private var openSwipeRowID: UUID?
     /// The logged row currently lifted for a long-press drag reorder.
     @State private var draggingSet: SetEntry?
-    /// Set once the plan is met and the lifter taps "Add set" — reveals one more active
-    /// input row instead of auto-queuing sets forever. Reset after each logged set.
-    @State private var addingBonusSet = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -55,18 +52,16 @@ struct ExerciseCard: View {
                             dragging: $draggingSet,
                             move: { session.moveSet(in: workoutExercise, from: $0, to: $1) }))
                     }
-                    if showActiveRow {
+                    if !planComplete {
                         SetEntryRow(workoutExercise: workoutExercise, setNumber: workingLoggedCount + 1)
-                    } else {
-                        addSetButton
                     }
                     ForEach(pendingSlots, id: \.self) { ordinal in
                         plannedRow(number: ordinal + 1, slot: ordinal)
                     }
+                    // Always available — add a set to the plan on the fly (quick-start
+                    // and routine workouts alike; planned slots below are removable).
+                    addSetButton
                 }
-                // Once the plan is met, logging a bonus set returns to the "Add set"
-                // button rather than auto-opening the next input row.
-                .onChange(of: workingLoggedCount) { _, _ in addingBonusSet = false }
             }
         }
         .padding(14)
@@ -118,13 +113,12 @@ struct ExerciseCard: View {
 
     /// Every planned working set is logged (only meaningful when there IS a plan).
     private var planComplete: Bool { plannedWorking > 0 && workingLoggedCount >= plannedWorking }
-    /// Show the active input row automatically while the plan is unmet (or there's no
-    /// plan); once the plan is met it takes an explicit "Add set" tap.
-    private var showActiveRow: Bool { !planComplete || addingBonusSet }
 
+    /// Add one set to the session plan on the fly. When the plan was already met this
+    /// reopens the active input row; otherwise it appends another planned placeholder.
     private var addSetButton: some View {
         Button {
-            withAnimation(.snappy) { addingBonusSet = true }
+            withAnimation(.snappy) { session.addPlannedSet(to: workoutExercise) }
         } label: {
             Label("Add set", systemImage: "plus")
                 .font(.system(size: 13, weight: .bold, design: .monospaced))
@@ -443,16 +437,33 @@ struct ExerciseCard: View {
         let repsText = hasTarget ? "\(ghost.reps)" : "—"
         let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
         return HStack(spacing: 0) {
-            SetIndexBadge(label: "\(number)", charge: .unearned)
-            Spacer().frame(width: SetRowGrid.badgeGap)
-            // Target numbers in ash (legible), not iron — they're the functional part.
-            setValueColumns(weightText: weightText, repsText: repsText,
-                            valueColor: SettColor.ash, weight: .semibold)
-            Spacer(minLength: 8)
-            Text("PLANNED")
-                .font(.system(size: 9, weight: .bold, design: .monospaced))
-                .kerning(1)
-                .foregroundStyle(SettColor.iron)
+            HStack(spacing: 0) {
+                SetIndexBadge(label: "\(number)", charge: .unearned)
+                Spacer().frame(width: SetRowGrid.badgeGap)
+                // Target numbers in ash (legible), not iron — they're the functional part.
+                setValueColumns(weightText: weightText, repsText: repsText,
+                                valueColor: SettColor.ash, weight: .semibold)
+                Spacer(minLength: 8)
+                Text("PLANNED")
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .kerning(1)
+                    .foregroundStyle(SettColor.iron)
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(hasTarget ? "Planned set \(number), target \(weightText) by \(repsText)"
+                                           : "Planned set \(number)")
+            // Drop a planned set from this session's plan (never touches the routine).
+            Button {
+                withAnimation(.snappy) { session.removePlannedSet(from: workoutExercise) }
+            } label: {
+                Image(systemName: "minus.circle.fill")
+                    .font(.system(size: 17))
+                    .foregroundStyle(SettColor.iron)
+                    .padding(.leading, 10)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Remove a planned set")
         }
         .padding(.horizontal, SetRowGrid.hPad)
         .frame(height: SetRowGrid.rowHeight)
@@ -460,9 +471,6 @@ struct ExerciseCard: View {
             shape.strokeBorder(SettColor.cardBorder.opacity(0.7),
                                style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
         }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(hasTarget ? "Planned set \(number), target \(weightText) by \(repsText)"
-                                       : "Planned set \(number)")
     }
 
     /// Spoken VoiceOver label for a logged row — the whole progress signal (PWR, the

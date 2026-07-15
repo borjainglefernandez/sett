@@ -117,6 +117,11 @@ public final class WorkoutSessionStore {
             guard let exercise = fetchExercise(id: routineExercise.exerciseID) else { continue }
             let workoutExercise = WorkoutExercise(orderIndex: index, exercise: exercise)
             workoutExercise.restSeconds = routineExercise.restSeconds
+            // Snapshot the routine's planned set count into a SESSION-OWNED target, so
+            // adding/removing planned sets mid-workout never rewrites the routine template.
+            workoutExercise.targetSets = routineExercise.plannedSetCount > 0
+                ? routineExercise.plannedSetCount
+                : routineExercise.orderedPlannedSets.count
             workoutExercise.workout = workout
             context.insert(workoutExercise)
         }
@@ -405,6 +410,39 @@ public final class WorkoutSessionStore {
         guard let re = routineExercise(for: workoutExercise) else { return 0 }
         // Legacy rows may predate plannedSetCount; fall back to old PlannedSet rows.
         return re.plannedSetCount > 0 ? re.plannedSetCount : re.orderedPlannedSets.count
+    }
+
+    /// Sets already logged for this exercise (warm-ups excluded).
+    private func loggedWorkingCount(_ workoutExercise: WorkoutExercise) -> Int {
+        workoutExercise.orderedSets.filter { !$0.isWarmup }.count
+    }
+
+    /// Add one set to this exercise's session plan (both quick-start and routine-seeded
+    /// workouts). Session-owned via `targetSets`, so it never rewrites the routine.
+    public func addPlannedSet(to workoutExercise: WorkoutExercise) {
+        setTargetSets(plannedSetCount(for: workoutExercise) + 1, on: workoutExercise)
+    }
+
+    /// Remove one planned (not-yet-logged) set. Floors at the number already logged — you
+    /// can't un-plan work you've done — and at 1, so the queue always has a next set.
+    public func removePlannedSet(from workoutExercise: WorkoutExercise) {
+        let floor = max(1, loggedWorkingCount(workoutExercise))
+        setTargetSets(max(floor, plannedSetCount(for: workoutExercise) - 1), on: workoutExercise)
+    }
+
+    /// Can this exercise's plan shrink further (a planned, not-yet-logged set remains)?
+    public func canRemovePlannedSet(from workoutExercise: WorkoutExercise) -> Bool {
+        plannedSetCount(for: workoutExercise) > max(1, loggedWorkingCount(workoutExercise))
+    }
+
+    private func setTargetSets(_ n: Int, on workoutExercise: WorkoutExercise) {
+        let clamped = min(20, max(1, n))
+        guard clamped != workoutExercise.targetSets else { return }
+        workoutExercise.targetSets = clamped
+        workoutExercise.updatedAt = .now
+        workoutExercise.needsPush = true
+        if let workout = workoutExercise.workout ?? activeWorkout { touchAndSave(workout) }
+        Haptics.selection()
     }
 
     /// Resolve the RoutineExercise behind a WorkoutExercise: fetch the Routine by the

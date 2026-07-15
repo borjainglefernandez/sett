@@ -189,6 +189,8 @@ struct ExerciseDetailView: View {
                     .symbolSize(90)
                 }
             }
+            .chartYScale(domain: .automatic(includesZero: false))
+            .chartXScale(domain: e1rmXDomain)
             .scouterChart()
             .frame(height: 180)
         }
@@ -208,6 +210,7 @@ struct ExerciseDetailView: View {
                 )
                 .foregroundStyle(SettColor.heroCyan)
             }
+            .chartXScale(domain: volumeXDomain)
             .scouterChart()
             .frame(height: 120)
         }
@@ -300,6 +303,24 @@ struct ExerciseDetailView: View {
 
     private var maxE1RMGrams: Int {
         e1rmSeries.map(\.grams).max() ?? 0
+    }
+
+    private var e1rmXDomain: ClosedRange<Date> { Self.paddedDateDomain(e1rmSeries.map(\.date)) }
+    private var volumeXDomain: ClosedRange<Date> { Self.paddedDateDomain(volumePoints.map(\.date)) }
+
+    /// A date range padded on both ends so edge points/bars (esp. the most recent
+    /// session) aren't clipped at the plot boundary — the "last month cut off" bug.
+    private static func paddedDateDomain(_ dates: [Date]) -> ClosedRange<Date> {
+        let day: TimeInterval = 86_400
+        guard let first = dates.min(), let last = dates.max() else {
+            let anchor = Date()
+            return anchor.addingTimeInterval(-day) ... anchor.addingTimeInterval(day)
+        }
+        guard first < last else {
+            return first.addingTimeInterval(-day * 3) ... first.addingTimeInterval(day * 3)
+        }
+        let pad = max(last.timeIntervalSince(first) * 0.04, day * 2)
+        return first.addingTimeInterval(-pad) ... last.addingTimeInterval(pad)
     }
 
     private func displayDouble(_ grams: Int) -> Double {

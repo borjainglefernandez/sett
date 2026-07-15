@@ -12,9 +12,10 @@ struct GoalEditorSheet: View {
 
     @Query private var exercises: [Exercise]
 
-    init() {
+    init(initialKind: GoalKind = .frequency) {
         let exerciseFilter = #Predicate<Exercise> { $0.deletedAt == nil && !$0.isArchived }
         _exercises = Query(filter: exerciseFilter, sort: [SortDescriptor(\Exercise.name)])
+        _kind = State(initialValue: initialKind)
     }
 
     @State private var kind: GoalKind = .frequency
@@ -22,6 +23,8 @@ struct GoalEditorSheet: View {
     @State private var volumeTargetDisplay = 0
     @State private var prTargetGrams = 0
     @State private var selectedExerciseID: UUID?
+    @State private var selectedExerciseName: String?
+    @State private var isPickingExercise = false
 
     private var unit: WeightUnit { services.settings.unit }
 
@@ -59,6 +62,12 @@ struct GoalEditorSheet: View {
                 }
             }
             .onAppear(perform: seedDefaults)
+            .sheet(isPresented: $isPickingExercise) {
+                RoutineExercisePickerSheet(allowsMultiple: false) { exercise in
+                    selectedExerciseID = exercise.id
+                    selectedExerciseName = exercise.name
+                }
+            }
         }
     }
 
@@ -130,18 +139,25 @@ struct GoalEditorSheet: View {
             .settCard()
         case .prTarget:
             VStack(spacing: 12) {
-                HStack {
-                    Text("Exercise")
-                    Spacer()
-                    Picker("Exercise", selection: $selectedExerciseID) {
-                        Text("Choose…").tag(UUID?.none)
-                        ForEach(exercises) { exercise in
-                            Text(exercise.name).tag(Optional(exercise.id))
-                        }
+                Button {
+                    isPickingExercise = true
+                } label: {
+                    HStack(spacing: 8) {
+                        Text("Exercise")
+                            .foregroundStyle(SettColor.bone)
+                        Spacer(minLength: 8)
+                        Text(selectedExerciseName ?? "Choose…")
+                            .font(.system(size: 15, weight: .medium, design: .rounded))
+                            .foregroundStyle(selectedExerciseName == nil ? SettColor.ash : SettColor.heroCyan)
+                            .lineLimit(1)
+                        Image(systemName: "chevron.right")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(SettColor.iron)
                     }
-                    .pickerStyle(.menu)
-                    .tint(SettColor.heroCyan)
+                    .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Exercise: \(selectedExerciseName ?? "not chosen")")
                 Stepper {
                     HStack {
                         Text("Target e1RM")

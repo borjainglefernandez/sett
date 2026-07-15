@@ -21,12 +21,11 @@ struct InsightDetailView: View {
                 .font(.title3.weight(.semibold))
                 Text(dateText)
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
-                Text(bodyText)
-                    .font(.body)
+                    .foregroundStyle(SettColor.ash)
+                InsightProse(insight.body, bodyFont: .body)
                 Text(sourceFootnote)
                     .font(.footnote)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(SettColor.iron)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .settCard()
@@ -47,14 +46,6 @@ struct InsightDetailView: View {
             return start
         }
         return "\(start) – \(insight.periodEnd.formatted(date: .abbreviated, time: .omitted))"
-    }
-
-    /// Insight bodies are markdown; fall back to plain text if parsing fails.
-    private var bodyText: AttributedString {
-        (try? AttributedString(
-            markdown: insight.body,
-            options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-        )) ?? AttributedString(insight.body)
     }
 
     private var sourceFootnote: String {
