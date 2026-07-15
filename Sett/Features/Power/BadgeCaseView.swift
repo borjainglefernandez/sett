@@ -114,7 +114,13 @@ struct BadgeCaseView: View {
             .frameMaterial(definition.rarity == .legendary ? .prismatic : .gold)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("\(definition.name), \(definition.rarity.rawValue) badge, earned")
+        .accessibilityLabel({
+            var label = "\(definition.name), \(definition.rarity.rawValue) badge, earned"
+            if let count = services.progression.snapshot?.badgeCounts[definition.key], count >= 2 {
+                label += ", earned \(count) times"
+            }
+            return label
+        }())
     }
 
     /// Locked slot: matte iron frame, grayscale, criteria visible.
@@ -122,10 +128,10 @@ struct BadgeCaseView: View {
         VStack(spacing: 8) {
             ZStack {
                 Circle()
-                    .strokeBorder(Color.gray.opacity(0.45), lineWidth: 2)
+                    .strokeBorder(SettColor.iron, lineWidth: 2)
                 Image(systemName: "medal.fill")
                     .font(.title2)
-                    .foregroundStyle(Color.gray.opacity(0.45))
+                    .foregroundStyle(SettColor.iron)
             }
             .frame(width: 64, height: 64)
             Text(definition.name)

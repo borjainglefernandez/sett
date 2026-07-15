@@ -144,19 +144,19 @@ struct ExerciseDetailView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Personal record")
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(SettColor.ash)
                 Text("\(services.settings.displayWeight(best.weightGrams)) × \(best.reps)")
                     .font(.title3.bold())
                 Text(best.completedAt.formatted(date: .abbreviated, time: .omitted))
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(SettColor.ash)
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 2) {
                 PowerNumeral(displayInt(maxE1RMGrams), size: .m)
                 Text("e1RM \(services.settings.unit.symbol)")
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(SettColor.ash)
             }
         }
         .settCard()
@@ -189,6 +189,7 @@ struct ExerciseDetailView: View {
                     .symbolSize(90)
                 }
             }
+            .scouterChart()
             .frame(height: 180)
         }
         .settCard()
@@ -207,6 +208,7 @@ struct ExerciseDetailView: View {
                 )
                 .foregroundStyle(SettColor.heroCyan)
             }
+            .scouterChart()
             .frame(height: 120)
         }
         .settCard()
@@ -231,7 +233,7 @@ struct ExerciseDetailView: View {
                             if sample.isWarmup {
                                 Text("warmup")
                                     .font(.caption2)
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(SettColor.ash)
                                     .padding(.horizontal, 6)
                                     .padding(.vertical, 2)
                                     .background(SettColor.cardNested, in: Capsule())
@@ -259,7 +261,7 @@ struct ExerciseDetailView: View {
             .tint(SettColor.heroCyan)
             Text("Archived exercises are hidden from pickers but keep their history and charts.")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(SettColor.ash)
         }
         .settCard()
     }
@@ -283,12 +285,12 @@ struct ExerciseDetailView: View {
         VStack(spacing: 12) {
             Image(systemName: "chart.line.uptrend.xyaxis")
                 .font(.system(size: 36))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(SettColor.ash)
             Text("Never trained")
                 .font(.headline)
             Text("First set sets the baseline.")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(SettColor.ash)
         }
         .frame(maxWidth: .infinity)
         .settCard()

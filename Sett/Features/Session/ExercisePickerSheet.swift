@@ -91,10 +91,10 @@ struct ExercisePickerSheet: View {
                              muscle: exercise.muscle, size: 40, color: SettColor.heroCyan)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(exercise.name)
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(SettColor.bone)
                     Text(exercise.equipment.rawValue.capitalized)
                         .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(SettColor.ash)
                 }
                 Spacer()
                 // Visual affordance only — the entire row is the button.

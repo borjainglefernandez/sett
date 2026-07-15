@@ -303,7 +303,7 @@ struct BurstCeremonyView: View {
             } label: {
                 Text("Done")
                     .font(.headline)
-                    .foregroundStyle(.white)
+                    .foregroundStyle(SettColor.etch)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 16)
                     .background(Aura.cyan, in: Capsule())

@@ -17,7 +17,7 @@ private struct RoutineDraftExercise: Identifiable {
     var name: String
     var muscleRaw: String
     var equipment: Equipment
-    var setCount: Int = 3
+    var setCount: Int = SetTuning.defaultCount
     /// Display mirror of the catalog `Exercise.instructions` (the machine-setup
     /// field app-wide). Edits go through the shared `MachineSetupSheet`, which
     /// writes the Exercise directly; this mirror keeps the row current.
@@ -70,9 +70,11 @@ struct RoutineEditorView: View {
 
             Section {
                 dayChips
+                    .opacity(isRotation ? 0.4 : 1)
+                scheduleModeNote
                 restControl
             } header: {
-                sectionLabel("SCHEDULE")
+                Eyebrow("SCHEDULE")
             }
             .listRowBackground(Color.clear)
             .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
@@ -80,7 +82,7 @@ struct RoutineEditorView: View {
             Section {
                 ChamberDomainStrip(selection: $domainRaw, allowsDefault: true, circular: true)
             } header: {
-                sectionLabel("REALM")
+                Eyebrow("REALM")
             }
             .listRowBackground(Color.clear)
             .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
@@ -88,7 +90,7 @@ struct RoutineEditorView: View {
             Section {
                 gymControl
             } header: {
-                sectionLabel("DEFAULT GYM")
+                Eyebrow("DEFAULT GYM")
             }
             .listRowBackground(Color.clear)
             .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
@@ -114,7 +116,7 @@ struct RoutineEditorView: View {
                     .listRowSeparator(.hidden)
                     .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
             } header: {
-                sectionLabel("EXERCISES")
+                Eyebrow("EXERCISES")
             } footer: {
                 if drafts.isEmpty {
                     Text("Add your first exercise. Swipe a row to delete; tap Reorder to rearrange.")
@@ -173,11 +175,20 @@ struct RoutineEditorView: View {
             .settCard()
     }
 
-    private func sectionLabel(_ text: String) -> some View {
-        Text(text)
-            .font(.system(size: 12, weight: .semibold, design: .monospaced))
-            .kerning(2)
+    /// Whether the app is running the split in rotation order (vs. weekday assignment).
+    /// Governs how the SCHEDULE section reads: in rotation, the day chips are inert.
+    private var isRotation: Bool { services.settings.scheduleMode == .rotation }
+
+    /// One mono line under the day chips that says what the highlighted days actually
+    /// do given the active schedule mode — so the chips never look broken in rotation.
+    private var scheduleModeNote: some View {
+        Text(isRotation
+             ? "Rotation mode ignores days — routines run in the order you arrange them. Days apply if you switch to Weekday."
+             : "Runs on the days you highlight above.")
+            .font(.system(size: 11, weight: .medium, design: .monospaced))
             .foregroundStyle(SettColor.ash)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.top, 2)
     }
 
     private var rowBackground: some View {
@@ -210,7 +221,7 @@ struct RoutineEditorView: View {
                                     .strokeBorder(SettColor.cardBorder, lineWidth: 1)
                             }
                         }
-                        .foregroundStyle(isOn ? Color.black : SettColor.ash)
+                        .foregroundStyle(isOn ? SettColor.etch : SettColor.ash)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(TrainDays.names[day])
@@ -257,6 +268,7 @@ struct RoutineEditorView: View {
             stepButton("minus") {
                 defaultRestSeconds = max(RestTuning.range.lowerBound, defaultRestSeconds - RestTuning.step); Haptics.selection()
             }
+            .accessibilityLabel("Decrease rest")
             Text("\(defaultRestSeconds)s")
                 .font(.system(size: 13, weight: .semibold, design: .monospaced))
                 .foregroundStyle(SettColor.bone)
@@ -265,6 +277,7 @@ struct RoutineEditorView: View {
             stepButton("plus") {
                 defaultRestSeconds = min(RestTuning.range.upperBound, defaultRestSeconds + RestTuning.step); Haptics.selection()
             }
+            .accessibilityLabel("Increase rest")
         }
         .padding(.vertical, 2)
     }
@@ -405,7 +418,7 @@ struct RoutineEditorView: View {
     private func setCountControl(_ draft: Binding<RoutineDraftExercise>) -> some View {
         HStack(spacing: 6) {
             stepButton("minus") {
-                if draft.wrappedValue.setCount > 1 { draft.wrappedValue.setCount -= 1; Haptics.selection() }
+                if draft.wrappedValue.setCount > SetTuning.range.lowerBound { draft.wrappedValue.setCount -= 1; Haptics.selection() }
             }
             VStack(spacing: 0) {
                 Text("\(draft.wrappedValue.setCount)")
@@ -419,7 +432,7 @@ struct RoutineEditorView: View {
             }
             .frame(minWidth: 26)
             stepButton("plus") {
-                if draft.wrappedValue.setCount < 10 { draft.wrappedValue.setCount += 1; Haptics.selection() }
+                if draft.wrappedValue.setCount < SetTuning.range.upperBound { draft.wrappedValue.setCount += 1; Haptics.selection() }
             }
         }
         .fixedSize()
@@ -507,7 +520,7 @@ struct RoutineEditorView: View {
                 name: exercise.name,
                 muscleRaw: exercise.muscleRaw,
                 equipment: exercise.equipment,
-                setCount: 3,
+                setCount: SetTuning.defaultCount,
                 machineSetup: exercise.instructions
             ))
             Haptics.light()

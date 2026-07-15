@@ -32,7 +32,7 @@ enum RestNotifier {
 
         let content = UNMutableNotificationContent()
         content.title = "REST COMPLETE"
-        content.body = nextUp.map { "Next: \($0) — tap to return and log your set." }
+        content.body = nextUp.map { "Next: \($0) — tap to return and log your next set." }
             ?? "The Chamber is ready — tap to return and log your next set."
         content.sound = .default
         // Time-sensitive so it breaks through Focus / the notification summary — the
@@ -64,7 +64,7 @@ enum WeeklyReadingNotifier {
             guard settings.authorizationStatus == .authorized
                     || settings.authorizationStatus == .provisional else { return }
             let content = UNMutableNotificationContent()
-            content.title = "Weekly Power Reading"
+            content.title = "WEEKLY POWER READING"
             content.body = "The scanner has your week: ΔPL, form progress, and Vexeth's move."
             content.sound = .default
             var comps = DateComponents()

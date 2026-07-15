@@ -70,7 +70,7 @@ struct PRFeedCard: View {
                                 .foregroundStyle(SettColor.ash)
                         }
                         Spacer(minLength: 8)
-                        Text("PWR \(event.pwr)")
+                        Text("e1RM \(event.pwr)")
                             .font(.system(size: 13, weight: .heavy, design: .monospaced))
                             .monospacedDigit()
                             .foregroundStyle(SettColor.bone)

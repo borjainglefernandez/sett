@@ -68,6 +68,8 @@ struct NetSummaryCard: View {
                         .monospacedDigit()
                         .foregroundStyle(color(for: value))
                         .contentTransition(.numericText(value: Double(value)))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
                 }
             }
             Text(caption)

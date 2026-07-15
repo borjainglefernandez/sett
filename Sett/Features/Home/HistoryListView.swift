@@ -236,9 +236,7 @@ struct HistoryListView: View {
 
     private var tonnageText: String {
         let grams = displayedWorkouts.reduce(0) { $0 + workoutVolumeGrams($1) }
-        let value = Double(grams) / services.settings.unit.gramsPerUnit
-        return value >= 10_000 ? "\((value / 1000).formatted(.number.precision(.fractionLength(1))))k"
-                               : Int(value.rounded()).formatted()
+        return WeightFormat.compactTonnage(grams: grams, unit: services.settings.unit)
     }
 
     // MARK: Rows
@@ -266,7 +264,7 @@ struct HistoryListView: View {
                         .foregroundStyle(.secondary)
                     if let rating = workout.ratingHalfStars, rating > 0 {
                         // Gold audit: a rating is effort, not power/reward — ki cyan.
-                        CyanStarRatingRow(halfStars: rating)
+                        StarRatingRow(halfStars: rating)
                     }
                 }
                 Spacer()
@@ -294,7 +292,7 @@ struct HistoryListView: View {
                             .font(.caption2.weight(.semibold))
                             .monospacedDigit()
                             .foregroundStyle(SettColor.saiyanGold)
-                            .accessibilityLabel("\(count) badges earned")
+                            .accessibilityLabel("\(count) badge\(count == 1 ? "" : "s") earned")
                     }
                 }
             }
@@ -369,33 +367,3 @@ struct HistoryListView: View {
     }
 }
 
-// MARK: - Ki-cyan half-star display (gold audit: gold stays the power level's)
-
-/// Same geometry as `StarRatingRow` (WorkoutFormat.swift) but in hero cyan —
-/// history ratings are energy spent, not a reward, so they don't wear gold.
-private struct CyanStarRatingRow: View {
-    let halfStars: Int
-    var starSize: CGFloat = 9
-
-    var body: some View {
-        HStack(spacing: 1) {
-            ForEach(1...5, id: \.self) { star in
-                Image(systemName: symbol(star))
-            }
-        }
-        .font(.system(size: starSize))
-        .foregroundStyle(SettColor.heroCyan)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Rated \(String(format: "%.1f", Double(halfStars) / 2)) stars")
-    }
-
-    private func symbol(_ star: Int) -> String {
-        if halfStars >= star * 2 {
-            "star.fill"
-        } else if halfStars == star * 2 - 1 {
-            "star.leadinghalf.filled"
-        } else {
-            "star"
-        }
-    }
-}

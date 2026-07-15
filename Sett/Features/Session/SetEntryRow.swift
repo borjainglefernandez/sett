@@ -101,7 +101,7 @@ struct SetEntryRow: View {
             .multilineTextAlignment(align)
             .font(.system(size: 15, weight: .bold, design: .monospaced))
             .monospacedDigit()
-            .foregroundStyle(isGhost ? Color(uiColor: .tertiaryLabel) : SettColor.heroCyan)
+            .foregroundStyle(isGhost ? SettColor.iron : SettColor.heroCyan)
             .fixedSize()
             .overlay(alignment: .bottom) {
                 Rectangle()
@@ -196,7 +196,7 @@ struct SetEntryRow: View {
         } label: {
             Image(systemName: "checkmark")
                 .font(.system(size: 15, weight: .heavy))
-                .foregroundStyle(.white)
+                .foregroundStyle(SettColor.etch)
                 .frame(width: 34, height: 34)
                 .background(SettColor.heroCyan, in: Circle())
                 .frame(width: 44, height: 44)   // 34pt disc, full 44pt tap target (a11y)
@@ -262,7 +262,6 @@ struct SetNoteSheet: View {
     var placeholder = "felt heavy, left side weaker…"
     let onSave: (String?) -> Void
 
-    @Environment(\.dismiss) private var dismiss
     @State private var text = ""
     @FocusState private var isFocused: Bool
 
@@ -328,7 +327,6 @@ struct NumericPadSheet: View {
     let keyboard: UIKeyboardType
     let onCommit: (String) -> Void
 
-    @Environment(\.dismiss) private var dismiss
     @State private var text = ""
     @FocusState private var isFocused: Bool
 

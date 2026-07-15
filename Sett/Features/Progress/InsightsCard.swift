@@ -100,6 +100,7 @@ struct InsightsCard: View {
             Image(systemName: "bolt.fill")
                 .font(.caption)
                 .foregroundStyle(SettColor.heroCyan)
+                .accessibilityHidden(true)
             Text(firstLine(of: insight.body))
                 .font(.footnote)
                 .lineLimit(2)

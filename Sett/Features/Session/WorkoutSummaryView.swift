@@ -13,7 +13,7 @@ import SettCore
 ///    0.8 s with `CEILING BROKEN` beneath the scan card;
 /// 3. net progress vs previous same-exercise sessions;
 /// 4. badges earned (gold medallions, only when non-empty);
-/// 6. AI commentary + star rating + Done.
+/// 5. AI commentary + star rating + Done.
 /// Tap anywhere skips straight to the final stage. Reduce Motion direct-sets the
 /// final state: no scanline, no scramble, no roll, no cracks.
 struct WorkoutSummaryView: View {
@@ -26,7 +26,7 @@ struct WorkoutSummaryView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private enum Stage: Int, Comparable {
-        case scanning, power, ceiling, net, badges, xp, commentary
+        case scanning, power, ceiling, net, badges, commentary
         static func < (lhs: Self, rhs: Self) -> Bool { lhs.rawValue < rhs.rawValue }
     }
 
@@ -38,7 +38,6 @@ struct WorkoutSummaryView: View {
     @State private var stage: Stage = .scanning
     @State private var displayedPowerLevel = 0
     @State private var ratingHalfStars = 0
-    @State private var showingHowXPWorks = false
     /// Rendered dark-chamber share card (the social pillar's zero-backend v0).
     @State private var shareImage: Image?
 
@@ -108,9 +107,6 @@ struct WorkoutSummaryView: View {
         .presentationBackground(TimeChamber.void)
         .task { await runStages() }
         .task { renderShareCard() }
-        .sheet(isPresented: $showingHowXPWorks) {
-            HowPowerWorksView()
-        }
     }
 
     @MainActor private func renderShareCard() {
@@ -227,11 +223,7 @@ struct WorkoutSummaryView: View {
         withAnimation(.snappy) { stage = .badges }
         if !summary.newBadgeKeys.isEmpty { Haptics.prSignature() }
 
-        try? await Task.sleep(for: .seconds(0.7))
-        guard stage < .xp else { return }
-        withAnimation(.snappy) { stage = .xp }
-
-        try? await Task.sleep(for: .seconds(0.7))
+        try? await Task.sleep(for: .seconds(1.4))
         guard stage < .commentary else { return }
         withAnimation(.snappy) { stage = .commentary }
     }
@@ -403,6 +395,7 @@ struct WorkoutSummaryView: View {
 
     private var durationText: String {
         let minutes = max(1, summary.durationSeconds / 60)
+        if minutes >= 60 { return "\(minutes / 60)h \(minutes % 60) min" }
         return "\(minutes) min"
     }
 
@@ -424,7 +417,7 @@ struct WorkoutSummaryView: View {
                     .foregroundStyle(SettColor.heroCyan)
                 Text("First time logging this work — baseline set.")
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(SettColor.ash)
             } else {
                 HStack(spacing: 24) {
                     netStat(value: netWeightText, caption: "net weight",
@@ -446,7 +439,7 @@ struct WorkoutSummaryView: View {
                 .foregroundStyle(positive ? SettColor.positive : SettColor.negative)
             Text(caption)
                 .font(.footnote)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(SettColor.ash)
         }
     }
 
@@ -486,7 +479,7 @@ struct WorkoutSummaryView: View {
         VStack(spacing: 8) {
             Image(systemName: "medal.fill")
                 .font(.title2)
-                .foregroundStyle(.white)
+                .foregroundStyle(SettColor.etch)
                 .frame(width: 64, height: 64)
                 .background(Aura.gold, in: Circle())
             Text(badgeName(key))
@@ -516,7 +509,7 @@ struct WorkoutSummaryView: View {
                 .font(.body)
             Text(summary.commentarySource == .onDevice ? "Generated on device" : "sett scanner")
                 .font(.footnote)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(SettColor.iron)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .settCard()
@@ -552,7 +545,7 @@ struct WorkoutSummaryView: View {
         VStack(spacing: 8) {
             Text("Rate this workout")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(SettColor.ash)
             HStack(spacing: 8) {
                 ForEach(1...5, id: \.self) { star in
                     starButton(star)

@@ -45,7 +45,7 @@ struct BodyweightCard: View {
                     Text(footnote)
                         .font(.caption)
                         .monospacedDigit()
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(SettColor.ash)
                 }
             } else {
                 Text("Log your bodyweight from Home")

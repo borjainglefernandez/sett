@@ -322,7 +322,7 @@ public struct ChamberSegments<Value: Hashable>: View {
         HStack(spacing: 6) {
             ForEach(options, id: \.value) { option in
                 Button {
-                    selection = option.value
+                    withAnimation(.snappy(duration: 0.15)) { selection = option.value }
                     Haptics.selection()
                 } label: {
                     Text(option.label.uppercased())
@@ -357,6 +357,13 @@ public enum RestTuning {
     public static let range = 15...600
 }
 
+/// Set-count tuning — ONE source for the planned-set clamp and the default count, so
+/// the routine editor's ± stepper and every "new exercise gets N sets" seed agree.
+public enum SetTuning {
+    public static let range = 1...10
+    public static let defaultCount = 3
+}
+
 /// The mid-flow sheet shell. Every quick sheet the session or home presents (numeric
 /// pad, note, fix-set, machine setup, bodyweight) wears this instead of stock iOS nav
 /// chrome: a mono kerned title row flanked by a ghost CANCEL and a cyan commit capsule,
@@ -388,7 +395,7 @@ public struct ChamberSheet<Content: View>: View {
                         .font(.system(size: 10, weight: .bold, design: .monospaced))
                         .kerning(1)
                         .foregroundStyle(SettColor.ash)
-                        .frame(minWidth: 64, minHeight: 30)
+                        .frame(minWidth: 64, minHeight: 44)
                         .background { Capsule().strokeBorder(SettColor.cardBorder, lineWidth: 1) }
                         .contentShape(Capsule())
                 }
@@ -402,6 +409,7 @@ public struct ChamberSheet<Content: View>: View {
                     .minimumScaleFactor(0.7)
                 Spacer()
                 Button {
+                    Haptics.success()
                     onCommit()
                     dismiss()
                 } label: {
@@ -409,7 +417,7 @@ public struct ChamberSheet<Content: View>: View {
                         .font(.system(size: 10, weight: .bold, design: .monospaced))
                         .kerning(1)
                         .foregroundStyle(SettColor.etch)
-                        .frame(minWidth: 64, minHeight: 30)
+                        .frame(minWidth: 64, minHeight: 44)
                         .background(SettColor.heroCyan.opacity(canCommit ? 1 : 0.35), in: Capsule())
                         .contentShape(Capsule())
                 }
@@ -452,8 +460,9 @@ public struct ChamberStepper: View {
 
     private func flank(_ symbol: String, action: @escaping () -> Void) -> some View {
         Button {
+            let before = value
             withAnimation(.snappy(duration: 0.15)) { action() }
-            Haptics.selection()
+            if value != before { Haptics.selection() }
         } label: {
             Image(systemName: symbol)
                 .font(.system(size: 13, weight: .bold))

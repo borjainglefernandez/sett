@@ -42,7 +42,7 @@ struct SettingsView: View {
                     }
                     .padding(.vertical, 4)
                 } header: {
-                    sectionHeader("UNITS")
+                    Eyebrow("UNITS")
                 } footer: {
                     Text("Scanner is the full-screen scouter; List is the overview of every set.")
                         .font(.system(size: 11, design: .monospaced))
@@ -67,7 +67,7 @@ struct SettingsView: View {
                             .foregroundStyle(SettColor.bone)
                     }
                 } header: {
-                    sectionHeader("TRAINING PHASE")
+                    Eyebrow("TRAINING PHASE")
                 } footer: {
                     Text(phaseFooter)
                         .font(.system(size: 11, design: .monospaced))
@@ -83,7 +83,7 @@ struct SettingsView: View {
                     ))
                     .listRowInsets(EdgeInsets(top: 4, leading: 14, bottom: 4, trailing: 14))
                 } header: {
-                    sectionHeader("DEFAULT REALM")
+                    Eyebrow("DEFAULT REALM")
                 } footer: {
                     Text("Your default training realm. Routines can override it.")
                         .font(.system(size: 11, design: .monospaced))
@@ -101,7 +101,7 @@ struct SettingsView: View {
                     }
                     .foregroundStyle(SettColor.ash)
                 } header: {
-                    sectionHeader("INTEGRATIONS")
+                    Eyebrow("INTEGRATIONS")
                 }
                 .listRowBackground(SettColor.card)
                 .listRowSeparatorTint(SettColor.cardBorder)
@@ -114,7 +114,7 @@ struct SettingsView: View {
                     Label("Invites arrive with sync", systemImage: "person.badge.plus")
                         .foregroundStyle(SettColor.ash)
                 } header: {
-                    sectionHeader("FRIENDS")
+                    Eyebrow("FRIENDS")
                 }
                 .listRowBackground(SettColor.card)
                 .listRowSeparatorTint(SettColor.cardBorder)
@@ -127,7 +127,7 @@ struct SettingsView: View {
                         Haptics.success()
                     }
                 } header: {
-                    sectionHeader("DEBUG")
+                    Eyebrow("DEBUG")
                 }
                 .listRowBackground(SettColor.card)
                 .listRowSeparatorTint(SettColor.cardBorder)
@@ -137,7 +137,7 @@ struct SettingsView: View {
                     LabeledContent("Version", value: versionText)
                         .foregroundStyle(SettColor.bone)
                 } header: {
-                    sectionHeader("ABOUT")
+                    Eyebrow("ABOUT")
                 }
                 .listRowBackground(SettColor.card)
                 .listRowSeparatorTint(SettColor.cardBorder)
@@ -160,13 +160,6 @@ struct SettingsView: View {
         }
     }
 
-    /// The mono small-caps ash convention (NET THIS WEEK, THIS WEEK, …).
-    private func sectionHeader(_ title: String) -> some View {
-        Text(title)
-            .font(.system(size: 11, weight: .bold, design: .monospaced))
-            .kerning(1.5)
-            .foregroundStyle(SettColor.ash)
-    }
 
     /// The standard steps, plus the current value if it isn't one of them
     /// (e.g. the 1250 g kg-default) so the picker always has a selected row.

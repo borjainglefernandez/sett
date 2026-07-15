@@ -18,4 +18,13 @@ enum WeightFormat {
     static func compactWithUnit(grams: Int, unit: WeightUnit) -> String {
         "\(compact(grams: grams, unit: unit)) \(unit.symbol)"
     }
+
+    /// Big-tonnage readout: exact integer until 10,000, then "12.4k". Used by the
+    /// history summary and the weekly net strip — kept off `Units.displayValue`'s
+    /// 0.25-step rounding so a raw sum reads true.
+    static func compactTonnage(grams: Int, unit: WeightUnit) -> String {
+        let value = Double(grams) / unit.gramsPerUnit
+        return value >= 10_000 ? "\((value / 1000).formatted(.number.precision(.fractionLength(1))))k"
+                               : Int(value.rounded()).formatted()
+    }
 }

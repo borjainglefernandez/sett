@@ -95,7 +95,7 @@ struct SleepImpactCard: View {
                 ForEach(Array(fit.enumerated()), id: \.offset) { entry in
                     LineMark(x: .value("Sleep score", entry.element.x),
                              y: .value("Volume", entry.element.y))
-                        .foregroundStyle(Color(uiColor: .systemIndigo).opacity(0.8))
+                        .foregroundStyle(SettColor.ash.opacity(0.8))
                         .lineStyle(StrokeStyle(lineWidth: 2, dash: [6, 4]))
                 }
             }
@@ -104,5 +104,20 @@ struct SleepImpactCard: View {
         .chartXAxisLabel("sleep score")
         .chartYAxisLabel(unit.symbol)
         .frame(height: 220)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Sleep versus lifts")
+        .accessibilityValue(accessibilitySummary(for: points))
+    }
+
+    /// A spoken summary of the scatter so VoiceOver isn't handed an empty chart.
+    private func accessibilitySummary(for points: [PairedPoint]) -> String {
+        let trend: String
+        if let fit = fitLine(for: points) {
+            trend = fit[1].y > fit[0].y ? "trending up"
+                  : fit[1].y < fit[0].y ? "trending down" : "flat"
+        } else {
+            trend = "no clear trend"
+        }
+        return "\(points.count) workouts plotted, \(trend) with sleep score."
     }
 }

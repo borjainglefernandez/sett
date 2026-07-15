@@ -181,10 +181,7 @@ struct PowerTabView: View {
                 hairline
                 statRow("PRS", "\(prBadgeCount)")
             }
-            Text("MUSCLE BALANCE — 28 DAYS")
-                .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                .kerning(1.5)
-                .foregroundStyle(SettColor.ash)
+            Eyebrow("MUSCLE BALANCE — 28 DAYS")
                 .padding(.top, 4)
             MuscleRadarChart(labels: Self.radarLabels, shares: radarShares)
                 .frame(maxWidth: .infinity)
@@ -335,23 +332,7 @@ struct PowerTabView: View {
             }
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(rosterAccessibilityLabel(character, unlocked: true, isActive: isActive))
-    }
-
-    private var lockedSilhouette: some View {
-        ZStack {
-            Circle()
-                .fill(SettColor.cardNested)
-            Image(systemName: "person.fill")
-                .font(.system(size: 40))
-                .foregroundStyle(Color.gray.opacity(0.55))
-        }
-        .frame(width: 88, height: 88)
-        .overlay {
-            Circle()
-                .strokeBorder(SettColor.iron.opacity(0.55), lineWidth: 4)
-        }
-        .grayscale(1)
+        .accessibilityLabel(rosterAccessibilityLabel(character, isActive: isActive))
     }
 
     private func shortName(_ character: CharacterKey) -> String {
@@ -373,8 +354,7 @@ struct PowerTabView: View {
         Haptics.medium()
     }
 
-    private func rosterAccessibilityLabel(_ character: CharacterKey, unlocked: Bool, isActive: Bool) -> String {
-        if !unlocked { return "\(shortName(character)), locked" }
+    private func rosterAccessibilityLabel(_ character: CharacterKey, isActive: Bool) -> String {
         if isActive { return "\(character.displayName), active" }
         return "\(character.displayName), tap to set active"
     }
@@ -513,7 +493,7 @@ private struct RivalCard: View {
                         .foregroundStyle(SettColor.villainCrimson)
                     Text(cycle > 1 ? "the Crimson Star · Cycle \(cycle)" : "the Crimson Star")
                         .font(.footnote)
-                        .foregroundStyle(.white.opacity(0.6))
+                        .foregroundStyle(SettColor.villainCrimson.opacity(0.8))
                 }
                 Spacer()
                 Text("Form \(rivalForm) of 3")
@@ -528,7 +508,7 @@ private struct RivalCard: View {
             Text(rebirthAnnounce ? "\u{201C}You thought that was my ceiling? Cute.\u{201D}"
                  : userPL > rivalPL ? "You've forced my hand." : "He hasn't shown his final form.")
                 .font(.subheadline.italic())
-                .foregroundStyle(.white.opacity(0.75))
+                .foregroundStyle(SettColor.ash)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)

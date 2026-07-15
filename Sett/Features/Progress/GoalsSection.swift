@@ -77,7 +77,7 @@ struct GoalsSection: View {
             } label: {
                 Text("3 × / week")
                     .font(.headline)
-                    .foregroundStyle(.white)
+                    .foregroundStyle(SettColor.etch)
                     .padding(.horizontal, 24)
                     .padding(.vertical, 10)
                     .background(Aura.cyan, in: Capsule())
@@ -126,7 +126,7 @@ struct GoalsSection: View {
     private func detail(for goal: Goal) -> String {
         switch goal.kind {
         case .frequency:
-            "\(goal.targetValue) workouts a week"
+            "\(goal.targetValue) workout\(goal.targetValue == 1 ? "" : "s") a week"
         case .prTarget:
             "Target e1RM \(WeightText.formatted(grams: goal.targetValue, unit: unit))"
         case .volumeTarget:

@@ -197,6 +197,7 @@ struct ExerciseCard: View {
                              equipment: workoutExercise.equipment,
                              muscle: workoutExercise.muscle,
                              size: 44, color: topTier.color)
+                    .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(workoutExercise.exerciseNameSnapshot.uppercased())
                         .font(.system(.callout, design: .monospaced).weight(.bold))
@@ -219,7 +220,7 @@ struct ExerciseCard: View {
         }
         .buttonStyle(.plain)
         .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
-        .accessibilityHint("Collapses this exercise")
+        .accessibilityHint(isExpanded ? "Collapses this exercise" : "Expands this exercise")
     }
 
     private var statLine: String {
@@ -625,7 +626,6 @@ struct SetValuesEditSheet: View {
     let unit: WeightUnit
     let onSave: (_ weightGrams: Int, _ reps: Int, _ isWarmup: Bool) -> Void
 
-    @Environment(\.dismiss) private var dismiss
     @State private var weightText = ""
     @State private var reps = 0
     @State private var isWarmup = false
@@ -649,7 +649,7 @@ struct SetValuesEditSheet: View {
                         .font(.system(size: 10, weight: .semibold, design: .monospaced))
                         .foregroundStyle(SettColor.ash)
                     // The session's ± flank grammar, not a stock Stepper.
-                    ChamberStepper(value: $reps, in: 0...100)
+                    ChamberStepper(value: $reps, in: 0...999)
                 }
             }
             Toggle(isOn: $isWarmup) {
@@ -685,7 +685,6 @@ struct MachineSetupSheet: View {
     let exercise: Exercise
 
     @Environment(\.modelContext) private var modelContext
-    @Environment(\.dismiss) private var dismiss
     @State private var text = ""
     @FocusState private var isFocused: Bool
 

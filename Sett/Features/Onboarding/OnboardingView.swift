@@ -20,7 +20,6 @@ struct OnboardingView: View {
 
     @State private var page: Page = .invite
     @State private var inviteCode = ""
-    @State private var displayedPowerLevel = 0
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -320,7 +319,7 @@ struct OnboardingView: View {
             rivalCard
             VStack(spacing: 8) {
                 Eyebrow("YOUR POWER LEVEL")
-                PowerNumeral(displayedPowerLevel, size: .xl)
+                PowerNumeral(0, size: .xl)
                 Text("Earn it — every set raises it.")
                     .font(.footnote)
                     .foregroundStyle(SettColor.ash)

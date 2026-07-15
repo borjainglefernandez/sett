@@ -21,8 +21,6 @@ struct ExerciseLibraryView: View {
     @State private var selectedMuscle: Muscle?
     @State private var selectedEquipment: Equipment?
 
-    /// Set samples snapshotted once per appearance; e1RMs derive from them.
-    @State private var samples: [SetSample] = []
     @State private var bestE1RMs: [UUID: Int] = [:]
     @State private var hasLoadedSamples = false
 
@@ -187,7 +185,7 @@ struct ExerciseLibraryView: View {
                 Spacer()
                 if let e1rm = bestE1RMs[exercise.id] {
                     // Power-number canon: the gold PowerNumeral is the PL's alone.
-                    Text("PWR \(displayValue(e1rm))")
+                    Text("e1RM \(displayValue(e1rm))")
                         .font(.system(size: 13, weight: .heavy, design: .monospaced))
                         .monospacedDigit()
                         .foregroundStyle(SettColor.heroCyan)
@@ -205,16 +203,11 @@ struct ExerciseLibraryView: View {
     // MARK: Search miss ("No match — create '<query>'?")
 
     private var searchMissView: some View {
-        ContentUnavailableView {
-            Label("No match", systemImage: "magnifyingglass")
-        } description: {
-            Text("No exercise named “\(searchText)”.")
-        } actions: {
-            Button("Create “\(searchText)”") {
-                prefillName = searchText
-                isShowingCreateForm = true
-            }
-            .font(.headline)
+        EmptyChamber(title: "No match",
+                     message: "No exercise named “\(searchText)”.",
+                     actionLabel: "Forge “\(searchText)”") {
+            prefillName = searchText
+            isShowingCreateForm = true
         }
     }
 
@@ -223,7 +216,7 @@ struct ExerciseLibraryView: View {
     private func loadSamplesIfNeeded() {
         guard !hasLoadedSamples else { return }
         hasLoadedSamples = true
-        samples = SampleExtractor.setSamples(context: modelContext)
+        let samples = SampleExtractor.setSamples(context: modelContext)
         var result: [UUID: Int] = [:]
         let byExercise = Dictionary(grouping: samples, by: \.exerciseID)
         for (exerciseID, subset) in byExercise {

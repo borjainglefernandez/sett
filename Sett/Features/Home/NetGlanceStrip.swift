@@ -37,9 +37,7 @@ struct NetGlanceStrip: View {
     }
 
     private var tonnageDisplay: String {
-        let value = Double(week.tonnageGrams) / services.settings.unit.gramsPerUnit
-        return value >= 10_000 ? "\((value / 1000).formatted(.number.precision(.fractionLength(1))))k"
-                               : Int(value.rounded()).formatted()
+        WeightFormat.compactTonnage(grams: week.tonnageGrams, unit: services.settings.unit)
     }
 
     var body: some View {

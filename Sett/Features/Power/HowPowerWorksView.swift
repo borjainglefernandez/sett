@@ -53,7 +53,7 @@ struct HowPowerWorksView: View {
                 """)
             bullet("STRENGTH: your best verified lift per muscle group over the last \(strengthDays) days.")
             bullet("VOLUME: the work you've moved over the last \(volumeDays) days (diminishing returns — double volume doesn't double power).")
-            bullet("STREAK: each consistent week multiplies the total by +\(weeklyPercent)%, up to \(maxWeeks) weeks (×1.5).")
+            bullet("STREAK: each consistent week multiplies the total by +\(weeklyPercent)%, up to \(maxWeeks) weeks (\(String(format: "×%.1f", 1 + Double(weeklyPercent) / 100 * Double(maxWeeks)))).")
             footnote("""
                 The windows roll, so power must be MAINTAINED — a long break lets it \
                 fade, and coming back rebuilds it fast.
@@ -97,11 +97,10 @@ struct HowPowerWorksView: View {
         VStack(alignment: .leading, spacing: 10) {
             Label("Transformation Forms", systemImage: "flame.fill")
                 .font(.headline)
-            valueRow("KINDLED", "2,000 PL")
-            valueRow("ASCENDANT", "5,000 PL")
-            valueRow("RADIANT", "9,000 PL")
-            valueRow("ZENITH", "15,000 PL")
-            valueRow("ZENITH II, III, …", "every 7,500 PL after")
+            ForEach(Array(UserForm.namedThresholds.dropFirst()), id: \.floor) { entry in
+                valueRow(entry.title, "\(entry.floor.formatted()) PL")
+            }
+            valueRow("ZENITH II, III, …", "every \(UserForm.zenithStep.formatted()) PL after")
             footnote("The ladder never ends — there is always a next form.")
         }
         .frame(maxWidth: .infinity, alignment: .leading)

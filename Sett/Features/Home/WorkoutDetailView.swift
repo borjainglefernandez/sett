@@ -71,7 +71,7 @@ struct WorkoutDetailView: View {
                 stat(WorkoutFormat.duration(workout.durationSeconds), caption: "duration")
                 if let rating = workout.ratingHalfStars, rating > 0 {
                     VStack(alignment: .leading, spacing: 4) {
-                        ratingStars(halfStars: rating)
+                        StarRatingRow(halfStars: rating, starSize: 13)
                         Text("rating")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
@@ -127,29 +127,6 @@ struct WorkoutDetailView: View {
         }
     }
 
-    /// Cyan, not gold: the rating is user-entered metadata (an input), matching
-    /// the summary screen's cyan star control — gold stays reserved for rewards.
-    private func ratingStars(halfStars: Int) -> some View {
-        HStack(spacing: 1) {
-            ForEach(1...5, id: \.self) { star in
-                Image(systemName: starSymbol(halfStars: halfStars, star: star))
-            }
-        }
-        .font(.system(size: 13))
-        .foregroundStyle(SettColor.heroCyan)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Rated \(String(format: "%.1f", Double(halfStars) / 2)) stars")
-    }
-
-    private func starSymbol(halfStars: Int, star: Int) -> String {
-        if halfStars >= star * 2 {
-            "star.fill"
-        } else if halfStars == star * 2 - 1 {
-            "star.leadinghalf.filled"
-        } else {
-            "star"
-        }
-    }
 
     // MARK: Exercises — the active session's scouter card, in read-back form.
     // Same icon medallion, mono header, stat line, badge + value grid; the top set
@@ -189,7 +166,7 @@ struct WorkoutDetailView: View {
             if let notes = workoutExercise.notes, !notes.isEmpty {
                 Text(notes)
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(SettColor.ash)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -317,7 +294,7 @@ struct WorkoutDetailView: View {
         } label: {
             Label("Repeat workout", systemImage: "repeat")
                 .font(.headline)
-                .foregroundStyle(.white)
+                .foregroundStyle(SettColor.etch)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 16)
                 .background(Aura.cyan, in: Capsule())

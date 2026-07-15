@@ -42,24 +42,27 @@ struct E1RMTrendsCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("e1RM Trends")
-                .font(.title3.weight(.semibold))
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 12) {
-                    ForEach(trends) { trend in
-                        NavigationLink {
-                            ChartDetailView(exerciseID: trend.id, name: trend.name, samples: samples)
-                        } label: {
-                            sparklineTile(trend)
+        let trends = trends
+        if !trends.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("e1RM Trends")
+                    .font(.title3.weight(.semibold))
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 12) {
+                        ForEach(trends) { trend in
+                            NavigationLink {
+                                ChartDetailView(exerciseID: trend.id, name: trend.name, samples: samples)
+                            } label: {
+                                sparklineTile(trend)
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                     }
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .settCard()
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .settCard()
     }
 
     private func sparklineTile(_ trend: Trend) -> some View {
@@ -85,7 +88,7 @@ struct E1RMTrendsCard: View {
                 Text(WeightText.formatted(latest.value, unit: unit))
                     .font(.caption)
                     .monospacedDigit()
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(SettColor.ash)
             }
         }
         .padding(12)

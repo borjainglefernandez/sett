@@ -32,6 +32,7 @@ struct GymPickerSheet: View {
             List {
                 Section {
                     row(title: "No location", icon: "mappin.slash", isOn: currentID == nil) {
+                        Haptics.selection()
                         onPick(nil)
                         dismiss()
                     }
@@ -39,6 +40,7 @@ struct GymPickerSheet: View {
                         row(title: gym.name,
                             icon: gym.isHome ? "house.fill" : "mappin.and.ellipse",
                             isOn: gym.id == currentID) {
+                            Haptics.selection()
                             onPick(gym)
                             dismiss()
                         }

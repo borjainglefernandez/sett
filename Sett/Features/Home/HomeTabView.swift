@@ -231,7 +231,7 @@ struct HomeTabView: View {
                 .contentShape(Capsule())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("\(streakWeeks) week streak\(streakState.shields > 0 ? ", \(streakState.shields) shields banked" : "")")
+            .accessibilityLabel("\(streakWeeks) week streak\(streakState.shields > 0 ? ", \(streakState.shields) shield\(streakState.shields == 1 ? "" : "s") banked" : "")")
             .accessibilityHint("Shows streak rules and this week's progress")
         }
     }

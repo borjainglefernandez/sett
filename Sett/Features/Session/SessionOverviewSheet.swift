@@ -226,9 +226,9 @@ struct SessionOverviewSheet: View {
                     .monospacedDigit()
                     .foregroundStyle(SettColor.bone)
                 Spacer(minLength: 8)
-                restButton("−5") { session.adjustRest(by: -5) }
-                restButton("SKIP") { session.skipRest() }
-                restButton("+5") { session.adjustRest(by: 5) }
+                restButton("−\(RestTuning.step)") { session.adjustRest(by: -RestTuning.step) }
+                restButton("skip") { Haptics.light(); session.skipRest() }
+                restButton("+\(RestTuning.step)") { session.adjustRest(by: RestTuning.step) }
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
@@ -246,7 +246,7 @@ struct SessionOverviewSheet: View {
             Text(text)
                 .font(.system(size: 11, weight: .heavy, design: .monospaced))
                 .foregroundStyle(TimeChamber.scouterGreen)
-                .frame(minWidth: 42, minHeight: 32)
+                .frame(minWidth: 44, minHeight: 44)
                 .background { Capsule().strokeBorder(TimeChamber.scouterGreen.opacity(0.4), lineWidth: 1) }
         }
         .buttonStyle(.plain)

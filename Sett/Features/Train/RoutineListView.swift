@@ -308,25 +308,20 @@ struct RoutineListView: View {
     private var emptyState: some View {
         VStack(spacing: 16) {
             Spacer()
-            Image(systemName: "list.bullet.rectangle.portrait")
-                .font(.system(size: 40))
-                .foregroundStyle(SettColor.heroCyan)
-            Text("No routines yet")
-                .font(.title3.bold())
-            Text("Build a routine, or Quick Start from Home to train without a plan.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
+            EmptyChamber(title: "No routines yet",
+                         message: "Build a routine, or Quick Start from Home to train without a plan.")
             NavigationLink {
                 RoutineEditorView(routine: nil)
             } label: {
-                Text("Create Routine")
-                    .font(.headline)
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 24)
-                    .padding(.vertical, 12)
-                    .background(Aura.cyan, in: Capsule())
+                Text("CREATE ROUTINE")
+                    .font(.system(size: 12, weight: .bold, design: .monospaced))
+                    .kerning(1.5)
+                    .foregroundStyle(SettColor.etch)
+                    .padding(.horizontal, 18)
+                    .frame(minHeight: 40)
+                    .background(SettColor.heroCyan, in: Capsule())
             }
+            .buttonStyle(.plain)
             Spacer()
         }
         .frame(maxWidth: .infinity)

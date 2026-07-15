@@ -135,6 +135,8 @@ struct DirectivePanel: View {
             Text(directive.title)
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(SettColor.bone)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
             Spacer(minLength: 8)
             Text(directive.progress)
                 .font(.system(size: 12, weight: .semibold, design: .monospaced))

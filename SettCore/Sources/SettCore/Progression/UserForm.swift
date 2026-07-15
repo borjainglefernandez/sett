@@ -19,14 +19,14 @@ public struct UserForm: Equatable, Sendable {
     /// The PL that unlocks the next form. Never nil — the ladder is endless.
     public let nextPL: Int
 
-    static let namedThresholds: [(title: String, floor: Int)] = [
+    public static let namedThresholds: [(title: String, floor: Int)] = [
         ("BASE", 0),
         ("KINDLED", 2_000),
         ("ASCENDANT", 5_000),
         ("RADIANT", 9_000),
         ("ZENITH", 15_000),
     ]
-    static let zenithStep = 7_500
+    public static let zenithStep = 7_500
 
     /// The form a given Power Level currently holds.
     public static func form(forPL pl: Int) -> UserForm {

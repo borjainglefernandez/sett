@@ -35,6 +35,8 @@ struct ChamberDomainStrip: View {
                     .font(.system(size: circular ? 9 : 10, weight: .medium, design: .monospaced))
                     .foregroundStyle(selected ? SettColor.bone : SettColor.ash)
                     .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .frame(width: circular ? 54 : 76)
             }
         }
         .buttonStyle(.plain)
@@ -83,7 +85,7 @@ struct ChamberDomainStrip: View {
         Image(systemName: "checkmark.circle.fill")
             .font(.footnote)
             .foregroundStyle(SettColor.heroCyan)
-            .background(Circle().fill(Color.black.opacity(0.5)).padding(1))
+            .background(Circle().fill(SettColor.etch.opacity(0.5)).padding(1))
     }
 
     /// Realm titles are two words ("Nebula Void"); the circular strip shows the

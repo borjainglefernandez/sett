@@ -36,7 +36,7 @@ struct GoalEditorSheet: View {
                     Text("Pick a goal type")
                         .font(.headline)
                     presetCard(.frequency, title: "Workouts per week",
-                               subtitle: "Show up \(frequencyTarget) times a week — the classic.",
+                               subtitle: "Show up \(frequencyTarget) time\(frequencyTarget == 1 ? "" : "s") a week — the classic.",
                                symbol: "calendar", isHero: true)
                     presetCard(.volumeTarget, title: "Volume target",
                                subtitle: "Total weight moved across all lifts.",
@@ -168,10 +168,10 @@ struct GoalEditorSheet: View {
         Button(action: create) {
             Text("Create Goal")
                 .font(.headline)
-                .foregroundStyle(.white)
+                .foregroundStyle(canCreate ? SettColor.etch : SettColor.iron)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 16)
-                .background(canCreate ? AnyShapeStyle(Aura.cyan) : AnyShapeStyle(Color(uiColor: .systemGray4)),
+                .background(canCreate ? AnyShapeStyle(Aura.cyan) : AnyShapeStyle(SettColor.cardNested),
                             in: Capsule())
         }
         .disabled(!canCreate)

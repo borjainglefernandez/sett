@@ -4,7 +4,7 @@ import SettCore
 /// REST state (v3.1): after logging, the countdown takes the whole screen — giant
 /// mono numerals (bone, no glow) inside a 2 pt iron progress ring on pure black.
 /// Beneath: the NEXT preview (ash; tapping it jumps early) and the quiet
-/// `−15 · skip · +15` row. The remaining time derives from `session.restEndsAt`
+/// `−5 · skip · +5` row. The remaining time derives from `session.restEndsAt`
 /// wall clock via TimelineView every second — never tick-accumulated — so
 /// backgrounding never drifts it. At zero: exactly one success haptic (guarded by
 /// @State), the rest clears, and the shell advances the cursor via `onAdvance`.
@@ -147,12 +147,13 @@ struct RestOverlayView: View {
 
     private var quietRow: some View {
         HStack(spacing: 8) {
-            quietButton("−5") { session.adjustRest(by: -5) }
+            quietButton("−\(RestTuning.step)") { session.adjustRest(by: -RestTuning.step) }
             quietButton("skip") {
+                Haptics.light()
                 session.skipRest()
                 onAdvance()
             }
-            quietButton("+5") { session.adjustRest(by: 5) }
+            quietButton("+\(RestTuning.step)") { session.adjustRest(by: RestTuning.step) }
         }
     }
 
@@ -162,7 +163,7 @@ struct RestOverlayView: View {
                 .font(.system(.subheadline, design: .monospaced).weight(.semibold))
                 .monospacedDigit()
                 .foregroundStyle(SettColor.bone)
-                .frame(minWidth: 62, minHeight: 40)
+                .frame(minWidth: 62, minHeight: 44)
                 .background {
                     Capsule().fill(TimeChamber.void.opacity(0.55))
                     Capsule().strokeBorder(tier.color.opacity(0.3), lineWidth: 1)
