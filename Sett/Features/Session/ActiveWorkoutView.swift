@@ -17,9 +17,24 @@ import SettCore
 /// pair clamped on every read, so mutations from the overview sheet can never
 /// strand it. Swiping past the final set shows the END pane.
 struct ActiveWorkoutView: View {
+    /// True when the user's default workout view is the list: the overview sheet is
+    /// up from the FIRST frame (state-initialized, not onAppear-presented) and the
+    /// scanner stays hidden until the sheet is dismissed once — no scanner flash.
+    var startsInOverview: Bool = false
+
     @Environment(WorkoutSessionStore.self) private var session
     @Environment(AppServices.self) private var services
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    init(startsInOverview: Bool = false) {
+        self.startsInOverview = startsInOverview
+        _isShowingOverview = State(initialValue: startsInOverview)
+        _hasRevealedPlayer = State(initialValue: !startsInOverview)
+    }
+
+    /// False until the list-first sheet is dismissed — the scanner pane stays hidden
+    /// behind the sheet so it never flashes during the presentation animation.
+    @State private var hasRevealedPlayer: Bool
 
     @State private var cursor = QueuePosition(exerciseIndex: 0, slotIndex: 0)
     @State private var hasInitializedCursor = false
@@ -43,7 +58,6 @@ struct ActiveWorkoutView: View {
     @State private var ambientDecayTask: Task<Void, Never>?
 
     @State private var isShowingOverview = false
-    @State private var didHonorDefaultView = false
     @State private var isConfirmingFinish = false
     @State private var isConfirmingCancel = false
     @State private var isConfirmingCasual = false
@@ -68,7 +82,10 @@ struct ActiveWorkoutView: View {
         .overlay(TransformationBurst(tier: ambientTier, token: transformationToken).allowsHitTesting(false))
         .combatTextEmitter(combatText)
         .environment(combatText)
-        .sheet(isPresented: $isShowingOverview, onDismiss: reconcileCursor) {
+        .sheet(isPresented: $isShowingOverview, onDismiss: {
+            hasRevealedPlayer = true
+            reconcileCursor()
+        }) {
             SessionOverviewSheet()
         }
         .onAppear {
@@ -78,11 +95,8 @@ struct ActiveWorkoutView: View {
                 return
             }
             #endif
-            // Honor the default-view preference, once, when the workout opens.
-            if !didHonorDefaultView {
-                didHonorDefaultView = true
-                if services.settings.startsInList { isShowingOverview = true }
-            }
+            // (The list-first default is honored via init state, not here — an
+            // onAppear-presented sheet let the scanner flash first for a beat.)
         }
         .confirmationDialog("Finish workout?",
                             isPresented: $isConfirmingFinish,
@@ -144,7 +158,7 @@ struct ActiveWorkoutView: View {
                     .transition(paneTransition)
                     // Hide the SET pane while resting or between exercises so the
                     // overlay's translucent scrim reveals only the cosmic backdrop.
-                    .opacity(isRestOverlayVisible || exerciseSummary != nil ? 0 : 1)
+                    .opacity(isRestOverlayVisible || exerciseSummary != nil || !hasRevealedPlayer ? 0 : 1)
                 if isShowingInPlaceReadback, let readback = session.lastReadback {
                     ReadbackBlock(payload: readback, unit: services.settings.unit)
                         .padding(.horizontal, 24)

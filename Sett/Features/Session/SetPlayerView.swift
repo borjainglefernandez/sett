@@ -233,9 +233,10 @@ struct SetPlayerView: View {
         // Seed the milestone gate to the hundred we OPEN on, so climbing acks only NEW
         // hundreds (opening onto a 250-lb slot never re-acks 100/200).
         lastMilestone = max(0, (powerReading / 100) * 100)
-        // Auto-populate from the previous session: the note carries over, and the
-        // setting defaults to last session's setting, then the exercise default.
-        pendingNote = ref.note
+        // The SETTING still defaults from last session (machine setup is stable), but
+        // the NOTE does not — last time's note shows as a ghost PREVIEW on the row and
+        // is never committed unless the lifter writes one for THIS set.
+        pendingNote = nil
         pendingSetting = ref.setting ?? exercise?.instructions
     }
 
@@ -681,8 +682,9 @@ struct SetPlayerView: View {
                     readoutRow(icon: "text.alignleft",
                                label: "NOTE",
                                value: pendingNote,
+                               preview: isCommitted ? nil : reference?.note,
                                placeholder: "Add note",
-                               tag: noteCarried ? "last time" : nil) {
+                               tag: notePreviewShowing ? "last time" : nil) {
                         guard !isCommitted else { return }
                         isEditingNote = true
                     }
@@ -705,9 +707,14 @@ struct SetPlayerView: View {
     }
 
     private func readoutRow(icon: String, label: String, value: String?,
+                            preview: String? = nil,
                             placeholder: String, tag: String?,
                             action: @escaping () -> Void) -> some View {
-        Button(action: action) {
+        // Precedence: a value staged for THIS set (bone) → last time's ghost preview
+        // (ash italic, context only — never committed) → the placeholder.
+        let hasValue = value?.isEmpty == false
+        let hasPreview = !hasValue && preview?.isEmpty == false
+        return Button(action: action) {
             HStack(spacing: 10) {
                 Image(systemName: icon)
                     .font(.footnote)
@@ -725,9 +732,11 @@ struct SetPlayerView: View {
                                 .foregroundStyle(liveTier.color.opacity(0.8))
                         }
                     }
-                    Text(value?.isEmpty == false ? value! : placeholder)
+                    Text(hasValue ? value! : (hasPreview ? preview! : placeholder))
                         .font(.system(.subheadline, design: .rounded))
-                        .foregroundStyle(value?.isEmpty == false ? SettColor.bone : SettColor.ash)
+                        .italic(hasPreview)
+                        .foregroundStyle(hasValue ? SettColor.bone : SettColor.ash)
+                        .opacity(hasPreview ? 0.75 : 1)
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
                 }
@@ -755,8 +764,9 @@ struct SetPlayerView: View {
     private var settingCarried: Bool {
         !isCommitted && pendingSetting?.isEmpty == false && pendingSetting == reference?.setting
     }
-    private var noteCarried: Bool {
-        !isCommitted && pendingNote?.isEmpty == false && pendingNote == reference?.note
+    /// Last time's note is showing as a ghost preview (nothing staged for this set).
+    private var notePreviewShowing: Bool {
+        !isCommitted && pendingNote?.isEmpty != false && reference?.note?.isEmpty == false
     }
 
     // MARK: Warm-up chip (open slots only)

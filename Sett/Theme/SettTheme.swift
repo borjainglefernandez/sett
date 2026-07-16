@@ -887,25 +887,44 @@ public struct ChamberStepControl: View {
     let text: String
     let onDecrement: () -> Void
     let onIncrement: () -> Void
+    /// Tap-to-type: when set, tapping the value itself invokes this (callers open a
+    /// numeric pad) — numbers should never be stepper-only for big jumps.
+    var onTapValue: (() -> Void)? = nil
 
-    public init(text: String, onDecrement: @escaping () -> Void, onIncrement: @escaping () -> Void) {
+    public init(text: String, onDecrement: @escaping () -> Void,
+                onIncrement: @escaping () -> Void, onTapValue: (() -> Void)? = nil) {
         self.text = text
         self.onDecrement = onDecrement
         self.onIncrement = onIncrement
+        self.onTapValue = onTapValue
     }
 
     public var body: some View {
         HStack(spacing: 14) {
             flank("minus", action: onDecrement)
-            Text(text)
-                .font(.system(.title3, design: .monospaced).weight(.bold))
-                .monospacedDigit()
-                .foregroundStyle(SettColor.bone)
-                .frame(minWidth: 44)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
+            Group {
+                if let onTapValue {
+                    Button(action: onTapValue) {
+                        valueText.contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHint("Opens the number pad")
+                } else {
+                    valueText
+                }
+            }
             flank("plus", action: onIncrement)
         }
+    }
+
+    private var valueText: some View {
+        Text(text)
+            .font(.system(.title3, design: .monospaced).weight(.bold))
+            .monospacedDigit()
+            .foregroundStyle(SettColor.bone)
+            .frame(minWidth: 44)
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
     }
 
     private func flank(_ symbol: String, action: @escaping () -> Void) -> some View {

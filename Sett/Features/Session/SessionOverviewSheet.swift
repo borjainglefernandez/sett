@@ -232,8 +232,12 @@ struct SessionOverviewSheet: View {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
-            .background(alignment: .bottom) {
+            .background {
                 Rectangle().fill(TimeChamber.void.opacity(0.94)).ignoresSafeArea(edges: .top)
+            }
+            // The hairline lives in its own overlay: sharing the background ZStack with
+            // the safe-area-expanding fill shifted "bottom" and drew it THROUGH the timer.
+            .overlay(alignment: .bottom) {
                 Rectangle().fill(SettColor.cardBorder).frame(height: 1)
             }
             .accessibilityElement(children: .ignore)

@@ -23,6 +23,9 @@ struct WorkoutDetailView: View {
     @State private var isPickingGym = false
     @State private var isRenaming = false
     @State private var isEditingNotes = false
+    /// Net vs the previous same-exercise sessions — the same readout the history rows
+    /// wear, so the detail answers "did I progress?" without going back.
+    @State private var net: NetSummary?
 
     var body: some View {
         ScrollView {
@@ -41,6 +44,7 @@ struct WorkoutDetailView: View {
             .padding(16)
         }
         .dungeonBackground()
+        .onAppear(perform: refreshNet)
         .navigationTitle(workout.title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -98,6 +102,12 @@ struct WorkoutDetailView: View {
     /// recompute — a mis-logged set poisoned PWR, so fixing it must un-poison it.
     private func recomputeAfterCorrection() {
         services.progression.recompute(context: modelContext)
+        refreshNet()   // corrections move the vs-last readout too
+    }
+
+    private func refreshNet() {
+        let samples = SampleExtractor.setSamples(context: modelContext)
+        net = ProgressEngine.workoutNet(samples: samples, workoutID: workout.id)
     }
 
     // MARK: Header (duration / rating / bodyweight / gym)
@@ -106,6 +116,14 @@ struct WorkoutDetailView: View {
         VStack(alignment: .leading, spacing: 12) {
             if editing { titleRow }
             dateRow
+            if let net, !workout.isCasual, !net.isNew {
+                HStack(spacing: 8) {
+                    Eyebrow("NET VS LAST")
+                    netChip(value: net.reps, suffix: "reps")
+                    netChip(value: Int((Double(net.volumeGrams) / services.settings.unit.gramsPerUnit).rounded()),
+                            suffix: services.settings.unit.symbol)
+                }
+            }
             HStack(alignment: .top, spacing: 24) {
                 stat(WorkoutFormat.duration(workout.durationSeconds), caption: "duration")
                 if editing {
@@ -134,6 +152,19 @@ struct WorkoutDetailView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .settCard()
+    }
+
+    /// Net chip — the history rows' grammar (+N green / −N red, cut-neutral ash).
+    private func netChip(value: Int, suffix: String) -> some View {
+        let negativeColor = workout.phase == .cutting ? SettColor.ash : SettColor.negative
+        let color = value >= 0 ? SettColor.positive : negativeColor
+        return Text("\(value >= 0 ? "+" : "")\(value) \(suffix)")
+            .foregroundStyle(color)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(color.opacity(0.12), in: Capsule())
+            .font(.caption2.weight(.bold))
+            .monospacedDigit()
     }
 
     /// Title — read-only text lives in the nav bar; edit mode surfaces it here as
@@ -309,8 +340,10 @@ struct WorkoutDetailView: View {
                 }
                 Spacer(minLength: 0)
             }
-            ForEach(workoutExercise.orderedSets, id: \.id) { set in
-                setRow(set, in: workoutExercise, isTop: set.id == topID)
+            VStack(spacing: 6) {
+                ForEach(workoutExercise.orderedSets, id: \.id) { set in
+                    setRow(set, in: workoutExercise, isTop: set.id == topID)
+                }
             }
             if workoutExercise.orderedSets.isEmpty {
                 Text("No sets logged")
@@ -391,12 +424,24 @@ struct WorkoutDetailView: View {
                     .font(.caption)
                     .foregroundStyle(SettColor.ash)
                     .padding(.leading, SetRowGrid.badge + SetRowGrid.badgeGap)
+                    .padding(.bottom, 8)
             }
         }
+        .padding(.horizontal, SetRowGrid.hPad)
+        // The SESSION list's slab grammar — void fill, tier accent bar, hairline rim —
+        // so a finished workout reads like the live one, not a bare stat sheet.
         .background {
-            if set.isWarmup {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(SettColor.iron.opacity(0.08))
+            let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
+            ZStack {
+                shape.fill(TimeChamber.void.opacity(0.5))
+                HStack {
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(set.isWarmup ? SettColor.iron.opacity(0.6)
+                              : (isTop ? TimeChamber.scouterAmber : TimeChamber.scouterGreen))
+                        .frame(width: 3)
+                    Spacer()
+                }
+                shape.strokeBorder(SettColor.cardBorder, lineWidth: 1)
             }
         }
     }

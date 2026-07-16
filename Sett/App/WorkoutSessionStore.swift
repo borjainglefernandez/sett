@@ -154,6 +154,12 @@ public final class WorkoutSessionStore {
             debugInsertSet(on: first, grams: grams, reps: 8, notes: nil)
             if let workout = activeWorkout { touchAndSave(workout) }
         }
+        // Screenshot harness: SETT_DEBUG_REST=<seconds> arms the rest countdown so the
+        // overview's pinned rest strip can be captured (no notification is scheduled).
+        if let raw = ProcessInfo.processInfo.environment["SETT_DEBUG_REST"], let secs = Int(raw) {
+            restEndsAt = Date.now.addingTimeInterval(TimeInterval(secs))
+            restTotalSeconds = secs
+        }
     }
 
     private func debugInsertSet(on workoutExercise: WorkoutExercise, grams: Int, reps: Int, notes: String?) {

@@ -40,6 +40,8 @@ struct BodyweightLogSheet: View {
     var editing: BodyweightEntry? = nil
 
     @State private var grams = 79_000
+    /// Tap-to-type numeric pad (steppers stay for fine ±0.1 nudges).
+    @State private var isTyping = false
 
     @ScaledMetric(relativeTo: .largeTitle) private var numeralSize: CGFloat = 56
 
@@ -53,16 +55,22 @@ struct BodyweightLogSheet: View {
             HStack(spacing: 16) {
                 stepperButton(systemName: "minus", delta: -stepGrams)
                 VStack(spacing: 8) {
-                    HStack(alignment: .firstTextBaseline, spacing: 4) {
-                        Text(BodyweightFormat.value(grams: grams, unit: unit))
-                            .font(PowerFont.xl(numeralSize))
-                            .monospacedDigit()
-                            .foregroundStyle(SettColor.heroCyan)
-                            .contentTransition(.numericText(value: Double(grams)))
-                        Text(unit.symbol)
-                            .font(.title3.weight(.semibold))
-                            .foregroundStyle(SettColor.ash)
+                    // Tap the numeral to TYPE — 0.1 steps alone made big changes brutal.
+                    Button { isTyping = true } label: {
+                        HStack(alignment: .firstTextBaseline, spacing: 4) {
+                            Text(BodyweightFormat.value(grams: grams, unit: unit))
+                                .font(PowerFont.xl(numeralSize))
+                                .monospacedDigit()
+                                .foregroundStyle(SettColor.heroCyan)
+                                .contentTransition(.numericText(value: Double(grams)))
+                            Text(unit.symbol)
+                                .font(.title3.weight(.semibold))
+                                .foregroundStyle(SettColor.ash)
+                        }
+                        .contentShape(Rectangle())
                     }
+                    .buttonStyle(.plain)
+                    .accessibilityHint("Opens the number pad")
                     if let deltaText {
                         // Neutral on purpose — bodyweight direction isn't good or bad.
                         Text(deltaText)
@@ -82,6 +90,15 @@ struct BodyweightLogSheet: View {
         .presentationDetents([.height(280)])
         .onAppear {
             grams = editing?.weightGrams ?? latest?.weightGrams ?? 79_000
+        }
+        .sheet(isPresented: $isTyping) {
+            NumericPadSheet(title: "Bodyweight (\(unit.symbol))",
+                            initialText: BodyweightFormat.value(grams: grams, unit: unit),
+                            keyboard: .decimalPad) { text in
+                let value = Double(text.replacingOccurrences(of: ",", with: ".")) ?? 0
+                guard value > 0 else { return }
+                grams = min(300_000, max(20_000, Units.grams(fromDisplay: value, unit: unit)))
+            }
         }
     }
 

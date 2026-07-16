@@ -45,17 +45,16 @@ struct SetEntryRow: View {
                 .accessibilityHidden(true)
             Spacer().frame(width: SetRowGrid.badgeGap)
 
-            // WEIGHT — a hairline − left of the value, the inline editable field + unit
-            // caption right-aligned in the shared cell, a hairline + right of it.
+            // WEIGHT — the editable value CENTERED between its − / + flanks, so weight
+            // and reps read as the same control (values used to hug opposite flanks).
             stepButton("minus", label: "Decrease weight") { stepWeight(-1) }
             HStack(spacing: 3) {
-                editField(text: $weightText, field: .weight, align: .trailing, label: "Weight")
+                editField(text: $weightText, field: .weight, align: .center, label: "Weight")
                 Text(services.settings.unit.symbol)
                     .font(.system(size: 11, weight: .bold, design: .monospaced))
                     .foregroundStyle(SettColor.iron)
             }
-            .padding(.trailing, SetRowGrid.valueInset)
-            .frame(width: SetRowGrid.weightCell, height: SetRowGrid.rowHeight, alignment: .trailing)
+            .frame(width: SetRowGrid.weightCell, height: SetRowGrid.rowHeight, alignment: .center)
             stepButton("plus", label: "Increase weight") { stepWeight(1) }
 
             Text("×")
@@ -63,11 +62,10 @@ struct SetEntryRow: View {
                 .foregroundStyle(SettColor.iron)
                 .frame(width: SetRowGrid.times)
 
-            // REPS — a hairline − left, the inline field, a hairline + right.
+            // REPS — same grammar: value centered between its flanks.
             stepButton("minus", label: "Decrease reps") { stepReps(-1) }
-            editField(text: $repsText, field: .reps, align: .leading, label: "Reps")
-                .padding(.leading, SetRowGrid.valueInset)
-                .frame(width: SetRowGrid.repsCell, height: SetRowGrid.rowHeight, alignment: .leading)
+            editField(text: $repsText, field: .reps, align: .center, label: "Reps")
+                .frame(width: SetRowGrid.repsCell, height: SetRowGrid.rowHeight, alignment: .center)
             stepButton("plus", label: "Increase reps") { stepReps(1) }
 
             Spacer(minLength: 8)

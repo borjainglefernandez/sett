@@ -4,6 +4,7 @@ import SettCore
 
 struct RootView: View {
     @Environment(WorkoutSessionStore.self) private var session
+    @Environment(AppServices.self) private var services
     @State private var selectedTab: Tab = .home
 
     enum Tab: Hashable {
@@ -27,7 +28,7 @@ struct RootView: View {
                 .tag(Tab.power)
         }
         .fullScreenCover(isPresented: $session.isPresentingWorkout) {
-            ActiveWorkoutView()
+            ActiveWorkoutView(startsInOverview: services.settings.startsInList)
         }
         .sheet(item: $session.completedSummary) { summary in
             WorkoutSummaryView(summary: summary)

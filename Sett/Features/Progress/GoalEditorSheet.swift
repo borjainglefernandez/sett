@@ -27,6 +27,10 @@ struct GoalEditorSheet: View {
     @State private var frequencyTarget = 3
     @State private var volumeTargetDisplay = 0
     @State private var prTargetGrams = 0
+    /// Tap-to-type numeric pads for the two weight-valued targets — steppers alone
+    /// were the only way to move big values.
+    @State private var isTypingTarget = false
+    @State private var isTypingVolume = false
     @State private var selectedExerciseID: UUID?
     @State private var selectedExerciseName: String?
     @State private var isPickingExercise = false
@@ -75,6 +79,23 @@ struct GoalEditorSheet: View {
                 }
             }
             .onAppear(perform: seedDefaults)
+            .sheet(isPresented: $isTypingTarget) {
+                NumericPadSheet(title: "Target 1RM (\(unit.symbol))",
+                                initialText: WeightFormat.compact(grams: prTargetGrams, unit: unit),
+                                keyboard: .decimalPad) { text in
+                    let value = Double(text.replacingOccurrences(of: ",", with: ".")) ?? 0
+                    guard value > 0 else { return }
+                    prTargetGrams = Units.grams(fromDisplay: value, unit: unit)
+                }
+            }
+            .sheet(isPresented: $isTypingVolume) {
+                NumericPadSheet(title: "Volume Target (\(unit.symbol))",
+                                initialText: "\(volumeTargetDisplay)",
+                                keyboard: .numberPad) { text in
+                    guard let value = Int(text.filter(\.isNumber)), value > 0 else { return }
+                    volumeTargetDisplay = min(500_000, value)
+                }
+            }
             .sheet(isPresented: $isPickingExercise) {
                 RoutineExercisePickerSheet(allowsMultiple: false,
                                            title: "Choose Exercise",
@@ -143,11 +164,10 @@ struct GoalEditorSheet: View {
                 Text("Volume target")
                     .foregroundStyle(SettColor.bone)
                 Spacer()
-                ChamberStepControl(text: "\(volumeTargetDisplay.formatted()) \(unit.symbol)") {
-                    volumeTargetDisplay = max(1_000, volumeTargetDisplay - 1_000)
-                } onIncrement: {
-                    volumeTargetDisplay = min(500_000, volumeTargetDisplay + 1_000)
-                }
+                ChamberStepControl(text: "\(volumeTargetDisplay.formatted()) \(unit.symbol)",
+                                   onDecrement: { volumeTargetDisplay = max(1_000, volumeTargetDisplay - 1_000) },
+                                   onIncrement: { volumeTargetDisplay = min(500_000, volumeTargetDisplay + 1_000) },
+                                   onTapValue: { isTypingVolume = true })
             }
             .settCard()
         case .prTarget:
@@ -175,12 +195,13 @@ struct GoalEditorSheet: View {
                     Text("Target 1RM")
                         .foregroundStyle(SettColor.bone)
                     Spacer()
-                    ChamberStepControl(text: services.settings.displayWeight(prTargetGrams)) {
-                        prTargetGrams = max(services.settings.incrementGrams,
-                                            prTargetGrams - services.settings.incrementGrams)
-                    } onIncrement: {
-                        prTargetGrams += services.settings.incrementGrams
-                    }
+                    ChamberStepControl(text: services.settings.displayWeight(prTargetGrams),
+                                       onDecrement: {
+                                           prTargetGrams = max(services.settings.incrementGrams,
+                                                               prTargetGrams - services.settings.incrementGrams)
+                                       },
+                                       onIncrement: { prTargetGrams += services.settings.incrementGrams },
+                                       onTapValue: { isTypingTarget = true })
                 }
             }
             .settCard()
