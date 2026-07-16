@@ -72,6 +72,7 @@ struct RootView: View {
 struct DebugSurfaceHost: View {
     let surface: String
 
+    @Environment(AppServices.self) private var services
     @Query private var finished: [Workout]
     @Query private var allExercises: [Exercise]
     @Query private var allInsights: [AIInsight]
@@ -97,7 +98,12 @@ struct DebugSurfaceHost: View {
         case "settings":
             SettingsView()
         case "onboarding":
-            OnboardingView()
+            // The harness renders this as a raw overlay (no presentation), so
+            // dismiss() is a no-op there — honor "Begin training" by dropping the
+            // overlay once the flow marks itself complete.
+            if !services.settings.hasOnboarded {
+                OnboardingView()
+            }
         case "bodyweight":
             Color.clear.sheet(isPresented: .constant(true)) {
                 BodyweightLogSheet(latest: nil)
