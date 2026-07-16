@@ -441,7 +441,7 @@ public enum ProgressionEngine {
         }
 
         let volStart = calendar.date(byAdding: .day, value: -plc.volumeWindowDays, to: moment) ?? moment
-        var tonnageGrams = 0
+        var tonnageGrams = 0.0
         for record in analysis.effectiveSets
         where record.sample.completedAt > volStart && record.sample.completedAt <= moment {
             // Same anti-cheese quarantine as the Strength Score: a provisional (not yet
@@ -449,10 +449,14 @@ public enum ProgressionEngine {
             // volume (and thus PL + tonnage badges) until a later distinct-day session
             // confirms it.
             guard let verifiedAt = record.verifiedAt, verifiedAt <= moment else { continue }
-            tonnageGrams += record.sample.weightGrams * record.sample.reps
+            // Rested surge: sets from a surge-armed workout (first qualifying session
+            // after a full rest day) carry extra volume weight while in the window —
+            // the "REST BANKED" bonus, made real and receipted on the summary.
+            let surge = record.sample.isRestedSurge ? plc.restedSurgeMultiplier : 1.0
+            tonnageGrams += Double(record.sample.weightGrams * record.sample.reps) * surge
         }
         let windowWeeks = Double(plc.volumeWindowDays) / 7.0
-        let wvlLb = windowWeeks > 0 ? Units.pounds(fromGrams: tonnageGrams) / windowWeeks : 0
+        let wvlLb = windowWeeks > 0 ? Units.pounds(fromGrams: Int(tonnageGrams.rounded())) / windowWeeks : 0
 
         let qualifyingDates = analysis.sessions
             .filter { $0.isFirstQualifyingOfDay && $0.workout.startedAt <= moment }

@@ -1,104 +1,105 @@
 {
- "version": 2,
- "effectiveSet": {
-  "minReps": 1,
-  "maxReps": 30,
-  "minFractionOfBestE1RM": 0.4,
-  "maxSetsPerExercisePerWorkout": 6,
-  "maxSetsPerWorkout": 30
- },
- "qualifyingWorkout": {
-  "minEffectiveSets": 3,
-  "minDurationMinutes": 10
- },
- "e1rm": {
-  "repCap": 12,
-  "divisor": 30
- },
- "prVerification": {
-  "provisionalAboveFraction": 0.15,
-  "verifyWithinFraction": 0.1
- },
- "powerLevel": {
-  "strengthWindowDays": 90,
-  "volumeWindowDays": 28,
-  "strengthWeight": 4.0,
-  "volumeWeight": 8.0,
-  "consistencyPerWeek": 0.05,
-  "consistencyMaxWeeks": 10,
-  "streakMinDaysPerWeek": 2
- },
- "badges": {
-  "limit_break": {
-   "name": "Limit Break",
-   "rarity": "silver",
-   "character": "vego",
-   "threshold": 10
+  "version": 2,
+  "effectiveSet": {
+    "minReps": 1,
+    "maxReps": 30,
+    "minFractionOfBestE1RM": 0.4,
+    "maxSetsPerExercisePerWorkout": 6,
+    "maxSetsPerWorkout": 30
   },
-  "scanner_breaker": {
-   "name": "Scanner-Breaker",
-   "rarity": "legendary",
-   "character": "vego",
-   "threshold": 9000
+  "qualifyingWorkout": {
+    "minEffectiveSets": 3,
+    "minDurationMinutes": 10
   },
-  "million_pound_club": {
-   "name": "Million-Pound Club",
-   "rarity": "gold",
-   "character": "barok",
-   "thresholdLb": 1000000
+  "e1rm": {
+    "repCap": 12,
+    "divisor": 30
   },
-  "chamber_resident": {
-   "name": "Chamber Resident",
-   "rarity": "gold",
-   "character": "nyra",
-   "weeks": 12,
-   "daysPerWeek": 3
+  "prVerification": {
+    "provisionalAboveFraction": 0.15,
+    "verifyWithinFraction": 0.1
   },
-  "serial_achiever": {
-   "name": "Serial Achiever",
-   "rarity": "gold",
-   "character": "torren",
-   "threshold": 10
+  "powerLevel": {
+    "strengthWindowDays": 90,
+    "volumeWindowDays": 28,
+    "strengthWeight": 4.0,
+    "volumeWeight": 8.0,
+    "consistencyPerWeek": 0.05,
+    "consistencyMaxWeeks": 10,
+    "streakMinDaysPerWeek": 2,
+    "restedSurgeMultiplier": 1.25
   },
-  "recovery_protocol": {
-   "name": "Recovery Protocol",
-   "rarity": "gold",
-   "character": "zia",
-   "sleepHours": 7,
-   "daysPerWeek": 3
+  "badges": {
+    "limit_break": {
+      "name": "Limit Break",
+      "rarity": "silver",
+      "character": "vego",
+      "threshold": 10
+    },
+    "scanner_breaker": {
+      "name": "Scanner-Breaker",
+      "rarity": "legendary",
+      "character": "vego",
+      "threshold": 9000
+    },
+    "million_pound_club": {
+      "name": "Million-Pound Club",
+      "rarity": "gold",
+      "character": "barok",
+      "thresholdLb": 1000000
+    },
+    "chamber_resident": {
+      "name": "Chamber Resident",
+      "rarity": "gold",
+      "character": "nyra",
+      "weeks": 12,
+      "daysPerWeek": 3
+    },
+    "serial_achiever": {
+      "name": "Serial Achiever",
+      "rarity": "gold",
+      "character": "torren",
+      "threshold": 10
+    },
+    "recovery_protocol": {
+      "name": "Recovery Protocol",
+      "rarity": "gold",
+      "character": "zia",
+      "sleepHours": 7,
+      "daysPerWeek": 3
+    },
+    "explorer": {
+      "name": "Explorer",
+      "rarity": "bronze",
+      "character": "gosi",
+      "threshold": 20
+    },
+    "reforged": {
+      "name": "Reforged",
+      "rarity": "gold",
+      "character": "zyn",
+      "gapDays": 21,
+      "windowDays": 60
+    },
+    "new_ceiling": {
+      "name": "New Ceiling",
+      "rarity": "bronze",
+      "character": "vego",
+      "threshold": 1
+    },
+    "ignition": {
+      "name": "Ignition",
+      "rarity": "bronze",
+      "character": "nyra",
+      "threshold": 1
+    }
   },
-  "explorer": {
-   "name": "Explorer",
-   "rarity": "bronze",
-   "character": "gosi",
-   "threshold": 20
-  },
-  "reforged": {
-   "name": "Reforged",
-   "rarity": "gold",
-   "character": "zyn",
-   "gapDays": 21,
-   "windowDays": 60
-  },
-  "new_ceiling": {
-   "name": "New Ceiling",
-   "rarity": "bronze",
-   "character": "vego",
-   "threshold": 1
-  },
-  "ignition": {
-   "name": "Ignition",
-   "rarity": "bronze",
-   "character": "nyra",
-   "threshold": 1
+  "rival": {
+    "key": "vexeth",
+    "name": "Emperor Vexeth, the Crimson Star",
+    "forms": 3,
+    "startPL": 3000,
+    "weeklyGrowth": 350,
+    "formRevealLeadPL": 500
   }
- },
- "rival": {
-  "key": "vexeth",
-  "name": "Emperor Vexeth, the Crimson Star",
-  "forms": 3,
-  "startPL": 3000,
-  "weeklyGrowth": 350,
-  "formRevealLeadPL": 500
- }
 }

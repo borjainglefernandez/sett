@@ -34,9 +34,14 @@ public struct SetSample: Sendable, Hashable {
     public let workoutID: UUID
     /// Set belongs to an "off the record" workout — excluded from net-progress only.
     public let isCasual: Bool
+    /// Set belongs to a workout started with the rested surge armed (first qualifying
+    /// session after a full rest day). The engine weights its volume by the config's
+    /// surge multiplier while it sits in the volume window; display sums ignore it.
+    public let isRestedSurge: Bool
 
     public init(exerciseID: UUID, muscle: Muscle, weightGrams: Int, reps: Int,
-                isWarmup: Bool, completedAt: Date, workoutID: UUID, isCasual: Bool = false) {
+                isWarmup: Bool, completedAt: Date, workoutID: UUID, isCasual: Bool = false,
+                isRestedSurge: Bool = false) {
         self.exerciseID = exerciseID
         self.muscle = muscle
         self.weightGrams = weightGrams
@@ -45,6 +50,7 @@ public struct SetSample: Sendable, Hashable {
         self.completedAt = completedAt
         self.workoutID = workoutID
         self.isCasual = isCasual
+        self.isRestedSurge = isRestedSurge
     }
 }
 
@@ -181,7 +187,8 @@ public enum SampleExtractor {
                         isWarmup: set.isWarmup,
                         completedAt: set.completedAt,
                         workoutID: workout.id,
-                        isCasual: workout.isCasual
+                        isCasual: workout.isCasual,
+                        isRestedSurge: workout.restedSurge
                     ))
                 }
             }

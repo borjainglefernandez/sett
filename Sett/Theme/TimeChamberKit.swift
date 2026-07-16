@@ -290,6 +290,9 @@ extension View {
 /// Reduce Motion renders a faint static scatter.
 struct MoteField: View {
     var tier: AuraTier
+    /// Caps the specks for sparse ambient uses (Home's realm glow) — nil keeps the
+    /// session's full tier-driven density.
+    var maxCount: Int? = nil
 
     @State private var spoolBias: CGFloat = 0   // transient inward pull + brighten on tier-up
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -298,7 +301,7 @@ struct MoteField: View {
         Group {
             if reduceMotion {
                 Canvas { context, size in
-                    for track in Self.tracks.prefix(28) {
+                    for track in Self.tracks.prefix(min(28, maxCount ?? 28)) {
                         let x = track.x * size.width
                         let y = track.baseY * size.height
                         let d = track.size
@@ -313,7 +316,7 @@ struct MoteField: View {
                     Canvas { context, size in
                         let t = timeline.date.timeIntervalSinceReferenceDate
                         context.blendMode = .plusLighter
-                        let count = 14 + Int(16 * tier.intensity)
+                        let count = min(14 + Int(16 * tier.intensity), maxCount ?? .max)
                         let cx = size.width * 0.5
                         let cy = size.height * 0.42   // lens sits a touch above center
                         for track in Self.tracks.prefix(count) {
@@ -958,5 +961,72 @@ struct TransformationBurst: View {
             ring = 1.3
             ringOpacity = 0
         }
+    }
+}
+
+// MARK: - Realm doorway card (Home launch card + Train routine rows, ONE recipe)
+
+/// A full-bleed chamber-realm image with a leading legibility gradient — the
+/// "doorway" card Home's launch card, its first-run twin, and Train's routine
+/// rows all hand-rolled separately. `emphasized` adds the cyan rim + corner-tick
+/// reticle + a slow Ken-Burns drift and marks THE one next action (Home);
+/// the quiet variant (white hairline, static art) is for list rows.
+struct RealmDoorwayCard<Content: View, Accessory: View>: View {
+    let asset: String
+    var emphasized: Bool = false
+    var height: CGFloat = 124
+    @ViewBuilder var content: () -> Content
+    @ViewBuilder var accessory: () -> Accessory
+
+    @State private var drifting = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        ZStack {
+            Image(asset)
+                .resizable()
+                .aspectRatio(contentMode: .fill)
+                .scaleEffect(artScale)
+            // Legibility: darker on the text side, easing to reveal the realm.
+            LinearGradient(colors: [.black.opacity(0.84), .black.opacity(0.6), .black.opacity(0.28)],
+                           startPoint: .leading, endPoint: .trailing)
+            HStack(spacing: 14) {
+                content()
+                Spacer(minLength: 8)
+                accessory()
+            }
+            .padding(.horizontal, 18)
+            .padding(.vertical, 16)
+        }
+        .frame(height: height)
+        .frame(maxWidth: .infinity)
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(emphasized ? AnyShapeStyle(SettColor.heroCyan.opacity(0.35))
+                                         : AnyShapeStyle(.white.opacity(0.12)), lineWidth: 1)
+        }
+        .overlay {
+            if emphasized {
+                CornerTicksShape(length: 7, inset: 7)
+                    .stroke(SettColor.heroCyan.opacity(0.55), lineWidth: 1.5)
+            }
+        }
+        .shadow(color: .black.opacity(0.35), radius: 8, y: 4)
+        .onAppear {
+            guard emphasized && !reduceMotion else { return }
+            withAnimation(.easeInOut(duration: 22).repeatForever(autoreverses: true)) {
+                drifting = true
+            }
+        }
+    }
+
+    /// Slow Ken-Burns breath on the emphasized doorway only (list rows stay static
+    /// — a screenful of drifting rows would read as noise). Reduce Motion holds a
+    /// fixed mid-drift scale so the crop matches without movement.
+    private var artScale: CGFloat {
+        guard emphasized else { return 1 }
+        if reduceMotion { return 1.08 }
+        return drifting ? 1.12 : 1.04
     }
 }

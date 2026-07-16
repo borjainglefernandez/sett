@@ -193,9 +193,12 @@ public struct PowerNumeral: View {
 /// 20%-gold INNER stroke inset 1.5pt (together reading as an engraved groove),
 /// plus 5pt L-shaped corner ticks at 25% gold. No shadows, no glass.
 public struct SettCardStyle: ViewModifier {
+    /// One knob so screens needing tighter insets stop re-implementing the groove.
+    var padding: CGFloat = 16
+
     public func body(content: Content) -> some View {
         content
-            .padding(16)
+            .padding(padding)
             .background {
                 let shape = RoundedRectangle(cornerRadius: 16, style: .continuous)
                 shape
@@ -272,7 +275,23 @@ public struct HUDCardStyle: ViewModifier {
 }
 
 public extension View {
-    func settCard() -> some View { modifier(SettCardStyle()) }
+    func settCard(padding: CGFloat = 16) -> some View { modifier(SettCardStyle(padding: padding)) }
+    /// The in-card nested slab (rows inside a settCard/hudCard): cardNested fill +
+    /// cardBorder hairline. ONE recipe so editors stop inventing slab variants.
+    func nestedSlab(radius: CGFloat = 10) -> some View {
+        background {
+            RoundedRectangle(cornerRadius: radius, style: .continuous)
+                .fill(SettColor.cardNested)
+                .overlay {
+                    RoundedRectangle(cornerRadius: radius, style: .continuous)
+                        .strokeBorder(SettColor.cardBorder, lineWidth: 1)
+                }
+        }
+    }
+    /// The System Voice entrance (opacity + blur(6) + scale(1.04) assembling over
+    /// 0.3s) as ONE modifier — extracted from SystemMessageView/BurstReadyButton so
+    /// set-piece cards materialize instead of popping. Plain fade under Reduce Motion.
+    func materialize() -> some View { modifier(MaterializeOnAppear()) }
     func hudCard(tint: Color = SettColor.heroCyan) -> some View {
         modifier(HUDCardStyle(tint: tint))
     }
@@ -678,5 +697,207 @@ public enum Haptics {
             try? await Task.sleep(for: .milliseconds(300))
             success()
         }
+    }
+}
+
+// MARK: - Materialize (the System Voice entrance, shared)
+
+/// Opacity + blur(6) + scale(1.04) assembling over 0.3s easeOut on first appearance
+/// — the entrance grammar SystemMessageView and BurstReadyButton established, now
+/// available to any set-piece card. Reduce Motion collapses to a plain fade.
+struct MaterializeOnAppear: ViewModifier {
+    @State private var materialized = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(materialized ? 1 : 0)
+            .blur(radius: materialized || reduceMotion ? 0 : 6)
+            .scaleEffect(materialized || reduceMotion ? 1 : 1.04)
+            .onAppear {
+                withAnimation(.easeOut(duration: 0.3)) { materialized = true }
+            }
+    }
+}
+
+// MARK: - Pressable slab (the session's press-in physicality, app-wide)
+
+/// The card/CTA presses IN (0.97) with a synchronous haptic on touch-down — the
+/// "charge" before the action fires on touch-up (commit latency untouched).
+/// Promoted from the Set Player so the launch card / GO / CLAIM / primary CTAs
+/// share the session's physicality. `haptic: nil` for silent presses.
+public struct PressableSlabStyle: ButtonStyle {
+    public enum PressHaptic { case rigid, light }
+    var enabled: Bool = true
+    var haptic: PressHaptic? = .rigid
+
+    public init(enabled: Bool = true, haptic: PressHaptic? = .rigid) {
+        self.enabled = enabled
+        self.haptic = haptic
+    }
+
+    public func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+            .onChange(of: configuration.isPressed) { _, pressed in
+                guard pressed && enabled, let haptic else { return }
+                switch haptic {
+                case .rigid: Haptics.rigid()
+                case .light: Haptics.light()
+                }
+            }
+    }
+}
+
+// MARK: - ChamberCTA (the ONE full-width primary action button)
+
+/// The canonical primary CTA: mono uppercase kerned label, etch ink on a flat
+/// heroCyan capsule, full width, pressable. Disabled = cardNested fill + iron ink.
+/// Replaces the stock bordered buttons and the sentence-case gradient capsules.
+public struct ChamberCTAButton: View {
+    let title: String
+    var enabled: Bool = true
+    let action: () -> Void
+
+    public init(_ title: String, enabled: Bool = true, action: @escaping () -> Void) {
+        self.title = title
+        self.enabled = enabled
+        self.action = action
+    }
+
+    public var body: some View {
+        Button(action: action) {
+            Text(title.uppercased())
+                .font(.system(size: 13, weight: .bold, design: .monospaced))
+                .kerning(1.5)
+                .foregroundStyle(enabled ? SettColor.etch : SettColor.iron)
+                .frame(maxWidth: .infinity, minHeight: 50)
+                .background(enabled ? AnyShapeStyle(SettColor.heroCyan)
+                                    : AnyShapeStyle(SettColor.cardNested), in: Capsule())
+                .overlay {
+                    if !enabled { Capsule().strokeBorder(SettColor.cardBorder, lineWidth: 1) }
+                }
+                .contentShape(Capsule())
+        }
+        .buttonStyle(PressableSlabStyle(enabled: enabled, haptic: .light))
+        .disabled(!enabled)
+    }
+}
+
+// MARK: - FilterChip (the ONE scrollable filter-row chip)
+
+/// The History/ChamberSegments chip grammar as a shared control: mono uppercase,
+/// active = heroCyan fill with etch ink, inactive = ghost stroke with ash ink.
+public struct FilterChip: View {
+    let label: String
+    let active: Bool
+    let action: () -> Void
+
+    public init(_ label: String, active: Bool, action: @escaping () -> Void) {
+        self.label = label
+        self.active = active
+        self.action = action
+    }
+
+    public var body: some View {
+        Button(action: action) {
+            Text(label.uppercased())
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .kerning(1)
+                .foregroundStyle(active ? SettColor.etch : SettColor.ash)
+                .padding(.horizontal, 12)
+                .frame(minHeight: 30)
+                .background {
+                    if active {
+                        Capsule().fill(SettColor.heroCyan)
+                    } else {
+                        Capsule().strokeBorder(SettColor.cardBorder, lineWidth: 1)
+                    }
+                }
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+        .accessibilityAddTraits(active ? [.isSelected] : [])
+    }
+}
+
+// MARK: - CardTitle (the ONE card headline)
+
+/// Card headline: title3 semibold with an optional trailing accessory glyph —
+/// the treatment the Progress cards established, now shared so titles stop
+/// drifting between .headline Labels and bespoke rows.
+public struct CardTitle: View {
+    let title: String
+    var icon: String? = nil
+    var iconTint: Color = SettColor.heroCyan
+
+    public init(_ title: String, icon: String? = nil, iconTint: Color = SettColor.heroCyan) {
+        self.title = title
+        self.icon = icon
+        self.iconTint = iconTint
+    }
+
+    public var body: some View {
+        HStack {
+            Text(title)
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(SettColor.bone)
+            Spacer()
+            if let icon {
+                Image(systemName: icon)
+                    .font(.subheadline)
+                    .foregroundStyle(iconTint)
+                    .accessibilityHidden(true)
+            }
+        }
+    }
+}
+
+// MARK: - ChamberStepControl (closure-driven ± for non-Int values)
+
+/// ChamberStepper's flank grammar for values that aren't a plain Int binding
+/// (formatted weights, settings-dependent increments): the caller renders the
+/// text and owns clamping; the control provides the ± flanks + haptics.
+public struct ChamberStepControl: View {
+    let text: String
+    let onDecrement: () -> Void
+    let onIncrement: () -> Void
+
+    public init(text: String, onDecrement: @escaping () -> Void, onIncrement: @escaping () -> Void) {
+        self.text = text
+        self.onDecrement = onDecrement
+        self.onIncrement = onIncrement
+    }
+
+    public var body: some View {
+        HStack(spacing: 14) {
+            flank("minus", action: onDecrement)
+            Text(text)
+                .font(.system(.title3, design: .monospaced).weight(.bold))
+                .monospacedDigit()
+                .foregroundStyle(SettColor.bone)
+                .frame(minWidth: 44)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            flank("plus", action: onIncrement)
+        }
+    }
+
+    private func flank(_ symbol: String, action: @escaping () -> Void) -> some View {
+        Button {
+            withAnimation(.snappy(duration: 0.15)) { action() }
+            Haptics.selection()
+        } label: {
+            Image(systemName: symbol)
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(SettColor.heroCyan)
+                .frame(width: 34, height: 34)
+                .background { Circle().strokeBorder(SettColor.heroCyan.opacity(0.4), lineWidth: 1) }
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(symbol == "plus" ? "Increment" : "Decrement")
     }
 }

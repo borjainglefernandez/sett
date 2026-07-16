@@ -898,16 +898,5 @@ struct PlayerSlab: View {
     }
 }
 
-/// The slab presses IN (0.97) with a synchronous rigid tap on touch-down — the
-/// physical "charge" before LOG fires on touch-up (so commit latency is untouched).
-private struct PressableSlabStyle: ButtonStyle {
-    var enabled: Bool
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? 0.97 : 1)
-            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
-            .onChange(of: configuration.isPressed) { _, pressed in
-                if pressed && enabled { Haptics.rigid() }
-            }
-    }
-}
+// PressableSlabStyle now lives in Sett/Theme/SettTheme.swift (promoted app-wide;
+// same 0.97 press + rigid touch-down haptic by default).

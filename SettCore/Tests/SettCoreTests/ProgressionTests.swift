@@ -443,3 +443,62 @@ struct UserFormTests {
         #expect(UserForm.form(forPL: -50).title == "BASE")
     }
 }
+
+// MARK: - Rested surge (volume weighted while in the window)
+
+@Suite("ProgressionEngine — Rested surge")
+struct RestedSurgeTests {
+
+    /// A surge-armed workout's sets count extra toward WVL (config multiplier),
+    /// while the strength score — an e1RM ceiling, not a volume — is untouched.
+    @Test("Surged sets multiply weekly volume, not strength")
+    func surgedVolume() throws {
+        let config = try loadConfigForSurge()
+        let cal = surgeCalendar()
+
+        func run(surged: Bool) -> ProgressionSnapshot {
+            let w = WorkoutSample(id: UUID(), title: "Workout",
+                                  startedAt: surgeDate(2025, 6, 2, 18),
+                                  endedAt: surgeDate(2025, 6, 2, 19),
+                                  bodyweightGrams: nil, routineID: nil)
+            let exercise = UUID()
+            let sets = (0..<4).map { index in
+                SetSample(exerciseID: exercise, muscle: .chest, weightGrams: 85_049, reps: 6,
+                          isWarmup: false,
+                          completedAt: w.startedAt.addingTimeInterval(Double(300 + index * 300)),
+                          workoutID: w.id, isRestedSurge: surged)
+            }
+            let input = ProgressionInput(sets: sets, workouts: [w], sleep: [], goals: [],
+                                         previousPeakPL: 0, firstWorkoutDate: w.startedAt)
+            return ProgressionEngine.compute(input: input, config: config, calendar: cal,
+                                             asOf: surgeDate(2025, 6, 3, 20))
+        }
+
+        let plain = run(surged: false)
+        let surged = run(surged: true)
+        // WVL scales by the multiplier (1.25 by default config).
+        let expected = Int((Double(plain.weeklyVolumeLb) * config.powerLevel.restedSurgeMultiplier).rounded())
+        #expect(abs(surged.weeklyVolumeLb - expected) <= 1)
+        // Strength (best verified e1RM) is volume-independent.
+        #expect(surged.strengthScore == plain.strengthScore)
+        #expect(surged.powerLevel > plain.powerLevel)
+    }
+}
+
+private func surgeCalendar() -> Calendar {
+    var cal = Calendar(identifier: .gregorian)
+    cal.timeZone = TimeZone(identifier: "Europe/Madrid")!
+    cal.firstWeekday = 2
+    cal.minimumDaysInFirstWeek = 4
+    return cal
+}
+
+private func surgeDate(_ year: Int, _ month: Int, _ day: Int, _ hour: Int = 12) -> Date {
+    var c = DateComponents()
+    c.year = year; c.month = month; c.day = day; c.hour = hour
+    return surgeCalendar().date(from: c)!
+}
+
+private func loadConfigForSurge() throws -> ProgressionConfig {
+    try ProgressionConfig.load()
+}

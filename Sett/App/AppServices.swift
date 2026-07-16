@@ -167,12 +167,24 @@ public struct WorkoutSummaryData: Identifiable, Sendable {
     public let isCasual: Bool
     /// The realm this workout ran in (ChamberBackground.rawValue); nil ⇒ default.
     public let domainRaw: String?
-    /// PL receipt inputs — the two levers, before/after, so the summary can show
+    /// PL receipt inputs — ALL THREE levers, before/after, so the summary can show
     /// WHERE the delta came from instead of a bare number.
     public let strengthScoreBefore: Int
     public let strengthScoreAfter: Int
     public let weeklyVolumeLbBefore: Int
     public let weeklyVolumeLbAfter: Int
+    /// The streak lever (consistency multiplier ×N) before/after — the third
+    /// advertised lever, previously missing from the receipt.
+    public let consistencyBefore: Double
+    public let consistencyAfter: Double
+    /// False when the workout missed the qualifying bar (min effective sets /
+    /// min duration) — the receipt then explains the +0 instead of staying silent.
+    public let didQualify: Bool
+    /// The rested surge was armed for this workout — its volume counts extra in
+    /// the scanner window; receipted as a SURGE line.
+    public let surgeActive: Bool
+    /// Goals whose completion flipped true during this workout's recompute.
+    public let completedGoalTitles: [String]
 
     public init(id: UUID, title: String, durationSeconds: Int,
                 powerLevelBefore: Int, powerLevelAfter: Int,
@@ -182,7 +194,10 @@ public struct WorkoutSummaryData: Identifiable, Sendable {
                 commentary: String, commentarySource: InsightSource,
                 isCasual: Bool = false, domainRaw: String? = nil,
                 strengthScoreBefore: Int = 0, strengthScoreAfter: Int = 0,
-                weeklyVolumeLbBefore: Int = 0, weeklyVolumeLbAfter: Int = 0) {
+                weeklyVolumeLbBefore: Int = 0, weeklyVolumeLbAfter: Int = 0,
+                consistencyBefore: Double = 1.0, consistencyAfter: Double = 1.0,
+                didQualify: Bool = true, surgeActive: Bool = false,
+                completedGoalTitles: [String] = []) {
         self.id = id
         self.title = title
         self.durationSeconds = durationSeconds
@@ -203,5 +218,10 @@ public struct WorkoutSummaryData: Identifiable, Sendable {
         self.strengthScoreAfter = strengthScoreAfter
         self.weeklyVolumeLbBefore = weeklyVolumeLbBefore
         self.weeklyVolumeLbAfter = weeklyVolumeLbAfter
+        self.consistencyBefore = consistencyBefore
+        self.consistencyAfter = consistencyAfter
+        self.didQualify = didQualify
+        self.surgeActive = surgeActive
+        self.completedGoalTitles = completedGoalTitles
     }
 }

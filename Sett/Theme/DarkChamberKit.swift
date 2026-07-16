@@ -582,9 +582,6 @@ public struct SystemMessageView: View {
     let title: String
     let bodyText: String?
 
-    @State private var materialized = false
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
     public init(title: String, body: String? = nil) {
         self.title = title
         self.bodyText = body
@@ -606,12 +603,7 @@ public struct SystemMessageView: View {
         }
         .frame(maxWidth: .infinity)
         .settCard()
-        .opacity(materialized ? 1 : 0)
-        .blur(radius: materialized || reduceMotion ? 0 : 6)
-        .scaleEffect(materialized || reduceMotion ? 1 : 1.04)
-        .onAppear {
-            withAnimation(.easeOut(duration: 0.3)) { materialized = true }
-        }
+        .materialize()   // the shared System Voice entrance (RM-safe)
         .accessibilityElement(children: .combine)
     }
 }

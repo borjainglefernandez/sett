@@ -77,6 +77,12 @@ public final class Workout {
     /// The training phase (TrainingPhase.rawValue) stamped at session start, so
     /// scoring is reproducible on recompute; nil ⇒ maintaining. Migration-safe.
     public var phaseRaw: String? = nil
+    /// The rested surge was ARMED when this session started (first qualifying workout
+    /// after a full rest day). The engine weights this workout's volume by the config
+    /// surge multiplier while it sits in the volume window. Stored default ⇒ existing
+    /// stores migrate lightweight; stamped once at start, never recomputed, so scoring
+    /// stays reproducible.
+    public var restedSurge: Bool = false
     /// Loose gym reference, same pattern.
     public var gymID: UUID?
     public var gymNameSnapshot: String?

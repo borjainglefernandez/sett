@@ -94,6 +94,9 @@ public final class WorkoutSessionStore {
         let workout = Workout(title: title)
         workout.phaseRaw = settings.trainingPhase
         workout.bodyweightGrams = latestBodyweightGrams()
+        // Arm the rested surge: this session's volume counts extra in the scanner
+        // window (stamped once so recomputes stay reproducible).
+        workout.restedSurge = progression.snapshot?.restedBonusActive == true
         context.insert(workout)
         persist()
         activeWorkout = workout
@@ -111,6 +114,9 @@ public final class WorkoutSessionStore {
         workout.gymNameSnapshot = routine.defaultGymNameSnapshot
         workout.phaseRaw = settings.trainingPhase
         workout.bodyweightGrams = latestBodyweightGrams()
+        // Arm the rested surge: this session's volume counts extra in the scanner
+        // window (stamped once so recomputes stay reproducible).
+        workout.restedSurge = progression.snapshot?.restedBonusActive == true
         context.insert(workout)
 
         for (index, routineExercise) in routine.orderedExercises.enumerated() {
@@ -215,6 +221,51 @@ public final class WorkoutSessionStore {
         Haptics.selection()
     }
 
+    // MARK: Finished-workout metadata (title/date/rating/casual/notes — all were
+    // write-once before; history is now correctable like everything else)
+
+    public func renameWorkout(_ title: String, for workout: Workout) {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        workout.title = trimmed
+        touchAndSave(workout)
+        Haptics.selection()
+    }
+
+    /// Change a finished workout's start date. Callers should follow with
+    /// `recomputeAfterCorrection` — date moves reorder history and references.
+    public func setStartDate(_ date: Date, for workout: Workout) {
+        // Keep the duration intact by shifting the end with the start.
+        if let ended = workout.endedAt {
+            workout.endedAt = ended.addingTimeInterval(date.timeIntervalSince(workout.startedAt))
+        }
+        workout.startedAt = date
+        touchAndSave(workout)
+        Haptics.selection()
+    }
+
+    /// Toggle "off the record" on a FINISHED workout (the activeWorkout-only setCasual
+    /// can't reach history). Callers should follow with `recomputeAfterCorrection` —
+    /// the casual flag gates net-progress inclusion.
+    public func setCasual(_ casual: Bool, for workout: Workout) {
+        workout.isCasual = casual
+        touchAndSave(workout)
+        Haptics.selection()
+    }
+
+    public func setRating(_ halfStars: Int?, for workout: Workout) {
+        workout.ratingHalfStars = halfStars
+        touchAndSave(workout)
+        Haptics.selection()
+    }
+
+    public func setWorkoutNotes(_ notes: String?, for workout: Workout) {
+        let trimmed = notes?.trimmingCharacters(in: .whitespacesAndNewlines)
+        workout.notes = (trimmed?.isEmpty ?? true) ? nil : trimmed
+        touchAndSave(workout)
+        Haptics.selection()
+    }
+
     /// Soft-delete a logged set (a fat-fingered 500 lb entry poisoned ghost autofill
     /// and the power level forever with no way to remove it).
     public func deleteSet(_ set: SetEntry) {
@@ -276,6 +327,23 @@ public final class WorkoutSessionStore {
         }
         touchAndSave(workout)
         Haptics.selection()
+    }
+
+    /// Remove an exercise from the session (a mistaken pick no longer squats in the
+    /// queue): tombstone the card AND its live sets so sync never pushes a live child
+    /// under a deleted parent. The shell's cursor reconciler handles the shrunken list.
+    public func removeExercise(_ workoutExercise: WorkoutExercise) {
+        let now = Date.now
+        workoutExercise.deletedAt = now
+        workoutExercise.updatedAt = now
+        workoutExercise.needsPush = true
+        for set in workoutExercise.sets where set.deletedAt == nil {
+            set.deletedAt = now
+            set.updatedAt = now
+            set.needsPush = true
+        }
+        if let workout = workoutExercise.workout ?? activeWorkout { touchAndSave(workout) }
+        Haptics.medium()
     }
 
     /// Soft-delete a whole workout AND tombstone every child exercise + set, so no live
@@ -665,6 +733,10 @@ public final class WorkoutSessionStore {
         let plBefore = progression.snapshotPowerLevel
         let ssBefore = progression.snapshot?.strengthScore ?? 0
         let wvlBefore = progression.snapshot?.weeklyVolumeLb ?? 0
+        let cmBefore = progression.snapshot?.consistencyMultiplier ?? 1.0
+        // Goals not yet complete BEFORE this workout's recompute — anything in this
+        // set that evaluates complete afterwards was completed BY this workout.
+        let openGoalsBefore = openGoals()
 
         // Seal the workout FIRST and require the write to land. If it fails, keep the
         // session presented so the write-fault banner offers retrySave — do NOT credit
@@ -684,6 +756,9 @@ public final class WorkoutSessionStore {
         progression.recompute(context: context)
         let badgesAfter = earnedBadgeKeys()
         let newBadges = badgesAfter.subtracting(badgesBefore).sorted()
+        // Stamp goals this workout completed (completedAt/updatedAt/needsPush) — the
+        // evaluator honors completedAt, and the goal-completion badges require it.
+        let completedGoals = stampCompletedGoals(among: openGoalsBefore)
         let formAfter = UserForm.form(forPL: progression.snapshotPowerLevel).index
         let xpEarned: [CharacterKey: Int] = [:]   // the XP economy is gone
 
@@ -745,7 +820,12 @@ public final class WorkoutSessionStore {
             strengthScoreBefore: ssBefore,
             strengthScoreAfter: progression.snapshot?.strengthScore ?? ssBefore,
             weeklyVolumeLbBefore: wvlBefore,
-            weeklyVolumeLbAfter: progression.snapshot?.weeklyVolumeLb ?? wvlBefore
+            weeklyVolumeLbAfter: progression.snapshot?.weeklyVolumeLb ?? wvlBefore,
+            consistencyBefore: cmBefore,
+            consistencyAfter: progression.snapshot?.consistencyMultiplier ?? cmBefore,
+            didQualify: workoutQualifies(workout),
+            surgeActive: workout.restedSurge,
+            completedGoalTitles: completedGoals
         )
         activeWorkout = nil
         isPresentingWorkout = false
@@ -753,6 +833,66 @@ public final class WorkoutSessionStore {
         RestNotifier.cancelRestComplete()
         endRestActivity()
         Haptics.success()
+    }
+
+    // MARK: Receipt inputs (qualification + goal completion)
+
+    /// Whether this workout clears the qualifying bar the scanner advertises
+    /// (min effective sets in the rep band + min duration) — so a +0 receipt can
+    /// say WHY instead of staying silent. Uses the same config thresholds as
+    /// HowPowerWorksView; the engine's full anti-cheese rules stay authoritative
+    /// for scoring, this is the receipt's plain-language check.
+    private func workoutQualifies(_ workout: Workout) -> Bool {
+        guard let config = progression.config else { return true }
+        let minutes = Int((workout.endedAt ?? .now).timeIntervalSince(workout.startedAt)) / 60
+        guard minutes >= config.qualifyingWorkout.minDurationMinutes else { return false }
+        let band = config.effectiveSet.minReps ... config.effectiveSet.maxReps
+        let effectiveish = workout.orderedExercises
+            .filter { $0.deletedAt == nil }
+            .flatMap { $0.orderedSets }
+            .filter { !$0.isWarmup && band.contains($0.reps) }
+            .count
+        return effectiveish >= config.qualifyingWorkout.minEffectiveSets
+    }
+
+    /// Active, uncompleted goals (the "before" set for completion detection).
+    private func openGoals() -> [Goal] {
+        let descriptor = FetchDescriptor<Goal>(
+            predicate: #Predicate { $0.deletedAt == nil && $0.isActive && $0.completedAt == nil })
+        return (try? context.fetch(descriptor)) ?? []
+    }
+
+    /// Evaluate the given open goals against the post-workout data; stamp any that
+    /// are now complete (completedAt + sync discipline) and return their titles.
+    private func stampCompletedGoals(among goals: [Goal]) -> [String] {
+        guard !goals.isEmpty else { return [] }
+        let setSamples = SampleExtractor.setSamples(context: context)
+        let workoutSamples = SampleExtractor.workoutSamples(context: context)
+        var titles: [String] = []
+        for goal in goals {
+            let sample = GoalSample(id: goal.id, kind: goal.kind, targetValue: goal.targetValue,
+                                    exerciseID: goal.exerciseID, startDate: goal.startDate,
+                                    endDate: goal.endDate, isActive: goal.isActive,
+                                    completedAt: goal.completedAt, createdAt: goal.createdAt)
+            let progress = GoalEvaluator.progress(goal: sample, setSamples: setSamples,
+                                                  workoutSamples: workoutSamples,
+                                                  calendar: .current, asOf: .now)
+            guard progress.isComplete else { continue }
+            goal.completedAt = .now
+            goal.updatedAt = .now
+            goal.needsPush = true
+            titles.append(goalTitle(goal))
+        }
+        if !titles.isEmpty { persist() }
+        return titles
+    }
+
+    private func goalTitle(_ goal: Goal) -> String {
+        switch goal.kind {
+        case .frequency: "Workouts / week"
+        case .prTarget: goal.exerciseNameSnapshot.map { "1RM · \($0)" } ?? "One-rep max"
+        case .volumeTarget: "Volume target"
+        }
     }
 
     public func cancelWorkout() {

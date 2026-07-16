@@ -20,6 +20,9 @@ public struct ProgressionConfig {
         public let strengthWeight: Double, volumeWeight: Double
         public let consistencyPerWeek: Double
         public let consistencyMaxWeeks: Int, streakMinDaysPerWeek: Int
+        /// Volume weight for sets logged in a rested-surge workout (first qualifying
+        /// session after a full rest day) — the WoW-style rested bonus, made real.
+        public let restedSurgeMultiplier: Double
     }
     public struct BadgeDef: Sendable, Hashable {
         public let key: String
@@ -74,7 +77,8 @@ public struct ProgressionConfig {
             volumeWeight: pl["volumeWeight"] as? Double ?? 8.0,
             consistencyPerWeek: pl["consistencyPerWeek"] as? Double ?? 0.05,
             consistencyMaxWeeks: pl["consistencyMaxWeeks"] as? Int ?? 10,
-            streakMinDaysPerWeek: pl["streakMinDaysPerWeek"] as? Int ?? 2
+            streakMinDaysPerWeek: pl["streakMinDaysPerWeek"] as? Int ?? 2,
+            restedSurgeMultiplier: pl["restedSurgeMultiplier"] as? Double ?? 1.25
         )
 
         var defs: [BadgeDef] = []
