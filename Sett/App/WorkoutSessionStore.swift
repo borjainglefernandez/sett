@@ -74,6 +74,9 @@ public final class WorkoutSessionStore {
         }
         activeWorkout = ongoing
         isPresentingWorkout = true
+        // The phase may have changed since this workout began (or since a previous
+        // launch) — an in-progress session always scores through the CURRENT lens.
+        syncActiveWorkoutPhase()
     }
 
     /// The lifter's most recent logged bodyweight, in grams — snapshotted onto each new
@@ -216,6 +219,17 @@ public final class WorkoutSessionStore {
         set.needsPush = true
         if let workout = set.workoutExercise?.workout ?? activeWorkout { touchAndSave(workout) }
         Haptics.selection()
+    }
+
+    /// The training phase changed while a workout is live: restamp the ACTIVE workout
+    /// so live scoring follows the lifter's CURRENT lens (a maintainer shouldn't see
+    /// bulk-mode "PUSH — NOT ENOUGH" because the session opened under an old phase).
+    /// Finished workouts keep their stamp — recompute stays reproducible.
+    public func syncActiveWorkoutPhase() {
+        guard let workout = activeWorkout,
+              workout.phaseRaw != settings.trainingPhase else { return }
+        workout.phaseRaw = settings.trainingPhase
+        touchAndSave(workout)
     }
 
     /// Stamp a workout's location — active session and finished history alike. The

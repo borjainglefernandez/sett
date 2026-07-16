@@ -182,6 +182,7 @@ struct SettingsView: View {
             set: {
                 services.settings.trainingPhase = $0.rawValue
                 services.settings.hasChosenPhase = true
+                services.session.syncActiveWorkoutPhase()
                 Haptics.selection()
             }
         )

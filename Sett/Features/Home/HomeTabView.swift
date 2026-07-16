@@ -361,6 +361,7 @@ struct HomeTabView: View {
                 get: { services.settings.phase },
                 set: { services.settings.trainingPhase = $0.rawValue
                        services.settings.hasChosenPhase = true
+                       services.session.syncActiveWorkoutPhase()
                        Haptics.selection() }
             )) {
                 ForEach(TrainingPhase.allCases) { phase in
