@@ -222,7 +222,8 @@ struct ActiveWorkoutView: View {
             SetPlayerView(workoutExercise: exercise,
                           slotIndex: position.slotIndex,
                           slotCount: slotCount(for: exercise),
-                          onLogged: { outcome in handleLogged(on: exercise, outcome: outcome) })
+                          onLogged: { outcome in handleLogged(on: exercise, outcome: outcome) },
+                          onSkip: { skipCurrentExercise() })
                 .id("\(exercise.id)-\(position.slotIndex)")
         }
     }
@@ -487,6 +488,22 @@ struct ActiveWorkoutView: View {
         let exercises = workout.orderedExercises
         move(to: advanceTarget(from: clamped(cursor, in: exercises), in: exercises),
              forward: true)
+    }
+
+    /// Skip the rest of this exercise's planned slots (machine taken, out of gas):
+    /// jump straight to the NEXT exercise's first open slot, or END READING when
+    /// this was the last. Nothing is logged or removed — the plan just yields.
+    private func skipCurrentExercise() {
+        guard let workout = session.activeWorkout else { return }
+        let exercises = workout.orderedExercises
+        let pos = clamped(cursor, in: exercises)
+        guard pos.exerciseIndex < exercises.count else { return }
+        let nextIndex = pos.exerciseIndex + 1
+        let target = nextIndex < exercises.count
+            ? QueuePosition(exerciseIndex: nextIndex, slotIndex: nextOpenSlot(of: exercises[nextIndex]))
+            : endPosition(exercises)
+        Haptics.selection()
+        move(to: target, forward: true)
     }
 
     private func move(to target: QueuePosition, forward: Bool) {

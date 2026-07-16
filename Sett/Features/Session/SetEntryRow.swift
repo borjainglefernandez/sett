@@ -230,11 +230,12 @@ struct SetEntryRow: View {
                        notes: pendingNote)
         pendingNote = nil
 
-        // Floating combat text: +N PWR, N = this set's volume load in whole pounds.
-        // grams * reps is gram-reps volume; pounds(fromGrams:) converts it to
-        // pound-reps. Celebration plays AFTER the write — latency is sacred.
+        // Floating combat text: +N LB MOVED, N = this set's volume load in whole
+        // pounds (grams * reps is gram-reps volume; pounds(fromGrams:) converts it
+        // to pound-reps). "PWR" stays reserved for e1RM — the scanner's number.
+        // Celebration plays AFTER the write — latency is sacred.
         let volumeLb = Int(Units.pounds(fromGrams: grams * reps).rounded())
-        combatText?.emit("+\(volumeLb.formatted()) PWR", crit: beatReference)
+        combatText?.emit("+\(volumeLb.formatted()) LB MOVED", crit: beatReference)
         if beatReference { Haptics.prSignature() } // crit haptic is the caller's job
 
         autofill()

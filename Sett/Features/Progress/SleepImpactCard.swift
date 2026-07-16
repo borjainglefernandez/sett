@@ -60,13 +60,12 @@ struct SleepImpactCard: View {
     var body: some View {
         let points = points
         VStack(alignment: .leading, spacing: 12) {
-            Label("Sleep × Lifts", systemImage: "bed.double.fill")
-                .font(.title3.weight(.semibold))
+            CardTitle("Sleep × Lifts", icon: "bed.double.fill")
             if points.count >= 10 {
                 chart(points: points)
                 Text("Each dot is a workout: last night's sleep score against session volume.")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(SettColor.ash)
             } else {
                 teaser(pairedCount: points.count)
             }
@@ -80,7 +79,7 @@ struct SleepImpactCard: View {
              ? "Connect Oura in Settings to see how sleep moves your lifts."
              : "\(pairedCount) of 10 paired nights logged — the correlation chart unlocks at 10.")
             .font(.subheadline)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(SettColor.ash)
     }
 
     private func chart(points: [PairedPoint]) -> some View {

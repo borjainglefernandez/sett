@@ -2,9 +2,10 @@ import SwiftUI
 import SwiftData
 import SettCore
 
-/// New Goal sheet (Flow 4): preset cards — "Workouts per week" (hero, pre-filled 3),
+/// New/Edit Goal sheet (Flow 4): preset cards — "Workouts per week" (hero, pre-filled 3),
 /// "Volume target" with a stepper, "PR target" with exercise picker + weight
-/// stepper — then one cyan Create button. Creation saves and fires the success haptic.
+/// stepper — then one cyan commit button. When `editing` is set the kind is locked
+/// and Save mutates the goal in place (createdAt/startDate untouched).
 struct GoalEditorSheet: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
@@ -12,10 +13,14 @@ struct GoalEditorSheet: View {
 
     @Query private var exercises: [Exercise]
 
-    init(initialKind: GoalKind = .frequency) {
+    /// Non-nil = edit mode: kind locked, commit rewrites targets in place.
+    let editing: Goal?
+
+    init(initialKind: GoalKind = .frequency, editing: Goal? = nil) {
         let exerciseFilter = #Predicate<Exercise> { $0.deletedAt == nil && !$0.isArchived }
         _exercises = Query(filter: exerciseFilter, sort: [SortDescriptor(\Exercise.name)])
-        _kind = State(initialValue: initialKind)
+        self.editing = editing
+        _kind = State(initialValue: editing?.kind ?? initialKind)
     }
 
     @State private var kind: GoalKind = .frequency
@@ -27,6 +32,7 @@ struct GoalEditorSheet: View {
     @State private var isPickingExercise = false
 
     private var unit: WeightUnit { services.settings.unit }
+    private var isEditing: Bool { editing != nil }
 
     private var canCreate: Bool {
         kind != .prTarget || selectedExerciseID != nil
@@ -38,6 +44,7 @@ struct GoalEditorSheet: View {
                 VStack(alignment: .leading, spacing: 16) {
                     Text("Pick a goal type")
                         .font(.headline)
+                        .foregroundStyle(SettColor.bone)
                     presetCard(.frequency, title: "Workouts per week",
                                subtitle: "Show up \(frequencyTarget) time\(frequencyTarget == 1 ? "" : "s") a week — the classic.",
                                symbol: "calendar", isHero: true)
@@ -48,22 +55,30 @@ struct GoalEditorSheet: View {
                                subtitle: "Hit a target 1RM on one lift.",
                                symbol: "trophy.fill")
                     configSection
-                    createButton
+                    ChamberCTAButton(isEditing ? "Save Goal" : "Create Goal",
+                                     enabled: canCreate, action: commit)
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, 24)
             }
             .dungeonBackground()
-            .navigationTitle("New Goal")
+            .navigationTitle(isEditing ? "Edit Goal" : "New Goal")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
+                ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(isEditing ? "Save" : "Create", action: commit)
+                        .fontWeight(.semibold)
+                        .disabled(!canCreate)
                 }
             }
             .onAppear(perform: seedDefaults)
             .sheet(isPresented: $isPickingExercise) {
-                RoutineExercisePickerSheet(allowsMultiple: false) { exercise in
+                RoutineExercisePickerSheet(allowsMultiple: false,
+                                           title: "Choose Exercise",
+                                           selectedID: selectedExerciseID) { exercise in
                     selectedExerciseID = exercise.id
                     selectedExerciseName = exercise.name
                 }
@@ -71,7 +86,7 @@ struct GoalEditorSheet: View {
         }
     }
 
-    // MARK: Preset cards
+    // MARK: Preset cards (locked in edit mode — a goal never changes kind)
 
     private func presetCard(_ cardKind: GoalKind, title: String, subtitle: String,
                             symbol: String, isHero: Bool = false) -> some View {
@@ -82,20 +97,20 @@ struct GoalEditorSheet: View {
             HStack(spacing: 12) {
                 Image(systemName: symbol)
                     .font(isHero ? .title2 : .title3)
-                    .foregroundStyle(kind == cardKind ? AnyShapeStyle(SettColor.heroCyan) : AnyShapeStyle(.secondary))
+                    .foregroundStyle(kind == cardKind ? AnyShapeStyle(SettColor.heroCyan) : AnyShapeStyle(SettColor.ash))
                     .frame(width: 36)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title)
                         .font(isHero ? .headline : .subheadline.weight(.semibold))
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(SettColor.bone)
                     Text(subtitle)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(SettColor.ash)
                         .multilineTextAlignment(.leading)
                 }
                 Spacer()
                 Image(systemName: kind == cardKind ? "checkmark.circle.fill" : "circle")
-                    .foregroundStyle(kind == cardKind ? AnyShapeStyle(SettColor.heroCyan) : AnyShapeStyle(.tertiary))
+                    .foregroundStyle(kind == cardKind ? AnyShapeStyle(SettColor.heroCyan) : AnyShapeStyle(SettColor.iron))
             }
             .padding(isHero ? 20 : 16)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -104,8 +119,10 @@ struct GoalEditorSheet: View {
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .strokeBorder(kind == cardKind ? SettColor.heroCyan : .clear, lineWidth: 2)
             }
+            .opacity(isEditing && kind != cardKind ? 0.4 : 1)
         }
         .buttonStyle(.plain)
+        .disabled(isEditing)
     }
 
     // MARK: Per-kind configuration
@@ -114,26 +131,22 @@ struct GoalEditorSheet: View {
     private var configSection: some View {
         switch kind {
         case .frequency:
-            Stepper(value: $frequencyTarget, in: 1...7) {
-                HStack {
-                    Text("Days per week")
-                    Spacer()
-                    Text("\(frequencyTarget)×")
-                        .font(.headline)
-                        .monospacedDigit()
-                        .foregroundStyle(SettColor.heroCyan)
-                }
+            HStack {
+                Text("Days per week")
+                    .foregroundStyle(SettColor.bone)
+                Spacer()
+                ChamberStepper(value: $frequencyTarget, in: 1...7)
             }
             .settCard()
         case .volumeTarget:
-            Stepper(value: $volumeTargetDisplay, in: 1_000...500_000, step: 1_000) {
-                HStack {
-                    Text("Volume target")
-                    Spacer()
-                    Text("\(volumeTargetDisplay.formatted()) \(unit.symbol)")
-                        .font(.headline)
-                        .monospacedDigit()
-                        .foregroundStyle(SettColor.heroCyan)
+            HStack {
+                Text("Volume target")
+                    .foregroundStyle(SettColor.bone)
+                Spacer()
+                ChamberStepControl(text: "\(volumeTargetDisplay.formatted()) \(unit.symbol)") {
+                    volumeTargetDisplay = max(1_000, volumeTargetDisplay - 1_000)
+                } onIncrement: {
+                    volumeTargetDisplay = min(500_000, volumeTargetDisplay + 1_000)
                 }
             }
             .settCard()
@@ -158,42 +171,37 @@ struct GoalEditorSheet: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Exercise: \(selectedExerciseName ?? "not chosen")")
-                Stepper {
-                    HStack {
-                        Text("Target 1RM")
-                        Spacer()
-                        Text(services.settings.displayWeight(prTargetGrams))
-                            .font(.headline)
-                            .monospacedDigit()
-                            .foregroundStyle(SettColor.heroCyan)
+                HStack {
+                    Text("Target 1RM")
+                        .foregroundStyle(SettColor.bone)
+                    Spacer()
+                    ChamberStepControl(text: services.settings.displayWeight(prTargetGrams)) {
+                        prTargetGrams = max(services.settings.incrementGrams,
+                                            prTargetGrams - services.settings.incrementGrams)
+                    } onIncrement: {
+                        prTargetGrams += services.settings.incrementGrams
                     }
-                } onIncrement: {
-                    prTargetGrams += services.settings.incrementGrams
-                } onDecrement: {
-                    prTargetGrams = max(services.settings.incrementGrams,
-                                        prTargetGrams - services.settings.incrementGrams)
                 }
             }
             .settCard()
         }
     }
 
-    // MARK: Create
+    // MARK: Commit (insert new, or rewrite the edited goal's targets in place)
 
-    private var createButton: some View {
-        Button(action: create) {
-            Text("Create Goal")
-                .font(.headline)
-                .foregroundStyle(canCreate ? SettColor.etch : SettColor.iron)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 16)
-                .background(canCreate ? AnyShapeStyle(Aura.cyan) : AnyShapeStyle(SettColor.cardNested),
-                            in: Capsule())
+    private func commit() {
+        guard canCreate else { return }
+        if let editing {
+            save(into: editing)
+        } else {
+            insertNew()
         }
-        .disabled(!canCreate)
+        try? modelContext.save()
+        Haptics.success()
+        dismiss()
     }
 
-    private func create() {
+    private func insertNew() {
         let goal: Goal
         switch kind {
         case .frequency:
@@ -207,12 +215,30 @@ struct GoalEditorSheet: View {
                         exerciseID: exercise.id, exerciseNameSnapshot: exercise.name)
         }
         modelContext.insert(goal)
-        try? modelContext.save()
-        Haptics.success()
-        dismiss()
+    }
+
+    /// Edit mode only touches the targets — createdAt/startDate stay, so streak
+    /// windows and evaluator history don't reset.
+    private func save(into goal: Goal) {
+        switch kind {
+        case .frequency:
+            goal.targetValue = frequencyTarget
+        case .volumeTarget:
+            goal.targetValue = Units.grams(fromDisplay: Double(volumeTargetDisplay), unit: unit)
+        case .prTarget:
+            guard let exercise = exercises.first(where: { $0.id == selectedExerciseID }) else { return }
+            goal.targetValue = prTargetGrams
+            goal.exerciseID = exercise.id
+            goal.exerciseNameSnapshot = exercise.name
+        }
+        goal.updatedAt = .now
+        goal.needsPush = true
     }
 
     private func seedDefaults() {
+        if let editing {
+            prefill(from: editing)
+        }
         if volumeTargetDisplay == 0 {
             volumeTargetDisplay = unit == .kg ? 10_000 : 20_000
         }
@@ -220,6 +246,19 @@ struct GoalEditorSheet: View {
             prTargetGrams = unit == .kg
                 ? Units.grams(fromDisplay: 60, unit: .kg)
                 : Units.grams(fromDisplay: 135, unit: .lb)
+        }
+    }
+
+    private func prefill(from goal: Goal) {
+        switch goal.kind {
+        case .frequency:
+            frequencyTarget = goal.targetValue
+        case .volumeTarget:
+            volumeTargetDisplay = Int((Double(goal.targetValue) / unit.gramsPerUnit).rounded())
+        case .prTarget:
+            prTargetGrams = goal.targetValue
+            selectedExerciseID = goal.exerciseID
+            selectedExerciseName = goal.exerciseNameSnapshot
         }
     }
 }

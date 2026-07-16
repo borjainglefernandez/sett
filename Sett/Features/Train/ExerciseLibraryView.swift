@@ -38,7 +38,7 @@ struct ExerciseLibraryView: View {
                             row(exercise)
                         }
                     } header: {
-                        sectionHeader(muscle.rawValue.uppercased())
+                        Eyebrow(muscle.rawValue.uppercased())
                     }
                     .listRowBackground(SettColor.card)
                     .listRowSeparatorTint(SettColor.cardBorder)
@@ -57,6 +57,9 @@ struct ExerciseLibraryView: View {
             }
             .listStyle(.insetGrouped)
             .scrollContentBackground(.hidden)
+            // Menu-driven bindings (the nav-bar equipment picker) can't route through
+            // withAnimation, so the list animates on the value instead.
+            .animation(.snappy, value: selectedEquipment)
             .overlay {
                 if filtered.isEmpty {
                     if searchText.isEmpty {
@@ -87,36 +90,18 @@ struct ExerciseLibraryView: View {
             HStack(spacing: 8) {
                 muscleChip(nil, label: "All")
                 ForEach(Muscle.allCases, id: \.self) { muscle in
-                    muscleChip(muscle, label: muscle.rawValue.capitalized)
+                    muscleChip(muscle, label: muscle.rawValue)
                 }
             }
             .padding(.horizontal, 16)
         }
     }
 
-    /// The mono small-caps ash convention (NET THIS WEEK, THIS WEEK, …).
-    private func sectionHeader(_ title: String) -> some View {
-        Text(title)
-            .font(.system(size: 11, weight: .bold, design: .monospaced))
-            .kerning(1.5)
-            .foregroundStyle(SettColor.ash)
-    }
-
     private func muscleChip(_ muscle: Muscle?, label: String) -> some View {
-        let isSelected = selectedMuscle == muscle
-        return Button {
-            selectedMuscle = muscle
+        FilterChip(label, active: selectedMuscle == muscle) {
+            withAnimation(.snappy) { selectedMuscle = muscle }
             Haptics.selection()
-        } label: {
-            Text(label)
-                .font(.subheadline.weight(.semibold))
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(isSelected ? SettColor.heroCyan : SettColor.card, in: Capsule())
-                .foregroundStyle(isSelected ? SettColor.etch : SettColor.bone)
         }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     private var equipmentMenu: some View {
@@ -141,11 +126,12 @@ struct ExerciseLibraryView: View {
     // MARK: Filtering & grouping
 
     private var filtered: [Exercise] {
-        exercises.filter { exercise in
+        let base = exercises.filter { exercise in
             (selectedMuscle == nil || exercise.muscle == selectedMuscle)
                 && (selectedEquipment == nil || exercise.equipment == selectedEquipment)
-                && (searchText.isEmpty || exercise.name.localizedStandardContains(searchText))
         }
+        // Shared match rule, so this list and the picker sheets can never disagree.
+        return ExerciseNameFilter.apply(base, query: searchText)
     }
 
     private var grouped: [Muscle: [Exercise]] {
@@ -167,15 +153,15 @@ struct ExerciseLibraryView: View {
                              muscle: exercise.muscle, size: 40, color: SettColor.heroCyan)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(exercise.name)
-                        .foregroundStyle(exercise.isArchived ? .secondary : .primary)
+                        .foregroundStyle(exercise.isArchived ? SettColor.ash : SettColor.bone)
                     HStack(spacing: 6) {
                         Text(exercise.equipment.rawValue.capitalized)
                             .font(.footnote)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(SettColor.ash)
                         if exercise.isArchived {
                             Text("Archived")
                                 .font(.caption2.weight(.semibold))
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(SettColor.ash)
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
                                 .background(SettColor.cardNested, in: Capsule())
@@ -232,17 +218,22 @@ struct ExerciseLibraryView: View {
 
 struct CreateExerciseSheet: View {
     /// Invoked with the newly created exercise — the in-session picker uses this to
-    /// drop the new lift straight into the active workout.
+    /// drop the new lift straight into the active workout. Not called on edits.
     var onCreate: ((Exercise) -> Void)? = nil
     let initialName: String
+    /// When set, the sheet edits this custom exercise in place (prefilled fields,
+    /// "Edit Exercise" title) instead of forging a new row.
+    let editing: Exercise?
 
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
     @Query private var existing: [Exercise]
 
-    init(initialName: String, onCreate: ((Exercise) -> Void)? = nil) {
+    init(initialName: String, existing: Exercise? = nil,
+         onCreate: ((Exercise) -> Void)? = nil) {
         self.initialName = initialName
+        self.editing = existing
         self.onCreate = onCreate
         let existingFilter = #Predicate<Exercise> { $0.deletedAt == nil }
         _existing = Query(filter: existingFilter)
@@ -275,7 +266,7 @@ struct CreateExerciseSheet: View {
                 .padding(.bottom, 24)
             }
             .dungeonBackground()
-            .navigationTitle("Forge Exercise")
+            .navigationTitle(editing == nil ? "Forge Exercise" : "Edit Exercise")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -287,7 +278,15 @@ struct CreateExerciseSheet: View {
                         .disabled(trimmedName.isEmpty || isDuplicate)
                 }
             }
-            .onAppear { name = initialName }
+            .onAppear {
+                if let editing {
+                    name = editing.name
+                    muscle = editing.muscle
+                    equipment = editing.equipment
+                } else {
+                    name = initialName
+                }
+            }
         }
         .presentationDetents([.large])
     }
@@ -319,7 +318,7 @@ struct CreateExerciseSheet: View {
 
     private var nameField: some View {
         VStack(alignment: .leading, spacing: 8) {
-            sectionLabel("NAME")
+            Eyebrow("NAME")
             TextField("e.g. Landmine Press", text: $name)
                 .focused($nameFocused)
                 .textInputAutocapitalization(.words)
@@ -334,7 +333,7 @@ struct CreateExerciseSheet: View {
 
     private var muscleGrid: some View {
         VStack(alignment: .leading, spacing: 8) {
-            sectionLabel("MUSCLE")
+            Eyebrow("MUSCLE")
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4),
                       spacing: 8) {
                 ForEach(Muscle.allCases, id: \.self) { candidate in
@@ -362,7 +361,7 @@ struct CreateExerciseSheet: View {
 
     private var equipmentRow: some View {
         VStack(alignment: .leading, spacing: 8) {
-            sectionLabel("EQUIPMENT")
+            Eyebrow("EQUIPMENT")
             HStack(spacing: 8) {
                 ForEach(Equipment.allCases, id: \.self) { candidate in
                     choiceChip(isSelected: equipment == candidate) {
@@ -384,13 +383,6 @@ struct CreateExerciseSheet: View {
                 }
             }
         }
-    }
-
-    private func sectionLabel(_ title: String) -> some View {
-        Text(title)
-            .font(.system(size: 11, weight: .bold, design: .monospaced))
-            .kerning(1.5)
-            .foregroundStyle(SettColor.ash)
     }
 
     private func choiceChip<Content: View>(isSelected: Bool, action: @escaping () -> Void,
@@ -423,7 +415,8 @@ struct CreateExerciseSheet: View {
         let candidate = trimmedName
         guard !candidate.isEmpty else { return false }
         return existing.contains { exercise in
-            exercise.muscle == muscle
+            exercise.id != editing?.id   // the row being edited is not its own dupe
+                && exercise.muscle == muscle
                 && exercise.equipment == equipment
                 && exercise.name.localizedCaseInsensitiveCompare(candidate) == .orderedSame
         }
@@ -431,12 +424,41 @@ struct CreateExerciseSheet: View {
 
     private func save() {
         isSaving = true
-        let exercise = Exercise(name: trimmedName, muscle: muscle,
-                                equipment: equipment, isCustom: true)
-        modelContext.insert(exercise)
-        try? modelContext.save()
+        if let editing {
+            update(editing)
+        } else {
+            let exercise = Exercise(name: trimmedName, muscle: muscle,
+                                    equipment: equipment, isCustom: true)
+            modelContext.insert(exercise)
+            try? modelContext.save()
+            onCreate?(exercise)
+        }
         Haptics.success()
-        onCreate?(exercise)
         dismiss()
+    }
+
+    /// Edit path: mutate the row in place, then refresh the live routine templates
+    /// that snapshot its name/muscle. Historical WorkoutExercise snapshots stay
+    /// frozen — the log records what the lift was called when it was done.
+    private func update(_ exercise: Exercise) {
+        let renamed = exercise.name != trimmedName
+        let remuscled = exercise.muscleRaw != muscle.rawValue
+        exercise.name = trimmedName
+        exercise.muscle = muscle
+        exercise.equipment = equipment
+        exercise.updatedAt = .now
+        exercise.needsPush = true
+        if renamed || remuscled {
+            let id = exercise.id
+            let descriptor = FetchDescriptor<RoutineExercise>(
+                predicate: #Predicate { $0.exerciseID == id && $0.deletedAt == nil })
+            for row in (try? modelContext.fetch(descriptor)) ?? [] {
+                row.exerciseNameSnapshot = exercise.name
+                row.muscleRaw = exercise.muscleRaw
+                row.updatedAt = .now
+                row.needsPush = true
+            }
+        }
+        try? modelContext.save()
     }
 }

@@ -103,7 +103,7 @@ struct DebugSurfaceHost: View {
                 BodyweightLogSheet(latest: nil)
             }
         case "picker":
-            ExercisePickerSheet()
+            RoutineExercisePickerSheet { _ in }
         case "routinepicker":
             RoutineExercisePickerSheet { _ in }
         case "exercisedetail":

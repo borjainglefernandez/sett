@@ -4,13 +4,13 @@ import SettCore
 
 // MARK: - Directive Panel (Dark Chamber v3 — the ONLY quest surface in the app)
 
-/// `TODAY'S DIRECTIVES` — exactly three imperative rows computed from today's
-/// data: enter the chamber, log bodyweight, feed the Scanner ten sets. Each
-/// row carries a three-state trailing control: iron GO → pulsing gold CLAIM
-/// (a sanctioned reward pulse) → dimmed CLAIMED ✓. Claims persist per local
-/// day under `sett.directives.<yyyymmdd>`.
+/// `TODAY'S DIRECTIVES` — two imperative rows computed from today's data:
+/// train (start the plan, or feed the Scanner ten sets) and log bodyweight.
+/// Each row's trailing control runs iron GO → pulsing gold CLAIM (a sanctioned
+/// reward pulse) → dimmed CLAIMED ✓, except the training row, which carries no
+/// GO — the launch card above IS its start affordance. Claims persist per
+/// local day under `sett.directives.<yyyymmdd>`.
 struct DirectivePanel: View {
-    @Environment(WorkoutSessionStore.self) private var session
     @Environment(AppServices.self) private var services
 
     @Query private var todaysWorkouts: [Workout]
@@ -21,6 +21,9 @@ struct DirectivePanel: View {
 
     @State private var claimedKeys: Set<String>
     @State private var isLoggingBodyweight = false
+    /// The key claimed THIS moment — drives the row's gold burst + stamp punch,
+    /// then clears (~0.9 s) so the dormant dim can settle in.
+    @State private var burstKey: String?
 
     private enum DirectiveKey {
         static let chamber = "chamber"
@@ -107,19 +110,25 @@ struct DirectivePanel: View {
                        progress: "\(setCount)/10", isMet: setCount >= 10)
         return [
             training,
-            Directive(key: DirectiveKey.bodyweight, title: "Log bodyweight",
+            Directive(key: DirectiveKey.bodyweight, title: bodyweightTitle,
                       progress: "\(weighed)/1", isMet: weighed == 1),
         ]
+    }
+
+    /// The old bodyweight chip's grammar folded into the row — the glanceable
+    /// latest reading ("· 182.4 lb 1d ago") survives the chip's removal from Home.
+    private var bodyweightTitle: String {
+        guard let latest = latestBodyweight.first else { return "Log bodyweight" }
+        let value = BodyweightFormat.valueWithUnit(grams: latest.weightGrams,
+                                                   unit: services.settings.unit)
+        return "Log bodyweight · \(value) \(BodyweightFormat.relativeDay(latest.loggedAt))"
     }
 
     // MARK: Body
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("TODAY'S DIRECTIVES")
-                .font(.system(size: 13, weight: .bold, design: .monospaced))
-                .kerning(3)
-                .foregroundStyle(SettColor.bone)
+            Eyebrow("TODAY'S DIRECTIVES", tint: SettColor.bone)
             VStack(spacing: 12) {
                 ForEach(directives) { directive in
                     row(directive)
@@ -147,21 +156,30 @@ struct DirectivePanel: View {
                 .foregroundStyle(SettColor.ash)
             control(for: directive, isClaimed: isClaimed)
         }
-        .opacity(isClaimed ? 0.5 : 1)
+        // A freshly claimed row holds full brightness while its burst plays,
+        // then eases down to the dormant dim.
+        .opacity(isClaimed && burstKey != directive.key ? 0.5 : 1)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityText(for: directive, isClaimed: isClaimed))
     }
 
     /// The three-state control: iron GO → pulsing gold CLAIM → CLAIMED ✓.
+    /// The training row skips GO — the launch card directly above is the start
+    /// affordance; the row is progress readout until it becomes the CLAIM surface.
     @ViewBuilder
     private func control(for directive: Directive, isClaimed: Bool) -> some View {
         if isClaimed {
-            Text("CLAIMED ✓")
-                .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                .foregroundStyle(SettColor.ash)
+            ClaimedStamp(justClaimed: burstKey == directive.key)
+                .overlay {
+                    if burstKey == directive.key {
+                        // One-shot gold payoff centered on the trailing control.
+                        AuraBurstView(gold: true)
+                            .frame(width: 120, height: 120)
+                    }
+                }
         } else if directive.isMet {
             ClaimCapsule { claim(directive.key) }
-        } else {
+        } else if directive.key == DirectiveKey.bodyweight {
             Button {
                 go(directive.key)
             } label: {
@@ -176,7 +194,7 @@ struct DirectivePanel: View {
                         Capsule().strokeBorder(SettColor.cardBorder, lineWidth: 1)
                     }
             }
-            .buttonStyle(.plain)
+            .buttonStyle(PressableSlabStyle(haptic: .light))
             .accessibilityLabel("Go: \(directive.title)")
         }
     }
@@ -188,39 +206,49 @@ struct DirectivePanel: View {
 
     // MARK: Actions
 
+    /// Only the bodyweight row carries a GO — the training row's start affordance
+    /// is the launch card directly above the panel.
     private func go(_ key: String) {
-        switch key {
-        case DirectiveKey.chamber:
-            startTodaysSession()
-        case DirectiveKey.bodyweight:
-            isLoggingBodyweight = true
-        case DirectiveKey.scanner:
-            if session.activeWorkout == nil {
-                startTodaysSession()
-            } else {
-                session.isPresentingWorkout = true
-            }
-        default:
-            break
-        }
-    }
-
-    /// Start today's scheduled routine if one exists (feeding its planned sets),
-    /// otherwise a blank quick-start.
-    private func startTodaysSession() {
-        if let routine = todaysRoutine {
-            session.start(routine: routine)
-        } else {
-            session.quickStart()
-        }
+        if key == DirectiveKey.bodyweight { isLoggingBodyweight = true }
     }
 
     private func claim(_ key: String) {
         Haptics.success()
+        burstKey = key
         withAnimation(.easeOut(duration: 0.25)) {
             _ = claimedKeys.insert(key)
         }
         UserDefaults.standard.set(claimedKeys.sorted(), forKey: Self.dayKey)
+        // Let the 0.8 s burst finish, then release it (a spent TimelineView would
+        // keep ticking invisibly) and ease the row down to its dormant dim.
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(900))
+            guard burstKey == key else { return }
+            withAnimation(.easeOut(duration: 0.25)) { burstKey = nil }
+        }
+    }
+}
+
+// MARK: - The CLAIMED ✓ stamp
+
+/// Lands with a 1.3 → 1.0 spring punch on a fresh claim; older claims (and
+/// Reduce Motion) render static.
+private struct ClaimedStamp: View {
+    let justClaimed: Bool
+
+    @State private var stampScale: CGFloat = 1
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        Text("CLAIMED ✓")
+            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+            .foregroundStyle(SettColor.ash)
+            .scaleEffect(stampScale)
+            .onAppear {
+                guard justClaimed, !reduceMotion else { return }
+                stampScale = 1.3
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.6)) { stampScale = 1 }
+            }
     }
 }
 
@@ -244,7 +272,7 @@ private struct ClaimCapsule: View {
                 .padding(.vertical, 6)
                 .background(Aura.gold, in: Capsule())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressableSlabStyle(haptic: .light))
         .opacity(reduceMotion ? 1 : (pulsing ? 1 : 0.55))
         .onAppear {
             guard !reduceMotion else { return }

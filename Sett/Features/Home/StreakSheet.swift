@@ -17,6 +17,9 @@ struct StreakSheet: View {
     var plMultiplier: Double? = nil
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    @State private var flameScale: CGFloat = 1
 
     var body: some View {
         NavigationStack {
@@ -49,6 +52,19 @@ struct StreakSheet: View {
                 .font(.system(size: 34))
                 .foregroundStyle(SettColor.heroCyan)
                 .shadow(color: SettColor.heroCyan.opacity(0.6), radius: 8)
+                .scaleEffect(flameScale)
+                .background {
+                    // The hearth behind the fire — embers thicken as the streak grows.
+                    EmberHalo(intensity: min(1, 0.3 + Double(state.weeks) * 0.07))
+                        .padding(-36)
+                }
+                .onAppear {
+                    // A week just extended: one celebratory punch, then still.
+                    guard state.extendedThisWeek, !reduceMotion else { return }
+                    flameScale = 1.15
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.6)) { flameScale = 1 }
+                    Haptics.success()
+                }
             Text("\(state.weeks) WK")
                 .font(.system(size: 40, weight: .heavy, design: .monospaced))
                 .monospacedDigit()
@@ -93,10 +109,7 @@ struct StreakSheet: View {
     private var thisWeekCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("THIS WEEK")
-                    .font(.system(size: 11, weight: .bold, design: .monospaced))
-                    .kerning(1.5)
-                    .foregroundStyle(SettColor.ash)
+                Eyebrow("THIS WEEK")
                 Spacer()
                 Text("\(state.daysThisWeek)/\(state.weeklyTarget) DAYS")
                     .font(.system(size: 11, weight: .semibold, design: .monospaced))
@@ -123,7 +136,7 @@ struct StreakSheet: View {
             }
             Text(modeCaption)
                 .font(.footnote)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(SettColor.ash)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .hudCard()
@@ -148,10 +161,7 @@ struct StreakSheet: View {
     private var shieldsCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("SHIELDS")
-                    .font(.system(size: 11, weight: .bold, design: .monospaced))
-                    .kerning(1.5)
-                    .foregroundStyle(SettColor.ash)
+                Eyebrow("SHIELDS")
                 Spacer()
                 Text("\(state.shields)/\(state.shieldCap)")
                     .font(.system(size: 11, weight: .semibold, design: .monospaced))
@@ -178,7 +188,7 @@ struct StreakSheet: View {
             }
             Text("A shield absorbs one missed week — vacation, illness, life — without breaking your streak.")
                 .font(.footnote)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(SettColor.ash)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .hudCard()
@@ -189,10 +199,7 @@ struct StreakSheet: View {
 
     private var ruleCard: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("HOW IT COUNTS")
-                .font(.system(size: 11, weight: .bold, design: .monospaced))
-                .kerning(1.5)
-                .foregroundStyle(SettColor.ash)
+            Eyebrow("HOW IT COUNTS")
             rule("flame.fill", "A week extends your streak when you train \(state.weeklyTarget) day\(state.weeklyTarget == 1 ? "" : "s").")
             rule("shield.fill", "Every 4 on-target weeks bank a shield (max \(state.shieldCap)).")
             rule("heart.fill", "Miss a week with a shield banked — it's spent, the fire keeps burning.")

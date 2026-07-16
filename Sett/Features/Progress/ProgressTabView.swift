@@ -31,10 +31,14 @@ struct ProgressTabView: View {
                                    sort: [SortDescriptor(\BodyweightEntry.loggedAt)])
     }
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     @State private var period: Period = .week
     @State private var setSamples: [SetSample] = []
     @State private var workoutSamples: [WorkoutSample] = []
     @State private var exerciseNames: [UUID: String] = [:]
+    /// Cold load stays instant; only re-appearances animate the refreshed numbers in.
+    @State private var hasLoadedOnce = false
 
     /// Buckets and streaks use ISO weeks (Monday start), matching the engines.
     private static let isoCalendar: Calendar = {
@@ -116,7 +120,7 @@ struct ProgressTabView: View {
             .accessibilityHidden(true)
             Text("Charts unlock after 2 workouts")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(SettColor.ash)
         }
         .frame(maxWidth: .infinity)
         .settCard()
@@ -125,6 +129,15 @@ struct ProgressTabView: View {
     // MARK: Data (extracted once per appearance, reused across period switches)
 
     private func reload() {
+        if hasLoadedOnce && !reduceMotion {
+            withAnimation(.snappy) { applySamples() }
+        } else {
+            applySamples()
+        }
+        hasLoadedOnce = true
+    }
+
+    private func applySamples() {
         setSamples = SampleExtractor.setSamples(context: modelContext)
         workoutSamples = SampleExtractor.workoutSamples(context: modelContext)
 

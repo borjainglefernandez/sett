@@ -25,64 +25,19 @@ enum BodyweightFormat {
     }
 }
 
-// MARK: - Chip card (Home)
-
-/// Compact Home card: latest bodyweight at a glance, one tap anywhere to log a new entry.
-struct BodyweightChipCard: View {
-    @Environment(AppServices.self) private var services
-
-    let latest: BodyweightEntry?
-
-    @State private var isLogging = false
-
-    var body: some View {
-        Button {
-            isLogging = true
-        } label: {
-            HStack(spacing: 12) {
-                Image(systemName: "scalemass.fill")
-                    .font(.title3)
-                    .foregroundStyle(SettColor.heroCyan)
-                if let latest {
-                    Text("\(BodyweightFormat.valueWithUnit(grams: latest.weightGrams, unit: services.settings.unit)) · \(BodyweightFormat.relativeDay(latest.loggedAt))")
-                        .font(.subheadline.weight(.semibold))
-                        .monospacedDigit()
-                } else {
-                    Text("Log bodyweight")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                Image(systemName: "plus.circle.fill")
-                    .font(.title2)
-                    .foregroundStyle(SettColor.heroCyan)
-            }
-            .hudCard()
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(accessibilityText)
-        .accessibilityHint("Opens the bodyweight logger")
-        .sheet(isPresented: $isLogging) {
-            BodyweightLogSheet(latest: latest)
-        }
-    }
-
-    private var accessibilityText: String {
-        guard let latest else { return "Log bodyweight" }
-        let value = BodyweightFormat.valueWithUnit(grams: latest.weightGrams, unit: services.settings.unit)
-        return "Bodyweight \(value), logged \(BodyweightFormat.relativeDay(latest.loggedAt))"
-    }
-}
-
 // MARK: - Log sheet
 
-/// One-thumb quick logger: big numeral, − / + steppers, save. No typing, no dragging.
+/// One-thumb quick logger: big numeral, − / + steppers, save. No typing, no
+/// dragging. With `editing` set it rewrites that entry's weight in place
+/// (loggedAt untouched) instead of inserting a new one.
 struct BodyweightLogSheet: View {
     @Environment(AppServices.self) private var services
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
     let latest: BodyweightEntry?
+    /// Non-nil = edit mode: prefill from this entry and mutate it on save.
+    var editing: BodyweightEntry? = nil
 
     @State private var grams = 79_000
 
@@ -94,7 +49,7 @@ struct BodyweightLogSheet: View {
     private var stepGrams: Int { unit == .kg ? 100 : 45 }
 
     var body: some View {
-        ChamberSheet(title: "Bodyweight", commitLabel: "LOG", onCommit: save) {
+        ChamberSheet(title: "Bodyweight", commitLabel: editing == nil ? "LOG" : "SAVE", onCommit: save) {
             HStack(spacing: 16) {
                 stepperButton(systemName: "minus", delta: -stepGrams)
                 VStack(spacing: 8) {
@@ -106,14 +61,14 @@ struct BodyweightLogSheet: View {
                             .contentTransition(.numericText(value: Double(grams)))
                         Text(unit.symbol)
                             .font(.title3.weight(.semibold))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(SettColor.ash)
                     }
                     if let deltaText {
                         // Neutral on purpose — bodyweight direction isn't good or bad.
                         Text(deltaText)
                             .font(.caption.weight(.semibold))
                             .monospacedDigit()
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(SettColor.ash)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 4)
                             .background(SettColor.cardNested, in: Capsule())
@@ -126,7 +81,7 @@ struct BodyweightLogSheet: View {
         }
         .presentationDetents([.height(280)])
         .onAppear {
-            grams = latest?.weightGrams ?? 79_000
+            grams = editing?.weightGrams ?? latest?.weightGrams ?? 79_000
         }
     }
 
@@ -157,8 +112,14 @@ struct BodyweightLogSheet: View {
     }
 
     private func save() {
-        let entry = BodyweightEntry(weightGrams: grams)
-        modelContext.insert(entry)
+        if let editing {
+            // Correcting a past weigh-in — the entry keeps its original loggedAt.
+            editing.weightGrams = grams
+            editing.updatedAt = .now
+            editing.needsPush = true
+        } else {
+            modelContext.insert(BodyweightEntry(weightGrams: grams))
+        }
         try? modelContext.save()
         Haptics.success()
     }

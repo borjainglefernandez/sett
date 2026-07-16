@@ -42,6 +42,8 @@ struct ExerciseDetailView: View {
     @State private var recentGroups: [SessionGroup] = []
     @State private var hasLoaded = false
     @State private var isEditingSetup = false
+    /// Custom lifts only: the shared forge sheet in edit mode.
+    @State private var isEditingExercise = false
 
     var body: some View {
         ScrollView {
@@ -66,8 +68,19 @@ struct ExerciseDetailView: View {
         .dungeonBackground()
         .navigationTitle(exercise.name)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            // Catalog lifts are canon; only the user's own creations are editable.
+            if exercise.isCustom {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Edit") { isEditingExercise = true }
+                }
+            }
+        }
         .sheet(isPresented: $isEditingSetup) {
             MachineSetupSheet(exercise: exercise)
+        }
+        .sheet(isPresented: $isEditingExercise) {
+            CreateExerciseSheet(initialName: "", existing: exercise)
         }
         .onAppear(perform: loadIfNeeded)
     }
@@ -80,10 +93,7 @@ struct ExerciseDetailView: View {
     private var machineSetupCard: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .center) {
-                Text("MACHINE SETUP")
-                    .font(.system(size: 13, weight: .bold, design: .monospaced))
-                    .kerning(3)
-                    .foregroundStyle(SettColor.bone)
+                Eyebrow("MACHINE SETUP", tint: SettColor.bone)
                 Spacer()
                 if hasSetup {
                     Button {
@@ -138,7 +148,7 @@ struct ExerciseDetailView: View {
 
     private func prCard(_ best: SetSample) -> some View {
         HStack(spacing: 12) {
-            Image(systemName: "trophy.fill")
+            Image(systemName: "medal.fill")
                 .font(.title2)
                 .foregroundStyle(SettColor.saiyanGold)
             VStack(alignment: .leading, spacing: 2) {

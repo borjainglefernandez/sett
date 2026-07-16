@@ -3,8 +3,8 @@ import SwiftData
 import SettCore
 
 /// Card 5 — goals (Flow 4): one ring per active goal (gold + checkmark once
-/// complete), swipe-left to soft-delete, "New Goal" opens the editor sheet.
-/// Progress is always computed by `GoalEvaluator` from workout data.
+/// complete), tap to edit, swipe-left to soft-delete, "New Goal" opens the
+/// editor sheet. Progress is always computed by `GoalEvaluator` from workout data.
 struct GoalsSection: View {
     let goals: [Goal]
     let setSamples: [SetSample]
@@ -14,12 +14,14 @@ struct GoalsSection: View {
 
     @Environment(\.modelContext) private var modelContext
     @State private var isShowingEditor = false
+    @State private var editingGoal: Goal?
+    /// Goals whose completed-state gold burst already played this view lifetime.
+    @State private var celebrated: Set<UUID> = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("Goals")
-                    .font(.headline)
+                Eyebrow("GOALS")
                 Spacer()
                 Button {
                     isShowingEditor = true
@@ -33,15 +35,20 @@ struct GoalsSection: View {
             } else {
                 VStack(spacing: 8) {
                     ForEach(goals) { goal in
-                        SwipeToDeleteRow(onDelete: { delete(goal) }) {
+                        SwipeToDeleteRow(onDelete: { delete(goal) },
+                                         onTap: { editingGoal = goal }) {
                             goalRow(goal)
                         }
+                        .accessibilityAction(named: "Edit") { editingGoal = goal }
                     }
                 }
             }
         }
         .sheet(isPresented: $isShowingEditor) {
             GoalEditorSheet()
+        }
+        .sheet(item: $editingGoal) { goal in
+            GoalEditorSheet(editing: goal)
         }
     }
 
@@ -51,10 +58,21 @@ struct GoalsSection: View {
         let progress = displayProgress(goal)
         return HStack(spacing: 16) {
             GoalRingView(progress: progress, title: title(for: goal))
+                .overlay {
+                    // One gold burst per goal the first time it renders complete;
+                    // the timed insert removes the (already-spent) burst afterwards.
+                    if progress.isComplete, !celebrated.contains(goal.id) {
+                        AuraBurstView(gold: true)
+                            .task {
+                                try? await Task.sleep(for: .seconds(1))
+                                celebrated.insert(goal.id)
+                            }
+                    }
+                }
             VStack(alignment: .leading, spacing: 4) {
                 Text(detail(for: goal))
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(SettColor.ash)
                 if progress.isComplete {
                     Label("Complete", systemImage: "checkmark.circle.fill")
                         .font(.subheadline.weight(.semibold))
@@ -70,17 +88,10 @@ struct GoalsSection: View {
         VStack(spacing: 12) {
             Text("Set your first goal — start with 3 workouts a week")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(SettColor.ash)
                 .multilineTextAlignment(.center)
-            Button {
+            ChamberCTAButton("3 × / week") {
                 createPresetFrequencyGoal()
-            } label: {
-                Text("3 × / week")
-                    .font(.headline)
-                    .foregroundStyle(SettColor.etch)
-                    .padding(.horizontal, 24)
-                    .padding(.vertical, 10)
-                    .background(Aura.cyan, in: Capsule())
             }
         }
         .frame(maxWidth: .infinity)
@@ -161,6 +172,8 @@ struct GoalsSection: View {
 
 private struct SwipeToDeleteRow<Content: View>: View {
     let onDelete: () -> Void
+    /// Fired on a plain tap when the row is fully closed (open rows close instead).
+    var onTap: (() -> Void)? = nil
     @ViewBuilder let content: () -> Content
 
     @State private var offsetX: CGFloat = 0
@@ -170,10 +183,11 @@ private struct SwipeToDeleteRow<Content: View>: View {
 
     var body: some View {
         content()
+            .contentShape(Rectangle())
             .onTapGesture {
                 // Recover a row left partly-open by an interrupted drag (isOpen would be
                 // false then, stranding the offset) — gate on the actual offset instead.
-                if offsetX != 0 { close() }
+                if offsetX != 0 { close() } else { onTap?() }
             }
             .offset(x: offsetX)
             .background(alignment: .trailing) {

@@ -4,11 +4,10 @@ import SettCore
 
 /// Tab 4 — the character sheet (Flow 5, Dark Chamber v3):
 /// (1) hero — the active character card (tier-material frame) with the Sacred
-///     Number and its ember halo,
+///     Number, its ember halo, and Forms-ladder progress on a Ki Gauge,
 /// (2) character sheet — monospaced stat rows + a muscle-balance radar,
-/// (3) tier progress toward the next transformation on a Ki Gauge,
-/// (4) Emperor Vexeth's rival card (the app's ONLY red surface),
-/// (5) badge case preview, (6) character roster strip.
+/// (3) Emperor Vexeth's rival card (the app's ONLY red surface),
+/// (4) badge case preview, (5) character roster strip.
 struct PowerTabView: View {
     @Environment(ProgressionStore.self) private var progression
     @Environment(\.modelContext) private var modelContext
@@ -18,6 +17,8 @@ struct PowerTabView: View {
 
     @State private var showingHowPowerWorks = false
     @State private var radarShares = [Double](repeating: 0, count: PowerTabView.radarMuscles.count)
+    /// Non-nil after a roster swap — keys a one-shot cyan burst on the new avatar.
+    @State private var rosterBurstID: UUID?
 
     init() {
         let badgeAwardFilter = #Predicate<BadgeAward> { $0.deletedAt == nil }
@@ -109,11 +110,20 @@ struct PowerTabView: View {
                     .frame(width: 118, height: 118)
                     .opacity(0.55)   // the gold PL below is the lead; the aura is ambience
                 CharacterAvatarView(character: activeCharacter, tier: activeTier)
+                if let rosterBurstID {
+                    // Roster swap only — never fires on plain appearance (clear under RM).
+                    AuraBurstView(gold: false)
+                        .frame(width: 200, height: 200)
+                        .id(rosterBurstID)
+                }
             }
             .frame(height: 160)
+            .id(activeCharacter)   // identity swap → cross-fade under activate()'s withAnimation
+            .transition(.opacity)
             Text(activeCharacter.displayName)
                 .font(.headline)
                 .foregroundStyle(SettColor.bone)
+                .contentTransition(.opacity)
             VStack(spacing: 6) {
                 Text("POWER LEVEL")
                     .font(.caption2.weight(.semibold))
@@ -141,8 +151,9 @@ struct PowerTabView: View {
                         .font(.system(size: 10, weight: .semibold, design: .monospaced))
                         .kerning(1)
                         .foregroundStyle(SettColor.ash)
-                    ProgressView(value: form.progress(progression.snapshotPowerLevel))
-                        .tint(SettColor.heroCyan)
+                    // Ki Gauge, not a stock bar — its fused n/12 numeral counts cells,
+                    // the caption above counts PL, so the two never double-report.
+                    KiGauge(filled: form.progress(progression.snapshotPowerLevel))
                         .frame(width: 180)
                 }
             }
@@ -170,8 +181,7 @@ struct PowerTabView: View {
 
     private var characterSheetCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Character Sheet")
-                .font(.title3.weight(.semibold))
+            CardTitle("Character Sheet")
             VStack(spacing: 10) {
                 statRow("STRENGTH SCORE", (progression.snapshot?.strengthScore ?? 0).formatted())
                 hairline
@@ -250,7 +260,7 @@ struct PowerTabView: View {
                     Spacer()
                     Image(systemName: "chevron.right")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(SettColor.iron)
                 }
                 if latestAwards.isEmpty {
                     Text("The case is empty — every badge inside is visible and waiting.")
@@ -346,11 +356,14 @@ struct PowerTabView: View {
     private func activate(_ character: CharacterKey) {
         guard character != activeCharacter else { return }
         let state = modelContext.saiyanState()
-        state.characterKey = character
-        state.transformationTier = progression.userFormTier
-        state.updatedAt = .now
-        state.needsPush = true
-        try? modelContext.save()
+        withAnimation(.snappy) {
+            state.characterKey = character
+            state.transformationTier = progression.userFormTier
+            state.updatedAt = .now
+            state.needsPush = true
+            try? modelContext.save()
+        }
+        rosterBurstID = UUID()
         Haptics.medium()
     }
 
@@ -459,6 +472,10 @@ private struct RivalCard: View {
     var rebirthAnnounce: Bool = false
     var onAcknowledgeRebirth: () -> Void = {}
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Drives the slow crimson menace pulse on the border (static under RM).
+    @State private var menace = false
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             if rebirthAnnounce {
@@ -483,6 +500,7 @@ private struct RivalCard: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .materialize()
                 .accessibilityLabel("Vexeth reborn, cycle \(cycle). Dismisses this banner.")
             }
             HStack(alignment: .top) {
@@ -514,9 +532,19 @@ private struct RivalCard: View {
         .padding(16)
         .background(SettColor.villainVoid, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay {
-            // Crimson-tinted iron: the matte rank hairline, tinted to the villain.
+            // Crimson-tinted iron hairline, breathing 0.3↔0.5 — the villain never sits still.
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(SettColor.villainCrimson.opacity(0.3), lineWidth: 1)
+                .strokeBorder(SettColor.villainCrimson.opacity(reduceMotion ? 0.4 : (menace ? 0.5 : 0.3)),
+                              lineWidth: 1)
+        }
+        .onAppear {
+            guard !reduceMotion else { return }
+            withAnimation(.easeInOut(duration: 4).repeatForever(autoreverses: true)) {
+                menace = true
+            }
+        }
+        .onChange(of: rebirthAnnounce) { _, announced in
+            if announced { Haptics.rigid() }   // one hit as the rebirth banner lands
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Emperor Vexeth, the Crimson Star. Power level \(rivalPL), form \(rivalForm) of 3.")

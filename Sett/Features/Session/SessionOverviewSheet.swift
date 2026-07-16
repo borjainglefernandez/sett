@@ -51,7 +51,11 @@ struct SessionOverviewSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { toolbarContent }
             .sheet(isPresented: $isShowingExercisePicker) {
-                ExercisePickerSheet()
+                // The shared multi-add picker (one sheet, N exercises) — the session's
+                // single-tap picker retired with it.
+                RoutineExercisePickerSheet(allowsMultiple: true) { exercise in
+                    session.addExercise(exercise)
+                }
             }
             .sheet(isPresented: $isPickingGym) {
                 if let workout = session.activeWorkout {
@@ -128,10 +132,7 @@ struct SessionOverviewSheet: View {
                         }
                         .onMove { session.moveSet(in: we, from: $0, to: $1) }
                     } header: {
-                        Text(we.exerciseNameSnapshot.uppercased())
-                            .font(.system(size: 11, weight: .bold, design: .monospaced))
-                            .kerning(1.5)
-                            .foregroundStyle(SettColor.ash)
+                        Eyebrow(we.exerciseNameSnapshot.uppercased())
                     }
                 }
             }
@@ -277,15 +278,23 @@ struct SessionOverviewSheet: View {
                             dragging: $draggingExercise,
                             move: { session.moveExercise(in: workout, from: $0, to: $1) }))
                 }
+                // The app-wide dashed "add" grammar (RoutineEditorView's button) —
+                // not a stock bordered capsule.
                 Button {
                     isShowingExercisePicker = true
                 } label: {
                     Label("Add Exercise", systemImage: "plus")
                         .font(.headline)
-                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .foregroundStyle(SettColor.heroCyan)
+                        .frame(maxWidth: .infinity, minHeight: 52)
+                        .background {
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .strokeBorder(SettColor.heroCyan.opacity(0.4),
+                                              style: StrokeStyle(lineWidth: 1, dash: [5, 4]))
+                        }
+                        .contentShape(Rectangle())
                 }
-                .buttonStyle(.bordered)
-                .buttonBorderShape(.capsule)
+                .buttonStyle(.plain)
                 if workout.orderedExercises.isEmpty {
                     // Quiet hint for the stark empty chamber — ash, not cyan.
                     VStack(spacing: 8) {

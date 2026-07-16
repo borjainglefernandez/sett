@@ -29,6 +29,10 @@ struct ExerciseCard: View {
     /// An unstarted exercise shows its whole plan as PLANNED — tapping the first row
     /// "begins" it (reveals the active input) so the order is deliberate, not pre-armed.
     @State private var hasBegun = false
+    /// Mid-session swap: single-select picker adds the replacement, then removes this.
+    @State private var isReplacing = false
+    /// Removing an exercise WITH logged sets confirms first; an empty one removes directly.
+    @State private var isConfirmingRemove = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -232,6 +236,37 @@ struct ExerciseCard: View {
         .buttonStyle(.plain)
         .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
         .accessibilityHint(isExpanded ? "Collapses this exercise" : "Expands this exercise")
+        // Mid-session escape hatches: swap the lift (machine taken) or drop a
+        // mistaken pick entirely. The shell's cursor reconciler absorbs both.
+        .contextMenu {
+            Button {
+                isReplacing = true
+            } label: { Label("Replace exercise", systemImage: "arrow.triangle.2.circlepath") }
+            Button(role: .destructive) {
+                if workoutExercise.orderedSets.isEmpty {
+                    session.removeExercise(workoutExercise)
+                } else {
+                    isConfirmingRemove = true
+                }
+            } label: { Label("Remove exercise", systemImage: "trash") }
+        }
+        .sheet(isPresented: $isReplacing) {
+            RoutineExercisePickerSheet(allowsMultiple: false, title: "Replace Exercise") { exercise in
+                // Add THEN remove, so the workout never passes through an empty state.
+                session.addExercise(exercise)
+                session.removeExercise(workoutExercise)
+            }
+        }
+        .confirmationDialog("Remove \(workoutExercise.exerciseNameSnapshot)?",
+                            isPresented: $isConfirmingRemove,
+                            titleVisibility: .visible) {
+            Button("Remove exercise", role: .destructive) {
+                session.removeExercise(workoutExercise)
+            }
+            Button("Keep exercise", role: .cancel) {}
+        } message: {
+            Text("Its logged sets will be deleted from this session.")
+        }
     }
 
     private var statLine: String {

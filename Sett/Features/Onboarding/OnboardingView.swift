@@ -13,6 +13,7 @@ import SettCore
 struct OnboardingView: View {
     @Environment(AppServices.self) private var services
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private enum Page: Int, Hashable, CaseIterable {
         case invite, signIn, units, phase, oura, rival
@@ -38,11 +39,14 @@ struct OnboardingView: View {
                     case .rival: rivalPage
                     }
                 }
-                .transition(.asymmetric(insertion: .move(edge: .trailing).combined(with: .opacity),
-                                        removal: .move(edge: .leading).combined(with: .opacity)))
+                // RM keeps a plain cross-fade (never nil — pages must not hard-pop).
+                .transition(reduceMotion
+                            ? .opacity
+                            : .asymmetric(insertion: .move(edge: .trailing).combined(with: .opacity),
+                                          removal: .move(edge: .leading).combined(with: .opacity)))
             }
         }
-        .animation(.snappy, value: page)
+        .animation(reduceMotion ? .easeInOut(duration: 0.2) : .snappy, value: page)
         .interactiveDismissDisabled()
     }
 
@@ -336,6 +340,8 @@ struct OnboardingView: View {
     private var rivalCard: some View {
         VStack(spacing: 12) {
             ZStack {
+                BreathingAura(gradient: Aura.villain)
+                    .frame(width: 124, height: 124)
                 Circle()
                     .fill(RadialGradient(colors: [SettColor.villainCrimson.opacity(0.35),
                                                   SettColor.villainVoid],
@@ -364,6 +370,9 @@ struct OnboardingView: View {
         .frame(maxWidth: .infinity)
         .padding(20)
         .hudCard(tint: SettColor.villainCrimson)
+        .materialize()
+        // The reveal's one hit — rigid, so it reads apart from the Continue taps.
+        .onAppear { Haptics.rigid() }
     }
 
     private var rivalPowerLevel: Int {
@@ -385,7 +394,8 @@ struct OnboardingView: View {
                 .frame(maxWidth: .infinity, minHeight: 52)
                 .background(SettColor.heroCyan, in: Capsule())
         }
-        .buttonStyle(.plain)
+        // Silent press — the action already fires Haptics.medium, no stacking.
+        .buttonStyle(PressableSlabStyle(haptic: nil))
         .disabled(!enabled)
         .opacity(enabled ? 1 : 0.4)
     }
@@ -404,7 +414,7 @@ struct OnboardingView: View {
     }
 
     private func advance(to newPage: Page) {
-        withAnimation(.snappy) { page = newPage }
+        withAnimation(reduceMotion ? .easeInOut(duration: 0.2) : .snappy) { page = newPage }
     }
 
     private func finish() {

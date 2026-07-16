@@ -13,6 +13,10 @@ struct MuscleBalanceCard: View {
     let period: Period
     let calendar: Calendar
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// One-time on-appear grow: bars render at zero width until this flips.
+    @State private var revealed = false
+
     private var interval: DateInterval? {
         let component: Calendar.Component = switch period {
         case .week: .weekOfYear
@@ -50,24 +54,24 @@ struct MuscleBalanceCard: View {
         if !shares.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
-                    Text("Muscle Balance")
-                        .font(.title3.weight(.semibold))
-                    Spacer()
+                    CardTitle("Muscle Balance")
                     Eyebrow(periodCaption.uppercased())
                 }
                 let top = shares.first?.share ?? 1
-                ForEach(shares, id: \.muscle) { entry in
-                    bar(entry.muscle, share: entry.share, isTop: entry.share >= top && entry.share > 0)
+                ForEach(Array(shares.enumerated()), id: \.element.muscle) { index, entry in
+                    bar(entry.muscle, share: entry.share, index: index,
+                        isTop: entry.share >= top && entry.share > 0)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .settCard()
             .accessibilityElement(children: .combine)
             .accessibilityLabel(accessibilitySummary(shares))
+            .onAppear { revealed = true }   // bar .animation drives the stagger; RM = direct
         }
     }
 
-    private func bar(_ muscle: Muscle, share: Double, isTop: Bool) -> some View {
+    private func bar(_ muscle: Muscle, share: Double, index: Int, isTop: Bool) -> some View {
         let color: Color = share == 0 ? SettColor.iron
                          : isTop ? TimeChamber.scouterAmber : SettColor.heroCyan
         return HStack(spacing: 10) {
@@ -83,8 +87,11 @@ struct MuscleBalanceCard: View {
                     Capsule().fill(SettColor.cardNested)
                     Capsule()
                         .fill(color.opacity(share == 0 ? 0.3 : 0.85))
-                        .frame(width: max(share > 0 ? 4 : 0, geo.size.width * share))
+                        .frame(width: max(share > 0 ? 4 : 0, geo.size.width * share) * (revealed ? 1 : 0))
                         .shadow(color: color.opacity(isTop ? 0.4 : 0), radius: 3)
+                        // ~40 ms per-row stagger so the card sweeps top-down; RM = no animation.
+                        .animation(reduceMotion ? nil : Animation.snappy.delay(Double(index) * 0.04),
+                                   value: revealed)
                 }
             }
             .frame(height: 8)

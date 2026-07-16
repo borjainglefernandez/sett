@@ -10,6 +10,10 @@ struct VolumeChartCard: View {
     let unit: WeightUnit
     let calendar: Calendar
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// One-time on-appear grow: bars plot at zero until this flips.
+    @State private var revealed = false
+
     private struct VolumePoint: Identifiable {
         let id: Int          // bucket ordinal — unique within one period kind
         let label: String
@@ -30,14 +34,12 @@ struct VolumeChartCard: View {
         let points = points
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("Volume")
-                    .font(.title3.weight(.semibold))
-                Spacer()
+                CardTitle("Volume")
                 Eyebrow("LAST 8 \(period.rawValue.uppercased())S")
             }
             Chart(points) { point in
                 BarMark(x: .value("Period", point.label),
-                        y: .value("Volume", point.thousands))
+                        y: .value("Volume", point.thousands * (revealed ? 1 : 0)))
                     .foregroundStyle(SettColor.heroCyan)
                     .cornerRadius(4)
             }
@@ -51,6 +53,13 @@ struct VolumeChartCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .settCard()
+        .onAppear {
+            if reduceMotion {
+                revealed = true
+            } else {
+                withAnimation(.snappy) { revealed = true }
+            }
+        }
     }
 
     /// Spoken summary — SwiftUI Charts expose no data to VoiceOver on their own.

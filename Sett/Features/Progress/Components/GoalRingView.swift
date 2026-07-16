@@ -8,13 +8,17 @@ struct GoalRingView: View {
     let progress: GoalProgress
     let title: String
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Drives the on-appear sweep from zero to the real fraction.
+    @State private var sweep = false
+
     var body: some View {
         VStack(spacing: 8) {
             ZStack {
                 Circle()
                     .stroke(SettColor.cardNested, lineWidth: 12)
                 Circle()
-                    .trim(from: 0, to: progress.fraction)
+                    .trim(from: 0, to: sweep ? progress.fraction : 0)
                     .stroke(ringStyle, style: StrokeStyle(lineWidth: 12, lineCap: .round))
                     .rotationEffect(.degrees(-90))
                     .animation(.snappy, value: progress.fraction)
@@ -26,6 +30,7 @@ struct GoalRingView: View {
                     }
                     Text("\(compact(progress.currentValue))/\(compact(progress.targetValue))")
                         .font(.subheadline.weight(.bold))
+                        .foregroundStyle(SettColor.bone)
                         .monospacedDigit()
                         .lineLimit(1)
                         .minimumScaleFactor(0.5)
@@ -35,13 +40,20 @@ struct GoalRingView: View {
             .frame(width: 88, height: 88)
             Text(title)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(SettColor.ash)
                 .multilineTextAlignment(.center)
                 .lineLimit(2)
                 .frame(width: 100)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityText)
+        .onAppear {
+            if reduceMotion {
+                sweep = true
+            } else {
+                withAnimation(.snappy(duration: 0.5)) { sweep = true }
+            }
+        }
     }
 
     private var ringStyle: AnyShapeStyle {

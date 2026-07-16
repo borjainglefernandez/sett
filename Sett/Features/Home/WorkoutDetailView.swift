@@ -16,7 +16,13 @@ struct WorkoutDetailView: View {
     @State private var editing = false
     /// Committed set being corrected in the shared value editor.
     @State private var editingSet: SetEntry?
+    /// Committed set whose note is open in the shared note sheet.
+    @State private var notingSet: SetEntry?
+    /// Set awaiting the delete confirmation (deleting rewrites PWR).
+    @State private var deletingSet: SetEntry?
     @State private var isPickingGym = false
+    @State private var isRenaming = false
+    @State private var isEditingNotes = false
 
     var body: some View {
         ScrollView {
@@ -25,7 +31,9 @@ struct WorkoutDetailView: View {
                 ForEach(workout.orderedExercises) { workoutExercise in
                     exerciseCard(workoutExercise)
                 }
-                if let notes = workout.notes, !notes.isEmpty {
+                if editing {
+                    editableNotesCard
+                } else if let notes = workout.notes, !notes.isEmpty {
                     notesCard(notes)
                 }
                 if !editing { repeatButton }
@@ -52,6 +60,38 @@ struct WorkoutDetailView: View {
                 session.setGym(gym, for: workout)
             }
         }
+        .sheet(isPresented: $isRenaming) {
+            WorkoutRenameSheet(initialTitle: workout.title) { title in
+                session.renameWorkout(title, for: workout)
+            }
+        }
+        .sheet(item: $notingSet) { set in
+            SetNoteSheet(initialText: set.notes ?? "") { text in
+                set.notes = text
+                set.updatedAt = .now
+                set.needsPush = true
+                try? modelContext.save()
+            }
+        }
+        .sheet(isPresented: $isEditingNotes) {
+            SetNoteSheet(initialText: workout.notes ?? "",
+                         title: "Session Notes",
+                         placeholder: "how it went, what to change…") { text in
+                session.setWorkoutNotes(text, for: workout)
+            }
+        }
+        .confirmationDialog("Delete this set?",
+                            isPresented: Binding(get: { deletingSet != nil },
+                                                 set: { if !$0 { deletingSet = nil } }),
+                            titleVisibility: .visible,
+                            presenting: deletingSet) { set in
+            Button("Delete Set", role: .destructive) {
+                session.deleteSet(set)
+                recomputeAfterCorrection()
+            }
+        } message: { _ in
+            Text("Removing it rewrites this workout's power numbers.")
+        }
     }
 
     /// A finished-workout correction should move the power level now, not on some later
@@ -64,17 +104,23 @@ struct WorkoutDetailView: View {
 
     private var headerCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(workout.startedAt.formatted(date: .complete, time: .shortened))
-                .font(.footnote)
-                .foregroundStyle(.secondary)
+            if editing { titleRow }
+            dateRow
             HStack(alignment: .top, spacing: 24) {
                 stat(WorkoutFormat.duration(workout.durationSeconds), caption: "duration")
-                if let rating = workout.ratingHalfStars, rating > 0 {
+                if editing {
+                    VStack(alignment: .leading, spacing: 4) {
+                        editableStars
+                        Text("rating")
+                            .font(.footnote)
+                            .foregroundStyle(SettColor.ash)
+                    }
+                } else if let rating = workout.ratingHalfStars, rating > 0 {
                     VStack(alignment: .leading, spacing: 4) {
                         StarRatingRow(halfStars: rating, starSize: 13)
                         Text("rating")
                             .font(.footnote)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(SettColor.ash)
                     }
                 }
                 if let bodyweight = workout.bodyweightGrams {
@@ -84,9 +130,116 @@ struct WorkoutDetailView: View {
                 }
             }
             locationRow
+            if editing { casualToggle }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .settCard()
+    }
+
+    /// Title — read-only text lives in the nav bar; edit mode surfaces it here as
+    /// a live control (the same cyan-tap grammar as the location row).
+    private var titleRow: some View {
+        Button { isRenaming = true } label: {
+            HStack(spacing: 6) {
+                Text(workout.title)
+                    .font(.headline)
+                    .foregroundStyle(SettColor.heroCyan)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                Image(systemName: "pencil")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(SettColor.iron)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Title: \(workout.title)")
+        .accessibilityHint("Renames this workout")
+    }
+
+    /// Start date — static read-back normally, a compact DatePicker in edit mode.
+    /// Moving the date reorders history + references, hence the recompute.
+    @ViewBuilder
+    private var dateRow: some View {
+        if editing {
+            HStack {
+                Eyebrow("STARTED")
+                Spacer()
+                DatePicker("Workout start date",
+                           selection: Binding(
+                               get: { workout.startedAt },
+                               set: { date in
+                                   session.setStartDate(date, for: workout)
+                                   recomputeAfterCorrection()
+                               }),
+                           displayedComponents: [.date, .hourAndMinute])
+                    .labelsHidden()
+                    .datePickerStyle(.compact)
+                    .tint(SettColor.heroCyan)
+            }
+        } else {
+            Text(workout.startedAt.formatted(date: .complete, time: .shortened))
+                .font(.footnote)
+                .foregroundStyle(SettColor.ash)
+        }
+    }
+
+    /// Tappable stars (full-star taps; re-tapping the current value clears) with one
+    /// adjustable VoiceOver control — the summary sheet's rating grammar, half-step.
+    private var editableStars: some View {
+        let rating = workout.ratingHalfStars ?? 0
+        return HStack(spacing: 2) {
+            ForEach(1...5, id: \.self) { star in
+                Button {
+                    session.setRating(rating == star * 2 ? nil : star * 2, for: workout)
+                } label: {
+                    Image(systemName: starSymbol(star, rating: rating))
+                        .font(.system(size: 15))
+                        .foregroundStyle(SettColor.heroCyan)
+                        .frame(width: 26, height: 26)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Workout rating")
+        .accessibilityValue(rating == 0 ? "Not rated"
+                            : "\(String(format: "%.1f", Double(rating) / 2)) stars")
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment: session.setRating(min(10, rating + 1), for: workout)
+            case .decrement: session.setRating(rating <= 1 ? nil : rating - 1, for: workout)
+            @unknown default: break
+            }
+        }
+    }
+
+    private func starSymbol(_ star: Int, rating: Int) -> String {
+        if rating >= star * 2 {
+            "star.fill"
+        } else if rating == star * 2 - 1 {
+            "star.leadinghalf.filled"
+        } else {
+            "star"
+        }
+    }
+
+    /// Off-the-record toggle — casual gates net-progress inclusion, so flipping it
+    /// must re-run the engine immediately.
+    private var casualToggle: some View {
+        Toggle(isOn: Binding(
+            get: { workout.isCasual },
+            set: { casual in
+                session.setCasual(casual, for: workout)
+                recomputeAfterCorrection()
+            })) {
+            Text("OFF THE RECORD")
+                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                .kerning(1.5)
+                .foregroundStyle(SettColor.ash)
+        }
+        .tint(TimeChamber.teal)
     }
 
     /// Location — always shown once set; in edit mode it's a live control (and offers
@@ -112,7 +265,7 @@ struct WorkoutDetailView: View {
         } else if let gym = workout.gymNameSnapshot {
             Label(gym, systemImage: "mappin.and.ellipse")
                 .font(.footnote)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(SettColor.ash)
         }
     }
 
@@ -121,9 +274,10 @@ struct WorkoutDetailView: View {
             Text(value)
                 .font(.headline)
                 .monospacedDigit()
+                .foregroundStyle(SettColor.bone)
             Text(caption)
                 .font(.footnote)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(SettColor.ash)
         }
     }
 
@@ -161,13 +315,9 @@ struct WorkoutDetailView: View {
             if workoutExercise.orderedSets.isEmpty {
                 Text("No sets logged")
                     .font(.footnote)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(SettColor.iron)
             }
-            if let notes = workoutExercise.notes, !notes.isEmpty {
-                Text(notes)
-                    .font(.footnote)
-                    .foregroundStyle(SettColor.ash)
-            }
+            if editing { addSetRow(workoutExercise) }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .hudCard(tint: topID == nil ? SettColor.heroCyan : TimeChamber.scouterAmber)
@@ -195,8 +345,7 @@ struct WorkoutDetailView: View {
                 }
                 if editing {
                     Button(role: .destructive) {
-                        session.deleteSet(set)
-                        recomputeAfterCorrection()
+                        deletingSet = set
                     } label: {
                         Image(systemName: "trash")
                             .font(.footnote)
@@ -214,6 +363,26 @@ struct WorkoutDetailView: View {
                 guard editing else { return }
                 editingSet = set
             }
+            // The in-session set grammar, so history corrections speak the same verbs.
+            .contextMenu {
+                if editing {
+                    Button { editingSet = set } label: {
+                        Label("Fix weight & reps", systemImage: "pencil")
+                    }
+                    Button { notingSet = set } label: {
+                        Label("Edit note", systemImage: "note.text")
+                    }
+                    Button {
+                        session.duplicateSet(set)
+                        recomputeAfterCorrection()
+                    } label: {
+                        Label("Duplicate set", systemImage: "plus.square.on.square")
+                    }
+                    Button(role: .destructive) { deletingSet = set } label: {
+                        Label("Delete set", systemImage: "trash")
+                    }
+                }
+            }
             .accessibilityAddTraits(editing ? [.isButton] : [])
             .accessibilityHint(editing ? "Edits this set's values" : "")
             // Per-set note, indented to the value columns.
@@ -230,6 +399,50 @@ struct WorkoutDetailView: View {
                     .fill(SettColor.iron.opacity(0.08))
             }
         }
+    }
+
+    /// Dashed slot at the card's foot — appends one set after the last, ghosting its
+    /// numbers so the correction starts from something plausible instead of zero.
+    private func addSetRow(_ workoutExercise: WorkoutExercise) -> some View {
+        Button {
+            addSet(to: workoutExercise)
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "plus")
+                    .font(.footnote.weight(.semibold))
+                Text("ADD SET")
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .kerning(1.5)
+            }
+            .foregroundStyle(SettColor.heroCyan)
+            .frame(maxWidth: .infinity, minHeight: 40)
+            .background {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(SettColor.cardBorder,
+                                  style: StrokeStyle(lineWidth: 1, dash: [5, 4]))
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Add set")
+        .accessibilityHint("Appends a set copying the last set's weight and reps")
+    }
+
+    /// Insert AFTER the last set (a forgotten set, not a reorder), under the
+    /// standard sync rules; the new volume moves PWR now.
+    private func addSet(to workoutExercise: WorkoutExercise) {
+        let last = workoutExercise.orderedSets.last
+        let set = SetEntry(orderIndex: (last?.orderIndex ?? -1) + 1,
+                           weightGrams: last?.weightGrams ?? 0,
+                           entryUnit: services.settings.unit,
+                           reps: last?.reps ?? 0)
+        set.workoutExercise = workoutExercise
+        modelContext.insert(set)
+        workout.updatedAt = .now
+        workout.needsPush = true
+        try? modelContext.save()
+        recomputeAfterCorrection()
+        Haptics.light()
     }
 
     // MARK: Per-set scoring (same effective-load PWR the session showed)
@@ -279,27 +492,47 @@ struct WorkoutDetailView: View {
         VStack(alignment: .leading, spacing: 8) {
             Label("Notes", systemImage: "note.text")
                 .font(.headline)
+                .foregroundStyle(SettColor.bone)
             Text(notes)
                 .font(.body)
+                .foregroundStyle(SettColor.bone)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .settCard()
     }
 
+    /// Edit mode always renders the notes card — empty reads as an invitation.
+    private var editableNotesCard: some View {
+        let notes = workout.notes ?? ""
+        return Button { isEditingNotes = true } label: {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Label("Notes", systemImage: "note.text")
+                        .font(.headline)
+                        .foregroundStyle(SettColor.bone)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(SettColor.iron)
+                }
+                Text(notes.isEmpty ? "Add session notes" : notes)
+                    .font(.body)
+                    .foregroundStyle(notes.isEmpty ? SettColor.ash : SettColor.bone)
+                    .multilineTextAlignment(.leading)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .settCard()
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("Edits this workout's notes")
+    }
+
     // MARK: Repeat
 
     private var repeatButton: some View {
-        Button {
-            repeatWorkout()
-        } label: {
-            Label("Repeat workout", systemImage: "repeat")
-                .font(.headline)
-                .foregroundStyle(SettColor.etch)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 16)
-                .background(Aura.cyan, in: Capsule())
-        }
-        .padding(.top, 4)
+        ChamberCTAButton("Repeat Workout") { repeatWorkout() }
+            .padding(.top, 4)
     }
 
     private func repeatWorkout() {
@@ -325,5 +558,37 @@ struct WorkoutDetailView: View {
         guard let exercise = (try? modelContext.fetch(descriptor))?.first,
               exercise.deletedAt == nil else { return nil }
         return exercise
+    }
+}
+
+// MARK: - Rename sheet (finished-workout title, in the shared shell)
+
+/// One TextField in a ChamberSheet; the store trims and rejects empty on its side
+/// too, but SAVE stays disabled until there is something to save.
+private struct WorkoutRenameSheet: View {
+    let initialTitle: String
+    let onSave: (String) -> Void
+
+    @State private var title = ""
+    @FocusState private var isFocused: Bool
+
+    var body: some View {
+        ChamberSheet(title: "Rename Workout",
+                     canCommit: !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                     onCommit: { onSave(title) }) {
+            TextField("Workout title", text: $title)
+                .font(.system(.subheadline, design: .monospaced))
+                .foregroundStyle(SettColor.bone)
+                .focused($isFocused)
+                .textInputAutocapitalization(.words)
+                .submitLabel(.done)
+                .padding(12)
+                .background(SettColor.cardNested, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        }
+        .presentationDetents([.height(220)])
+        .onAppear {
+            title = initialTitle
+            isFocused = true
+        }
     }
 }

@@ -44,11 +44,13 @@ struct NetGlanceStrip: View {
         VStack(spacing: 0) {
             // Absolute totals — three quiet counters for the week so far.
             HStack(spacing: 0) {
-                counter(value: "\(week.workouts)", caption: "SESSIONS")
+                counter(value: "\(week.workouts)", numeric: Double(week.workouts), caption: "SESSIONS")
                 counterDivider
-                counter(value: "\(week.sets)", caption: "SETS")
+                counter(value: "\(week.sets)", numeric: Double(week.sets), caption: "SETS")
                 counterDivider
-                counter(value: tonnageDisplay, caption: "TONNAGE \(services.settings.unit.symbol.uppercased())")
+                counter(value: tonnageDisplay,
+                        numeric: Double(week.tonnageGrams) / services.settings.unit.gramsPerUnit,
+                        caption: "TONNAGE \(services.settings.unit.symbol.uppercased())")
             }
             .padding(.vertical, 10)
 
@@ -63,10 +65,7 @@ struct NetGlanceStrip: View {
             // "-294 REPS" over three zeros read as punishment for opening the app).
             if week.sets > 0 {
             HStack(spacing: 12) {
-                Text("NET VS LAST WEEK")
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                    .kerning(1.5)
-                    .foregroundStyle(SettColor.ash)
+                Eyebrow("NET VS LAST WEEK")
                 Spacer(minLength: 12)
                 if net.isNew {
                     Text("NEW TERRITORY")
@@ -95,12 +94,15 @@ struct NetGlanceStrip: View {
 
     // MARK: Counters (absolute) & stats (net)
 
-    private func counter(value: String, caption: String) -> some View {
+    /// `numeric` feeds the numeric-text roll — the display-unit value, so the
+    /// digits slot-machine instead of crossfading when the week's totals move.
+    private func counter(value: String, numeric: Double, caption: String) -> some View {
         VStack(spacing: 2) {
             Text(value)
                 .font(.system(size: 17, weight: .heavy, design: .monospaced))
                 .monospacedDigit()
                 .foregroundStyle(SettColor.bone)
+                .contentTransition(.numericText(value: numeric))
             Text(caption)
                 .font(.system(size: 8, weight: .bold, design: .monospaced))
                 .kerning(1)

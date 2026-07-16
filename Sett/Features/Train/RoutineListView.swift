@@ -19,19 +19,23 @@ struct RoutineListView: View {
     @Environment(\.modelContext) private var modelContext
 
     @Query private var routines: [Routine]
+    @Query private var archivedRoutines: [Routine]
 
     init() {
         let routineFilter = #Predicate<Routine> { $0.deletedAt == nil && !$0.isArchived }
         _routines = Query(filter: routineFilter, sort: [SortDescriptor(\Routine.orderIndex)])
+        let archivedFilter = #Predicate<Routine> { $0.deletedAt == nil && $0.isArchived }
+        _archivedRoutines = Query(filter: archivedFilter, sort: [SortDescriptor(\Routine.name)])
     }
 
     /// The lifted routine card during a rotation-order drag.
     @State private var draggingRoutine: Routine?
+    @State private var isArchiveExpanded = false
 
     var body: some View {
         @Bindable var settings = services.settings
         return Group {
-            if routines.isEmpty {
+            if routines.isEmpty && archivedRoutines.isEmpty {
                 emptyState
             } else {
                 List {
@@ -82,7 +86,15 @@ struct RoutineListView: View {
                                 } label: {
                                     Label("Duplicate", systemImage: "plus.square.on.square")
                                 }
+                                Button {
+                                    setArchived(routine, true)
+                                } label: {
+                                    Label("Archive", systemImage: "archivebox")
+                                }
                             }
+                    }
+                    if !archivedRoutines.isEmpty {
+                        archivedSection
                     }
                 }
                 .listStyle(.plain)
@@ -119,46 +131,26 @@ struct RoutineListView: View {
             .accessibilityLabel(routine.name)
             .accessibilityHint("Edits the routine")
 
-            ZStack {
-                Image(domainAsset(routine))
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                // Legibility: darker on the left (text) easing to a lighter reveal
-                // of the realm on the right behind the play button.
-                LinearGradient(colors: [.black.opacity(0.82), .black.opacity(0.62), .black.opacity(0.3)],
-                               startPoint: .leading, endPoint: .trailing)
-
-                HStack(spacing: 14) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(routine.name)
-                            .font(.system(.title3, design: .rounded).weight(.bold))
-                            .foregroundStyle(.white)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.7)
-                            .shadow(color: .black.opacity(0.6), radius: 3)
-                        if isRotation {
-                            rotationInfo(routine)
-                        } else {
-                            dayChips(mask: routine.daysOfWeekMask)
-                        }
-                        Text(exerciseCountText(routine))
-                            .font(.system(.caption, design: .rounded).weight(.medium))
-                            .foregroundStyle(.white.opacity(0.8))
+            RealmDoorwayCard(asset: domainAsset(routine), emphasized: false, height: 118) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(routine.name)
+                        .font(.system(.title3, design: .rounded).weight(.bold))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                        .shadow(color: .black.opacity(0.6), radius: 3)
+                    if isRotation {
+                        rotationInfo(routine)
+                    } else {
+                        dayChips(mask: routine.daysOfWeekMask)
                     }
-                    Spacer(minLength: 8)
-                    playButton(routine)
+                    Text(exerciseCountText(routine))
+                        .font(.system(.caption, design: .rounded).weight(.medium))
+                        .foregroundStyle(.white.opacity(0.8))
                 }
-                .padding(.horizontal, 18)
-                .padding(.vertical, 16)
+            } accessory: {
+                playButton(routine)
             }
-            .frame(height: 118)
-            .frame(maxWidth: .infinity)
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .strokeBorder(.white.opacity(0.12), lineWidth: 1)
-            }
-            .shadow(color: .black.opacity(0.35), radius: 8, y: 4)
         }
     }
 
@@ -251,8 +243,58 @@ struct RoutineListView: View {
                 .background(SettColor.heroCyan, in: Circle())
                 .shadow(color: SettColor.heroCyan.opacity(0.45), radius: 6)
         }
-        .buttonStyle(.borderless)
+        .buttonStyle(PressableSlabStyle(haptic: .light))
         .accessibilityLabel("Start \(routine.name)")
+    }
+
+    // MARK: Archive (quiet parking lot — hidden from scheduling, one tap back)
+
+    /// A collapsed row at the list bottom; expanding lists archived routines by
+    /// name with an unarchive action. No realm art — these are out of rotation.
+    private var archivedSection: some View {
+        DisclosureGroup(isExpanded: $isArchiveExpanded) {
+            ForEach(archivedRoutines) { routine in
+                HStack(spacing: 12) {
+                    Text(routine.name)
+                        .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                        .foregroundStyle(SettColor.ash)
+                        .lineLimit(1)
+                    Spacer(minLength: 8)
+                    Button {
+                        setArchived(routine, false)
+                    } label: {
+                        Text("UNARCHIVE")
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .kerning(1)
+                            .foregroundStyle(SettColor.heroCyan)
+                            .padding(.horizontal, 10)
+                            .frame(minHeight: 30)
+                            .background {
+                                Capsule().strokeBorder(SettColor.heroCyan.opacity(0.4), lineWidth: 1)
+                            }
+                            .contentShape(Capsule())
+                    }
+                    .buttonStyle(.borderless)
+                    .accessibilityLabel("Unarchive \(routine.name)")
+                }
+                .padding(.vertical, 6)
+            }
+        } label: {
+            Eyebrow("ARCHIVED (\(archivedRoutines.count))")
+        }
+        .tint(SettColor.iron)
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
+        .listRowInsets(EdgeInsets(top: 10, leading: 20, bottom: 12, trailing: 20))
+    }
+
+    /// Flip the archive flag (queries filter it everywhere; history untouched).
+    private func setArchived(_ routine: Routine, _ archived: Bool) {
+        routine.isArchived = archived
+        routine.updatedAt = .now
+        routine.needsPush = true
+        try? modelContext.save()
+        Haptics.light()
     }
 
     // MARK: Duplicate (Push A → Push B without rebuilding)

@@ -110,10 +110,15 @@ struct HowPowerWorksView: View {
     // MARK: The surge (rest-day respect, post-XP)
 
     private var surgeCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        let multiplier = config?.powerLevel.restedSurgeMultiplier ?? 1.25
+        return VStack(alignment: .leading, spacing: 10) {
             Label("Rest-Day Respect", systemImage: "moon.zzz.fill")
                 .font(.headline)
-            bullet("A full rest day arms the SURGE — you return sharper, and the scanner knows it.")
+            bullet("""
+                A full rest day arms the SURGE: your next qualifying session counts \
+                its volume ×\(multiplier.formatted()) in the scanner window.
+                """)
+            bullet("You'll see it land as a SURGE line on the post-workout receipt.")
             bullet("Rest can't break your streak week: only missed sessions can, and shields absorb even those.")
             footnote("Recovery is training. The chamber counts it.")
         }

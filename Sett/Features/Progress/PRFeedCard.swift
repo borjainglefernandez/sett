@@ -49,14 +49,7 @@ struct PRFeedCard: View {
     var body: some View {
         if !events.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Text("Recent PRs")
-                        .font(.title3.weight(.semibold))
-                    Spacer()
-                    Image(systemName: "medal.fill")
-                        .font(.subheadline)
-                        .foregroundStyle(SettColor.saiyanGold)
-                }
+                CardTitle("Recent PRs", icon: "medal.fill", iconTint: SettColor.saiyanGold)
                 ForEach(events) { event in
                     prRow(event)
                 }

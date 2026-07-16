@@ -64,8 +64,6 @@ struct HistoryListView: View {
                                 .foregroundStyle(SettColor.ash)
                         }
                     }
-                    .listRowBackground(SettColor.card)
-                    .listRowSeparatorTint(SettColor.cardBorder)
                 }
             } else {
                 Section {
@@ -73,11 +71,14 @@ struct HistoryListView: View {
                         row(workout)
                     }
                 }
-                .listRowBackground(SettColor.card)
-                .listRowSeparatorTint(SettColor.cardBorder)
             }
         }
+        .listStyle(.plain)
         .scrollContentBackground(.hidden)
+        // The Menu's Picker/Toggle mutate the bindings directly — animate the
+        // resulting reshuffle at the List, matching the chips' withAnimation.
+        .animation(.snappy, value: sort)
+        .animation(.snappy, value: ascending)
         .dungeonBackground()
         .safeAreaInset(edge: .top, spacing: 0) { filterBar }
         .overlay {
@@ -183,12 +184,12 @@ struct HistoryListView: View {
         VStack(spacing: 8) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    filterChip("ALL", active: filter == .all) { filter = .all }
-                    filterChip("RATED", active: filter == .rated) { filter = .rated }
-                    filterChip("PRS", active: filter == .prs) { filter = .prs }
-                    filterChip("CASUAL", active: filter == .casual) { filter = .casual }
+                    FilterChip("ALL", active: filter == .all) { select(.all) }
+                    FilterChip("RATED", active: filter == .rated) { select(.rated) }
+                    FilterChip("PRS", active: filter == .prs) { select(.prs) }
+                    FilterChip("CASUAL", active: filter == .casual) { select(.casual) }
                     ForEach(presentGyms, id: \.self) { gym in
-                        filterChip(gym.uppercased(), active: filter == .gym(gym)) { filter = .gym(gym) }
+                        FilterChip(gym, active: filter == .gym(gym)) { select(.gym(gym)) }
                     }
                 }
                 .padding(.horizontal, 16)
@@ -212,26 +213,10 @@ struct HistoryListView: View {
         }
     }
 
-    private func filterChip(_ label: String, active: Bool, action: @escaping () -> Void) -> some View {
-        Button {
-            action()
-            Haptics.selection()
-        } label: {
-            Text(label)
-                .font(.system(size: 10, weight: .bold, design: .monospaced))
-                .kerning(1)
-                .foregroundStyle(active ? SettColor.etch : SettColor.ash)
-                .lineLimit(1)
-                .padding(.horizontal, 12)
-                .frame(height: 30)
-                .background {
-                    if active { Capsule().fill(SettColor.heroCyan) }
-                    else { Capsule().strokeBorder(SettColor.cardBorder, lineWidth: 1) }
-                }
-                .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(active ? [.isSelected] : [])
+    /// One path for every chip tap: animate the reshuffle, then click.
+    private func select(_ newFilter: QuickFilter) {
+        withAnimation(.snappy) { filter = newFilter }
+        Haptics.selection()
     }
 
     private var tonnageText: String {
@@ -241,6 +226,8 @@ struct HistoryListView: View {
 
     // MARK: Rows
 
+    /// Each workout is its own HUD slab on the clear chamber (RoutineListView's
+    /// hosting pattern) instead of a stock grouped-list cell.
     private func row(_ workout: Workout) -> some View {
         NavigationLink {
             WorkoutDetailView(workout: workout)
@@ -259,11 +246,12 @@ struct HistoryListView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(workout.title)
                         .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(SettColor.bone)
                         .lineLimit(1)
                         .minimumScaleFactor(0.8)
                     Text(workout.startedAt.formatted(date: .abbreviated, time: .omitted))
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(SettColor.ash)
                     if let rating = workout.ratingHalfStars, rating > 0 {
                         // Gold audit: a rating is effort, not power/reward — ki cyan.
                         StarRatingRow(halfStars: rating)
@@ -274,7 +262,7 @@ struct HistoryListView: View {
                     Text(WorkoutFormat.duration(workout.durationSeconds))
                         .font(.caption)
                         .monospacedDigit()
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(SettColor.ash)
                     if workout.isCasual {
                         // Casual sessions are off the record — the engine returns (0,0)
                         // for them, so "+0 lb" would be a lie. Say what it is instead.
@@ -298,7 +286,11 @@ struct HistoryListView: View {
                     }
                 }
             }
+            .hudCard()
         }
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
+        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
             Button(role: .destructive) {
                 delete(workout)

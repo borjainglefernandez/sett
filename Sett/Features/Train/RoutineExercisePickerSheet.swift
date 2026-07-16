@@ -12,6 +12,11 @@ struct RoutineExercisePickerSheet: View {
     /// Push day is one sheet, not six. When false (the replace flow) a tap picks one
     /// and dismisses immediately.
     var allowsMultiple: Bool = true
+    /// Overrides the mode-derived navigation title (e.g. a caller's "Swap Exercise").
+    var title: String? = nil
+    /// Single-select only: the exercise currently occupying the slot, so the sheet
+    /// can mark it with a checkmark instead of offering it as a fresh pick.
+    var selectedID: UUID? = nil
 
     @Environment(\.dismiss) private var dismiss
 
@@ -21,9 +26,12 @@ struct RoutineExercisePickerSheet: View {
     @State private var pickedIDs: [UUID] = []   // add order preserved
     @State private var isCreating = false
 
-    init(allowsMultiple: Bool = true, onPick: @escaping (Exercise) -> Void) {
+    init(allowsMultiple: Bool = true, title: String? = nil, selectedID: UUID? = nil,
+         onPick: @escaping (Exercise) -> Void) {
         self.onPick = onPick
         self.allowsMultiple = allowsMultiple
+        self.title = title
+        self.selectedID = selectedID
         let exerciseFilter = #Predicate<Exercise> { !$0.isArchived && $0.deletedAt == nil }
         _exercises = Query(filter: exerciseFilter, sort: [SortDescriptor(\Exercise.name)])
     }
@@ -59,7 +67,7 @@ struct RoutineExercisePickerSheet: View {
             }
             .dungeonBackground()
             .searchable(text: $searchText, prompt: "Search exercises")
-            .navigationTitle(allowsMultiple ? "Add Exercises" : "Replace Exercise")
+            .navigationTitle(title ?? (allowsMultiple ? "Add Exercises" : "Replace Exercise"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -101,7 +109,7 @@ struct RoutineExercisePickerSheet: View {
             pickedIDs.remove(at: i)
         } else {
             pickedIDs.append(exercise.id)
-            Haptics.light()
+            Haptics.selection()
         }
     }
 
@@ -114,13 +122,15 @@ struct RoutineExercisePickerSheet: View {
     // MARK: Row
 
     private func row(_ exercise: Exercise) -> some View {
-        let isPicked = pickedIDs.contains(exercise.id)
+        // Multi: checked once added. Single: checked = the slot's current exercise.
+        let isChecked = allowsMultiple ? pickedIDs.contains(exercise.id)
+                                       : exercise.id == selectedID
         return Button {
             if allowsMultiple {
                 toggle(exercise)
             } else {
                 onPick(exercise)
-                Haptics.light()
+                Haptics.selection()
                 dismiss()
             }
         } label: {
@@ -129,23 +139,21 @@ struct RoutineExercisePickerSheet: View {
                              muscle: exercise.muscle, size: 40, color: SettColor.heroCyan)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(exercise.name)
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(SettColor.bone)
                     Text(exercise.equipment.rawValue.capitalized)
                         .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(SettColor.ash)
                 }
                 Spacer()
-                // Checkmark once added (multi mode); a plain + affordance otherwise.
-                Image(systemName: isPicked ? "checkmark.circle.fill"
-                                           : (allowsMultiple ? "plus.circle" : "plus.circle.fill"))
-                    .foregroundStyle(isPicked ? SettColor.heroCyan
-                                              : (allowsMultiple ? SettColor.iron : SettColor.heroCyan))
+                Image(systemName: isChecked ? "checkmark.circle.fill" : "plus.circle")
+                    .foregroundStyle(isChecked ? SettColor.heroCyan
+                                               : (allowsMultiple ? SettColor.iron : SettColor.heroCyan))
                     .accessibilityHidden(true)
             }
             .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
             .contentShape(Rectangle())
         }
-        .accessibilityAddTraits(isPicked ? [.isSelected] : [])
+        .accessibilityAddTraits(isChecked ? [.isSelected] : [])
         // .borderless (not .plain): in a List, borderless buttons get the full-row
         // tap target; .plain restricted hit-testing to the label and left most of
         // the row dead — only the trailing + reliably registered.

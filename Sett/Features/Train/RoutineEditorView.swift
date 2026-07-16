@@ -19,6 +19,9 @@ private struct RoutineDraftExercise: Identifiable {
     var muscleRaw: String
     var equipment: Equipment
     var setCount: Int = SetTuning.defaultCount
+    /// Per-exercise rest override, seeded from the persisted row. nil ⇒ no override:
+    /// Save falls back to the routine's default-rest control.
+    var restSeconds: Int? = nil
     /// Display mirror of the catalog `Exercise.instructions` (the machine-setup
     /// field app-wide). Edits go through the shared `MachineSetupSheet`, which
     /// writes the Exercise directly; this mirror keeps the row current.
@@ -48,6 +51,10 @@ struct RoutineEditorView: View {
     @State private var isShowingExercisePicker = false
     /// When set, the picker replaces this draft instead of appending a new one.
     @State private var replacingDraftID: RoutineDraftExercise.ID?
+    /// The draft whose per-exercise rest is being tuned (drives the rest sheet).
+    @State private var restTarget: RoutineDraftExercise?
+    /// The rest sheet's working value; committed back into the draft on SAVE.
+    @State private var restDraftSeconds = 90
     /// The catalog Exercise whose machine setup is being edited in the shared sheet.
     @State private var setupTarget: Exercise?
     /// The draft that owns `setupTarget`, so its display mirror can refresh on dismiss.
@@ -114,7 +121,7 @@ struct RoutineEditorView: View {
             Section {
                 ForEach($drafts) { $draft in
                     exerciseRow($draft)
-                        .listRowBackground(rowBackground)
+                        .listRowBackground(Color.clear.nestedSlab(radius: 14))
                         .listRowSeparator(.hidden)
                         .listRowInsets(EdgeInsets(top: 5, leading: 16, bottom: 5, trailing: 16))
                         .opacity(draggingDraft?.id == draft.id ? 0.35 : 1)
@@ -179,7 +186,10 @@ struct RoutineEditorView: View {
             }
         }
         .sheet(isPresented: $isShowingExercisePicker, onDismiss: { replacingDraftID = nil }) {
-            RoutineExercisePickerSheet(allowsMultiple: replacingDraftID == nil) { exercise in
+            RoutineExercisePickerSheet(
+                allowsMultiple: replacingDraftID == nil,
+                selectedID: drafts.first { $0.id == replacingDraftID }?.exerciseID
+            ) { exercise in
                 pick(exercise)
             }
         }
@@ -191,6 +201,26 @@ struct RoutineEditorView: View {
                 defaultGymID = gym?.id
                 defaultGymName = gym?.name
             }
+        }
+        .sheet(item: $restTarget) { target in
+            ChamberSheet(title: "Rest Time") {
+                if let idx = drafts.firstIndex(where: { $0.id == target.id }) {
+                    drafts[idx].restSeconds = restDraftSeconds
+                }
+            } content: {
+                VStack(alignment: .leading, spacing: 12) {
+                    Eyebrow(target.name.uppercased())
+                    ChamberStepper(value: $restDraftSeconds, in: RestTuning.range,
+                                   step: RestTuning.step)
+                        .frame(maxWidth: .infinity)
+                    Text("SECONDS BETWEEN SETS · THIS EXERCISE ONLY")
+                        .font(.system(size: 10, weight: .medium, design: .monospaced))
+                        .kerning(1)
+                        .foregroundStyle(SettColor.iron)
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            .presentationDetents([.height(240)])
         }
         .onAppear(perform: loadDraftIfNeeded)
     }
@@ -210,16 +240,6 @@ struct RoutineEditorView: View {
     /// Whether the app is running the split in rotation order (vs. weekday assignment).
     /// Governs how the SCHEDULE section reads: in rotation, the day chips are inert.
     private var isRotation: Bool { services.settings.scheduleMode == .rotation }
-
-
-    private var rowBackground: some View {
-        RoundedRectangle(cornerRadius: 14, style: .continuous)
-            .fill(SettColor.card)
-            .overlay {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .strokeBorder(SettColor.cardBorder, lineWidth: 1)
-            }
-    }
 
     // MARK: Scheduled days (Sunday-first display; bit 0 = Monday semantics unchanged)
 
@@ -286,7 +306,7 @@ struct RoutineEditorView: View {
     private var restControl: some View {
         HStack(spacing: 8) {
             Image(systemName: "timer").foregroundStyle(SettColor.heroCyan).font(.caption)
-            Text("Default rest")
+            Text("Default rest · applies to all")
                 .font(.system(size: 13, weight: .medium, design: .rounded))
                 .foregroundStyle(SettColor.ash)
             Spacer(minLength: 8)
@@ -357,6 +377,10 @@ struct RoutineEditorView: View {
                     Label(hasSetup ? "Edit machine setup" : "Add machine setup",
                           systemImage: "gearshape")
                 }
+                Button {
+                    restDraftSeconds = draft.wrappedValue.restSeconds ?? defaultRestSeconds
+                    restTarget = draft.wrappedValue
+                } label: { Label("Rest time…", systemImage: "timer") }
                 Button {
                     replacingDraftID = draft.wrappedValue.id
                     isShowingExercisePicker = true
@@ -511,12 +535,13 @@ struct RoutineEditorView: View {
                 muscleRaw: re.muscleRaw,
                 equipment: catalog?.equipment ?? .machine,
                 setCount: re.plannedSetCount > 0 ? re.plannedSetCount : max(1, re.orderedPlannedSets.count),
+                restSeconds: re.restSeconds,
                 machineSetup: catalog?.instructions
             )
         }
-        // Seed the default-rest control from the first override, else the app default.
-        defaultRestSeconds = routine.orderedExercises.compactMap(\.restSeconds).first
-            ?? services.settings.defaultRestSeconds
+        // The control is a broadcast tool, not a mirror of any one row — seeding it
+        // from the first override (the v1 read) misrepresented mixed-rest routines.
+        defaultRestSeconds = services.settings.defaultRestSeconds
         loadedRestSeconds = defaultRestSeconds
     }
 
@@ -591,7 +616,9 @@ struct RoutineEditorView: View {
 
     /// Reconcile drafts against persisted rows: mutate kept rows in place (bumping
     /// updatedAt/needsPush only when something changed), insert new, soft-delete removed.
-    /// Every kept/new exercise gets the routine default rest and its draft set count.
+    /// Rest precedence: a per-exercise override retuned this session wins its row;
+    /// otherwise a CHANGED default-rest control floods every row ("applies to all");
+    /// an untouched control preserves each exercise's own rest.
     private func reconcileExercises(into routine: Routine, now: Date) {
         let keptIDs = Set(drafts.compactMap { $0.existing?.id })
         for re in routine.orderedExercises where !keptIDs.contains(re.id) {
@@ -599,15 +626,17 @@ struct RoutineEditorView: View {
             re.updatedAt = now
             re.needsPush = true
         }
-        // Only push the routine default onto existing rows when the user actually
-        // CHANGED the rest control — otherwise preserve each exercise's own rest
-        // instead of flattening every row to one value on every save.
         let restChanged = defaultRestSeconds != loadedRestSeconds
         for (index, draft) in drafts.enumerated() {
             if let existing = draft.existing {
                 var changed = false
                 if existing.orderIndex != index { existing.orderIndex = index; changed = true }
-                if existing.restSeconds == nil || restChanged, existing.restSeconds != defaultRestSeconds {
+                // Drafts seed restSeconds from the row, so a differing value means the
+                // user retuned THIS exercise — that edit outranks the global flood.
+                if let override = draft.restSeconds, override != existing.restSeconds {
+                    existing.restSeconds = override; changed = true
+                } else if existing.restSeconds == nil || restChanged,
+                          existing.restSeconds != defaultRestSeconds {
                     existing.restSeconds = defaultRestSeconds; changed = true
                 }
                 if existing.plannedSetCount != draft.setCount { existing.plannedSetCount = draft.setCount; changed = true }
@@ -633,7 +662,7 @@ struct RoutineEditorView: View {
                                        into routine: Routine, exercise: Exercise, now: Date) {
         let re = RoutineExercise(orderIndex: index, exercise: exercise,
                                  setCount: draft.setCount, now: now)
-        re.restSeconds = defaultRestSeconds
+        re.restSeconds = draft.restSeconds ?? defaultRestSeconds
         re.routine = routine
         modelContext.insert(re)
     }

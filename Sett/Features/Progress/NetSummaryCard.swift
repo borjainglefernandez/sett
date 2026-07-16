@@ -31,9 +31,7 @@ struct NetSummaryCard: View {
         let netVolumeDisplay = Int((Double(net.volumeGrams) / unit.gramsPerUnit).rounded())
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("Net Progress")
-                    .font(.title3.weight(.semibold))
-                Spacer()
+                CardTitle("Net Progress")
                 Eyebrow(vsLabel.uppercased())
             }
             HStack(spacing: 32) {

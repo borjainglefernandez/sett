@@ -3,7 +3,7 @@ import SwiftData
 import SettCore
 
 /// Tab 1 — the dashboard. Answers "what do I do right now?":
-/// greeting + streak, 7-Slot Burst Row, start button, bodyweight chip,
+/// greeting + streak, power crest, 7-Slot Burst Row, launch card,
 /// Directive Panel, latest insight, recent workouts.
 struct HomeTabView: View {
     @Environment(AppServices.self) private var services
@@ -13,10 +13,10 @@ struct HomeTabView: View {
     @Query private var routines: [Routine]
     @Query private var insights: [AIInsight]
     @Query private var frequencyGoals: [Goal]
-    @Query private var latestBodyweight: [BodyweightEntry]
 
     @State private var isShowingSettings = false
     @State private var isShowingStreak = false
+    @State private var isShowingHowPowerWorks = false
     @State private var readingDismissedKey = UserDefaults.standard.string(forKey: "sett.reading.dismissed") ?? ""
 
     init() {
@@ -32,14 +32,6 @@ struct HomeTabView: View {
 
         let goalFilter = #Predicate<Goal> { $0.kindRaw == "frequency" && $0.isActive && $0.deletedAt == nil }
         _frequencyGoals = Query(filter: goalFilter)
-
-        let bodyweightFilter = #Predicate<BodyweightEntry> { $0.deletedAt == nil }
-        var bodyweightDescriptor = FetchDescriptor<BodyweightEntry>(
-            predicate: bodyweightFilter,
-            sortBy: [SortDescriptor(\BodyweightEntry.loggedAt, order: .reverse)]
-        )
-        bodyweightDescriptor.fetchLimit = 1
-        _latestBodyweight = Query(bodyweightDescriptor)
     }
 
     /// Streaks and weekly goals use ISO weeks (Monday start), matching the engines.
@@ -82,7 +74,8 @@ struct HomeTabView: View {
                                 startCard
                             }
                         }
-                        BodyweightChipCard(latest: latestBodyweight.first)
+                        // Bodyweight lives on the directive panel's row now — one
+                        // surface for the day's asks, not a chip AND a directive.
                         DirectivePanel()
                         if let insight = insights.first {
                             insightTeaser(insight)
@@ -110,6 +103,9 @@ struct HomeTabView: View {
             .sheet(isPresented: $isShowingSettings) {
                 SettingsView()
             }
+            .sheet(isPresented: $isShowingHowPowerWorks) {
+                HowPowerWorksView()
+            }
             .sheet(isPresented: $isShowingStreak) {
                 StreakSheet(state: streakState,
                             mode: services.settings.scheduleMode,
@@ -128,55 +124,72 @@ struct HomeTabView: View {
     /// first card. The session screens live under this sky; home now shares the world
     /// instead of opening on flat black. Scrolls with content, never intercepts touches.
     private var realmGlow: some View {
-        Image(ChamberBackground.resolve(services.settings.chamberBackground).assetName)
-            .resizable()
-            .scaledToFill()
-            .frame(height: 340)
-            .frame(maxWidth: .infinity)
-            .clipped()
-            .opacity(0.45)
-            // Fade in from the very top (no hard seam under the nav bar) AND out by the
-            // first card — the sky bleeds behind the status bar instead of being sliced.
-            .mask {
-                LinearGradient(stops: [.init(color: .clear, location: 0),
-                                       .init(color: .white, location: 0.22),
-                                       .init(color: .white.opacity(0.5), location: 0.6),
-                                       .init(color: .clear, location: 1)],
-                               startPoint: .top, endPoint: .bottom)
-            }
-            .ignoresSafeArea(edges: .top)
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
+        ZStack {
+            Image(ChamberBackground.resolve(services.settings.chamberBackground).assetName)
+                .resizable()
+                .scaledToFill()
+            // A sparse drift of dormant motes in the sky — the chamber is alive even
+            // before a session starts. Same mask, so they fade out with the glow.
+            MoteField(tier: .dormant, maxCount: 10)
+        }
+        .frame(height: 340)
+        .frame(maxWidth: .infinity)
+        .clipped()
+        .opacity(0.45)
+        // Fade in from the very top (no hard seam under the nav bar) AND out by the
+        // first card — the sky bleeds behind the status bar instead of being sliced.
+        .mask {
+            LinearGradient(stops: [.init(color: .clear, location: 0),
+                                   .init(color: .white, location: 0.22),
+                                   .init(color: .white.opacity(0.5), location: 0.6),
+                                   .init(color: .clear, location: 1)],
+                           startPoint: .top, endPoint: .bottom)
+        }
+        .ignoresSafeArea(edges: .top)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 
     // MARK: Power crest — the sacred number, finally on home
 
     /// Current PL in gold under the greeting (gold audit: the power level is the ONE
-    /// gold-led element, so home's single gold moment is exactly here). Display-only;
-    /// the Power tab holds the full character sheet.
+    /// gold-led element, so home's single gold moment is exactly here). The number is
+    /// the sacred odometer — it ROLLS when a recompute moves it — and the crest is a
+    /// tappable doorway into the "how power works" primer.
     @ViewBuilder
     private var powerCrest: some View {
         let pl = services.progression.snapshotPowerLevel
         if pl > 0 {
-            HStack(spacing: 10) {
-                SettSigil(size: 20, color: SettColor.saiyanGold)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("POWER LEVEL")
-                        .font(.system(size: 9, weight: .bold, design: .monospaced))
-                        .kerning(1.8)
-                        .foregroundStyle(SettColor.ash)
-                    HStack(alignment: .firstTextBaseline, spacing: 10) {
-                        PowerNumeral(pl, size: .m)
-                        Text(UserForm.form(forPL: pl).title)
-                            .font(.system(size: 10, weight: .heavy, design: .monospaced))
-                            .kerning(1.5)
-                            .foregroundStyle(SettColor.heroCyan)
+            Button {
+                isShowingHowPowerWorks = true
+            } label: {
+                HStack(spacing: 10) {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Eyebrow("POWER LEVEL")
+                        HStack(alignment: .firstTextBaseline, spacing: 10) {
+                            SacredNumberView(value: pl, size: .m)
+                            Text(UserForm.form(forPL: pl).title)
+                                .font(.system(size: 10, weight: .heavy, design: .monospaced))
+                                .kerning(1.5)
+                                .foregroundStyle(SettColor.heroCyan)
+                            if let delta = services.progression.plDeltaThisWeek {
+                                // Week-so-far ΔPL — momentum, not reward, so it never
+                                // wears gold: positive green, negative quiet ash.
+                                Text("\(delta >= 0 ? "+" : "")\(delta.formatted()) THIS WEEK")
+                                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                    .kerning(1)
+                                    .foregroundStyle(delta >= 0 ? SettColor.positive : SettColor.ash)
+                            }
+                        }
                     }
+                    Spacer()
                 }
-                Spacer()
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Power level \(pl)")
+            .accessibilityHint("Shows how the power level works")
         }
     }
 
@@ -188,12 +201,8 @@ struct HomeTabView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
-                Text(Date.now.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())
+                Eyebrow(Date.now.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())
                         .uppercased())
-                    .font(.system(size: 11, weight: .bold, design: .monospaced))
-                    .kerning(1.5)
-                    .foregroundStyle(SettColor.ash)
-                    .lineLimit(1)
                 Spacer()
                 phaseBadge
                 streakChip
@@ -290,6 +299,7 @@ struct HomeTabView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .hudCard()
+        .materialize()
         .accessibilityElement(children: .combine)
     }
 
@@ -323,10 +333,7 @@ struct HomeTabView: View {
                     .font(.system(size: 18, weight: .bold))
                     .foregroundStyle(SettColor.saiyanGold)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("ROTATION SEALED")
-                        .font(.system(size: 12, weight: .heavy, design: .monospaced))
-                        .kerning(1.5)
-                        .foregroundStyle(SettColor.saiyanGold)
+                    Eyebrow("ROTATION SEALED", tint: SettColor.saiyanGold)
                     Text(streakWeeks > 1 ? "Full cycle complete — \(streakWeeks) wk streak burning."
                                          : "Full cycle complete. Back to the top.")
                         .font(.footnote)
@@ -341,6 +348,7 @@ struct HomeTabView: View {
         }
         .buttonStyle(.plain)
         .hudCard(tint: SettColor.saiyanGold)
+        .materialize()
         .accessibilityLabel("Rotation sealed: full cycle complete. Dismisses this banner.")
     }
 
@@ -454,7 +462,7 @@ struct HomeTabView: View {
             } label: {
                 launchCardLabel
             }
-            .buttonStyle(.plain)
+            .buttonStyle(PressableSlabStyle(haptic: .light))
             .accessibilityLabel(todaysRoutine.map { "Start \($0.name)" } ?? "Quick start a workout")
             if todaysRoutine != nil {
                 // Ghost HUD control — the session's WARM-UP pill grammar, not a bare link.
@@ -478,61 +486,61 @@ struct HomeTabView: View {
     }
 
     private var launchCardLabel: some View {
-        ZStack {
-            Image(launchRealmAsset)
-                .resizable()
-                .aspectRatio(contentMode: .fill)
-            // Legibility: darker on the text side, easing to reveal the realm.
-            LinearGradient(colors: [.black.opacity(0.84), .black.opacity(0.6), .black.opacity(0.28)],
-                           startPoint: .leading, endPoint: .trailing)
-            HStack(spacing: 14) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("NEXT DIRECTIVE")
-                        .font(.system(size: 10, weight: .bold, design: .monospaced))
-                        .kerning(2)
-                        .foregroundStyle(SettColor.heroCyan)
-                    Text(todaysRoutine?.name ?? "Quick Start")
-                        .font(.system(.title3, design: .rounded).weight(.bold))
-                        .foregroundStyle(.white)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-                        .shadow(color: .black.opacity(0.6), radius: 3)
-                    Text(launchSubline)
-                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                        .kerning(1)
-                        .foregroundStyle(.white.opacity(0.75))
-                    if services.progression.snapshot?.restedBonusActive == true {
-                        restedChip
-                            .padding(.top, 2)
-                    }
+        RealmDoorwayCard(asset: launchRealmAsset,
+                         emphasized: true,
+                         height: services.progression.snapshot?.restedBonusActive == true ? 148 : 124) {
+            VStack(alignment: .leading, spacing: 6) {
+                Eyebrow(launchEyebrow, tint: SettColor.heroCyan)
+                Text(todaysRoutine?.name ?? "Quick Start")
+                    .font(.system(.title3, design: .rounded).weight(.bold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .shadow(color: .black.opacity(0.6), radius: 3)
+                Text(launchSubline)
+                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .kerning(1)
+                    .foregroundStyle(.white.opacity(0.75))
+                if services.progression.snapshot?.restedBonusActive == true {
+                    restedChip
+                        .padding(.top, 2)
                 }
-                Spacer(minLength: 8)
-                ZStack {
-                    Circle()
-                        .fill(SettColor.heroCyan)
-                        .frame(width: 54, height: 54)
-                        .shadow(color: SettColor.heroCyan.opacity(0.5), radius: 7, y: 2)
-                    Image(systemName: "play.fill")
-                        .font(.system(size: 22, weight: .bold))
-                        .foregroundStyle(SettColor.etch)
-                        .offset(x: 2)
-                }
-                .accessibilityHidden(true)
             }
-            .padding(.horizontal, 18)
-            .padding(.vertical, 16)
+        } accessory: {
+            playDisc
         }
-        .frame(height: services.progression.snapshot?.restedBonusActive == true ? 148 : 124)
-        .frame(maxWidth: .infinity)
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(SettColor.heroCyan.opacity(0.35), lineWidth: 1)
-            CornerTicksShape(length: 7, inset: 8)
-                .stroke(SettColor.heroCyan.opacity(0.55), lineWidth: 1)
-        }
-        .shadow(color: .black.opacity(0.35), radius: 8, y: 4)
         .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+
+    /// "NEXT DIRECTIVE · <why now>": the weekday it fires on, or its slot in the
+    /// rotation cycle. Quick Start has no schedule to cite, so no suffix.
+    private var launchEyebrow: String {
+        guard let routine = todaysRoutine else { return "NEXT DIRECTIVE" }
+        switch services.settings.scheduleMode {
+        case .weekday:
+            return "NEXT DIRECTIVE · \(Date.now.formatted(.dateTime.weekday(.wide)).uppercased())"
+        case .rotation:
+            // Same position math as the Train tab's rotation rows — the two surfaces
+            // must never disagree about where the cycle stands.
+            let order = Scheduling.orderedActive(routines)
+            let pos = (order.firstIndex { $0.id == routine.id } ?? 0) + 1
+            return "NEXT DIRECTIVE · CYCLE \(pos)/\(order.count)"
+        }
+    }
+
+    /// The cyan play disc both doorway cards dock as their trailing accessory.
+    private var playDisc: some View {
+        ZStack {
+            Circle()
+                .fill(SettColor.heroCyan)
+                .frame(width: 54, height: 54)
+                .shadow(color: SettColor.heroCyan.opacity(0.5), radius: 7, y: 2)
+            Image(systemName: "play.fill")
+                .font(.system(size: 22, weight: .bold))
+                .foregroundStyle(SettColor.etch)
+                .offset(x: 2)
+        }
+        .accessibilityHidden(true)
     }
 
     /// The realm behind the launch card: the routine's own domain if it has one. When it
@@ -555,8 +563,9 @@ struct HomeTabView: View {
         return "EMPTY CHAMBER — LOG AS YOU GO"
     }
 
-    /// The rested-bonus mechanic was computed but never shown. Surface it: a full
-    /// rest day arms a 1.25× XP surge on the next workout. Cyan (ki), not gold.
+    /// The rested-bonus mechanic was computed but never shown. Surface it: after a
+    /// full rest day the next session is surged — its volume counts ×1.25 inside the
+    /// scanner window. Cyan (ki), not gold.
     private var restedChip: some View {
         Label("SURGE ARMED · REST BANKED", systemImage: "bolt.fill")
             .font(.system(size: 11, weight: .bold, design: .monospaced))
@@ -577,56 +586,25 @@ struct HomeTabView: View {
         Button {
             session.quickStart()
         } label: {
-            ZStack {
-                Image(ChamberBackground.resolve(services.settings.chamberBackground).assetName)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                LinearGradient(colors: [.black.opacity(0.84), .black.opacity(0.6), .black.opacity(0.28)],
-                               startPoint: .leading, endPoint: .trailing)
-                HStack(spacing: 14) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("FIRST DIRECTIVE")
-                            .font(.system(size: 10, weight: .bold, design: .monospaced))
-                            .kerning(2)
-                            .foregroundStyle(SettColor.heroCyan)
-                        Text("Enter the chamber")
-                            .font(.system(.title3, design: .rounded).weight(.bold))
-                            .foregroundStyle(.white)
-                            .shadow(color: .black.opacity(0.6), radius: 3)
-                        Text("YOUR TRAINING ARC STARTS HERE")
-                            .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                            .kerning(1)
-                            .foregroundStyle(.white.opacity(0.75))
-                    }
-                    Spacer(minLength: 8)
-                    ZStack {
-                        Circle()
-                            .fill(SettColor.heroCyan)
-                            .frame(width: 54, height: 54)
-                            .shadow(color: SettColor.heroCyan.opacity(0.5), radius: 7, y: 2)
-                        Image(systemName: "play.fill")
-                            .font(.system(size: 22, weight: .bold))
-                            .foregroundStyle(SettColor.etch)
-                            .offset(x: 2)
-                    }
-                    .accessibilityHidden(true)
+            RealmDoorwayCard(asset: ChamberBackground.resolve(services.settings.chamberBackground).assetName,
+                             emphasized: true) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Eyebrow("FIRST DIRECTIVE", tint: SettColor.heroCyan)
+                    Text("Enter the chamber")
+                        .font(.system(.title3, design: .rounded).weight(.bold))
+                        .foregroundStyle(.white)
+                        .shadow(color: .black.opacity(0.6), radius: 3)
+                    Text("YOUR TRAINING ARC STARTS HERE")
+                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                        .kerning(1)
+                        .foregroundStyle(.white.opacity(0.75))
                 }
-                .padding(.horizontal, 18)
-                .padding(.vertical, 16)
+            } accessory: {
+                playDisc
             }
-            .frame(height: 124)
-            .frame(maxWidth: .infinity)
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .strokeBorder(SettColor.heroCyan.opacity(0.35), lineWidth: 1)
-                CornerTicksShape(length: 7, inset: 8)
-                    .stroke(SettColor.heroCyan.opacity(0.55), lineWidth: 1)
-            }
-            .shadow(color: .black.opacity(0.35), radius: 8, y: 4)
             .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressableSlabStyle(haptic: .light))
         .accessibilityLabel("Start your first workout")
     }
 
@@ -641,13 +619,13 @@ struct HomeTabView: View {
                     .foregroundStyle(SettColor.heroCyan) // gold audit: insights are ki, not PL
                 Text(firstLine(of: insight.body))
                     .font(.subheadline)
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(SettColor.bone)
                     .multilineTextAlignment(.leading)
                     .lineLimit(2)
                 Spacer()
                 Image(systemName: "chevron.right")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(SettColor.iron)
             }
             .settCard()
         }
@@ -663,8 +641,7 @@ struct HomeTabView: View {
     private var recentSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("Recent")
-                    .font(.headline)
+                Eyebrow("RECENT")
                 Spacer()
                 NavigationLink("All Workouts") {
                     HistoryListView()
@@ -674,7 +651,7 @@ struct HomeTabView: View {
             if finishedWorkouts.isEmpty {
                 Text("No workouts yet — your history writes itself.")
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(SettColor.ash)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .settCard()
             } else {
@@ -713,16 +690,16 @@ struct HomeTabView: View {
                     .minimumScaleFactor(0.8)
                 Text(workout.startedAt.formatted(date: .abbreviated, time: .omitted))
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(SettColor.ash)
             }
             Spacer()
             Text(WorkoutFormat.duration(workout.durationSeconds))
                 .font(.caption)
                 .monospacedDigit()
-                .foregroundStyle(.secondary)
+                .foregroundStyle(SettColor.ash)
             Image(systemName: "chevron.right")
                 .font(.caption2)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(SettColor.iron)
         }
         .hudCard()
     }

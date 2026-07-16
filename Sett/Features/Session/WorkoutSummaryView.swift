@@ -20,6 +20,7 @@ struct WorkoutSummaryView: View {
     let summary: WorkoutSummaryData
 
     @Environment(ProgressionStore.self) private var progression
+    @Environment(WorkoutSessionStore.self) private var session
     @Environment(AppServices.self) private var services
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
@@ -40,6 +41,11 @@ struct WorkoutSummaryView: View {
     @State private var ratingHalfStars = 0
     /// Rendered dark-chamber share card (the social pillar's zero-backend v0).
     @State private var shareImage: Image?
+    /// The Scouter Manual, reachable from the receipt so PL never reads as a black box.
+    @State private var isShowingHowPowerWorks = false
+    /// Post-session note staged/persisted from the wrap-up row.
+    @State private var sessionNotes: String?
+    @State private var isEditingSessionNotes = false
 
     // Scan Ritual v3 choreography.
     @State private var scrambling = false
@@ -70,6 +76,10 @@ struct WorkoutSummaryView: View {
                         netCard
                             .transition(.opacity.combined(with: .move(edge: .bottom)))
                     }
+                }
+                if stage >= .badges && !summary.completedGoalTitles.isEmpty {
+                    goalCompleteCard
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
                 }
                 if stage >= .badges && !summary.newBadgeKeys.isEmpty {
                     badgesCard
@@ -105,6 +115,17 @@ struct WorkoutSummaryView: View {
         .presentationDetents([.large])
         .presentationDragIndicator(.hidden)
         .presentationBackground(TimeChamber.void)
+        .sheet(isPresented: $isShowingHowPowerWorks) {
+            HowPowerWorksView()
+        }
+        .sheet(isPresented: $isEditingSessionNotes) {
+            SetNoteSheet(initialText: sessionNotes ?? "",
+                         title: "Session Notes",
+                         placeholder: "great pump, rushed the last superset…") { note in
+                sessionNotes = note
+                if let workout = fetchWorkout() { session.setWorkoutNotes(note, for: workout) }
+            }
+        }
         .task { await runStages() }
         .task { renderShareCard() }
     }
@@ -257,10 +278,19 @@ struct WorkoutSummaryView: View {
                 .foregroundStyle(SettColor.ash)
             if stage >= .power {
                 VStack(spacing: 8) {
-                    Text("POWER LEVEL")
-                        .font(.caption2.weight(.semibold))
-                        .kerning(1.5)
-                        .foregroundStyle(SettColor.ash)
+                    // (i) → the Scouter Manual — HowPowerWorks, discoverable at the
+                    // exact moment the number lands.
+                    HStack(spacing: 5) {
+                        Eyebrow("POWER LEVEL")
+                        Button { isShowingHowPowerWorks = true } label: {
+                            Image(systemName: "info.circle")
+                                .font(.caption2)
+                                .foregroundStyle(SettColor.ash)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("How Power Level works")
+                    }
                     powerReadout
                     if powerDelta != 0 {
                         deltaChip
@@ -321,19 +351,45 @@ struct WorkoutSummaryView: View {
         }
     }
 
-    /// The receipt: WHERE the delta came from (the two levers) and where the
+    /// The receipt: WHERE the delta came from (all three levers) and where the
     /// climb goes next (the endless Forms ladder). PL stops being a black box.
     @ViewBuilder
     private var receiptRows: some View {
         let ssDelta = summary.strengthScoreAfter - summary.strengthScoreBefore
         let wvlDelta = summary.weeklyVolumeLbAfter - summary.weeklyVolumeLbBefore
+        let streakMoved = summary.consistencyAfter != summary.consistencyBefore
         let form = UserForm.form(forPL: summary.powerLevelAfter)
         let formBefore = UserForm.form(forPL: summary.powerLevelBefore)
         VStack(spacing: 5) {
-            if ssDelta != 0 || wvlDelta != 0 {
+            if ssDelta != 0 || wvlDelta != 0 || streakMoved {
                 HStack(spacing: 14) {
                     receiptLever("STRENGTH", delta: ssDelta)
                     receiptLever("VOLUME", delta: wvlDelta)
+                    if streakMoved { streakLever }
+                }
+            }
+            if summary.surgeActive {
+                // Gold-free by design: the surge is banked rest (action), not a reward.
+                Text("REST BANKED — VOLUME ×1.25 THIS SCAN")
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .kerning(1)
+                    .foregroundStyle(SettColor.heroCyan)
+            }
+            if !summary.didQualify {
+                HStack(spacing: 4) {
+                    Text("NOT A QUALIFYING SCAN — NEEDS 3+ EFFECTIVE SETS · 10+ MIN")
+                        .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                        .kerning(1)
+                        .foregroundStyle(SettColor.ash)
+                        .multilineTextAlignment(.center)
+                    Button { isShowingHowPowerWorks = true } label: {
+                        Image(systemName: "info.circle")
+                            .font(.system(size: 10))
+                            .foregroundStyle(SettColor.ash)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Why this scan didn't qualify")
                 }
             }
             if form.index > formBefore.index {
@@ -364,6 +420,26 @@ struct WorkoutSummaryView: View {
                 .foregroundStyle(delta > 0 ? SettColor.positive
                                  : delta < 0 ? SettColor.ash : SettColor.iron)
         }
+    }
+
+    /// The third lever: the consistency multiplier's move this scan, shown as the
+    /// full ×before → ×after so the streak's compounding is legible, not implied.
+    private var streakLever: some View {
+        HStack(spacing: 4) {
+            Text("STREAK")
+                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .kerning(1)
+                .foregroundStyle(SettColor.ash)
+            Text("\(multiplierText(summary.consistencyBefore)) → \(multiplierText(summary.consistencyAfter))")
+                .font(.system(size: 10, weight: .heavy, design: .monospaced))
+                .monospacedDigit()
+                .foregroundStyle(summary.consistencyAfter > summary.consistencyBefore
+                                 ? SettColor.positive : SettColor.ash)
+        }
+    }
+
+    private func multiplierText(_ value: Double) -> String {
+        "×" + value.formatted(.number.precision(.fractionLength(2)))
     }
 
     private var deltaChip: some View {
@@ -465,34 +541,28 @@ struct WorkoutSummaryView: View {
             }
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .top, spacing: 16) {
-                    ForEach(summary.newBadgeKeys, id: \.self) { key in
-                        badgeMedallion(key)
+                    ForEach(Array(summary.newBadgeKeys.enumerated()), id: \.element) { index, key in
+                        BadgePremiereMedallion(name: badgeName(key), index: index)
                     }
                 }
             }
+            // Bursts spill past the ScrollView's bounds — don't clip the premiere.
+            .scrollClipDisabled()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .settCard()
     }
 
-    private func badgeMedallion(_ key: String) -> some View {
-        VStack(spacing: 8) {
-            Image(systemName: "medal.fill")
-                .font(.title2)
-                .foregroundStyle(SettColor.etch)
-                .frame(width: 64, height: 64)
-                .background(Aura.gold, in: Circle())
-            Text(badgeName(key))
-                .font(.caption2)
-                .multilineTextAlignment(.center)
-                .lineLimit(2)
-                .minimumScaleFactor(0.8)
-                .frame(width: 84, height: 28, alignment: .top)
-        }
-    }
-
     private func badgeName(_ key: String) -> String {
         progression.config?.badge(key)?.name ?? key
+    }
+
+    /// A goal crossed its finish line during this scan — a gold beat in the ceremony,
+    /// revealed alongside the badges stage.
+    private var goalCompleteCard: some View {
+        SystemMessageView(title: "GOAL COMPLETE",
+                          body: summary.completedGoalTitles.joined(separator: "\n"))
+            .overlay { AuraBurstView(gold: true) }
     }
 
 
@@ -509,6 +579,7 @@ struct WorkoutSummaryView: View {
             }
             Text(summary.commentary)
                 .font(.body)
+                .foregroundStyle(SettColor.bone)
             Text(summary.commentarySource == .onDevice ? "Generated on device" : "sett scanner")
                 .font(.footnote)
                 .foregroundStyle(SettColor.iron)
@@ -520,25 +591,55 @@ struct WorkoutSummaryView: View {
     private var wrapUp: some View {
         VStack(spacing: 16) {
             starRating
+            sessionNotesRow
             if let shareImage, !summary.isCasual {
                 ShareLink(item: shareImage,
-                          preview: SharePreview("\(summary.title) — PWR \(summary.powerLevelAfter)",
+                          preview: SharePreview("\(summary.title) — POWER LEVEL \(summary.powerLevelAfter)",
                                                 image: shareImage)) {
                     Label("Share Power Scan", systemImage: "square.and.arrow.up")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(SettColor.heroCyan)
                 }
             }
-            Button {
-                dismiss()
-            } label: {
-                Text("Done")
-                    .font(.headline)
-                    .frame(maxWidth: .infinity, minHeight: 50)
-            }
-            .buttonStyle(.borderedProminent)
-            .buttonBorderShape(.capsule)
+            ChamberCTAButton("Done") { dismiss() }
         }
+    }
+
+    /// Optional post-session note, written before Done — the one moment "how did that
+    /// feel" is still fresh. Persists straight onto the workout via the store.
+    private var sessionNotesRow: some View {
+        Button { isEditingSessionNotes = true } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "text.alignleft")
+                    .font(.footnote)
+                    .foregroundStyle(SettColor.ash)
+                VStack(alignment: .leading, spacing: 2) {
+                    Eyebrow("SESSION NOTES")
+                    if let sessionNotes, !sessionNotes.isEmpty {
+                        Text(sessionNotes)
+                            .font(.subheadline)
+                            .foregroundStyle(SettColor.bone)
+                            .lineLimit(3)
+                            .multilineTextAlignment(.leading)
+                    } else {
+                        Text("How did this session feel?")
+                            .font(.subheadline)
+                            .foregroundStyle(SettColor.ash)
+                    }
+                }
+                Spacer(minLength: 4)
+                Image(systemName: "square.and.pencil")
+                    .font(.caption)
+                    .foregroundStyle(SettColor.iron)
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .nestedSlab()
+        .accessibilityLabel(sessionNotes?.isEmpty == false
+                            ? "Session notes: \(sessionNotes!)" : "Add session notes")
     }
 
     // MARK: Star rating (0…10 half stars on 5 tappable stars)
@@ -610,7 +711,9 @@ struct WorkoutSummaryView: View {
     }
 
     private func loadExistingRating() {
-        ratingHalfStars = fetchWorkout()?.ratingHalfStars ?? 0
+        let workout = fetchWorkout()
+        ratingHalfStars = workout?.ratingHalfStars ?? 0
+        sessionNotes = workout?.notes
     }
 
     private func persistRating() {
@@ -626,6 +729,54 @@ struct WorkoutSummaryView: View {
         var descriptor = FetchDescriptor<Workout>(predicate: #Predicate { $0.id == workoutID })
         descriptor.fetchLimit = 1
         return (try? modelContext.fetch(descriptor))?.first
+    }
+}
+
+// MARK: - Badge premiere medallion (Stage 3)
+
+/// One earned medallion, premiered: a spring scale-in (0.6 → 1) plus a one-shot
+/// gold AuraBurstView, staggered ~150 ms per index so a multi-badge haul reads as
+/// a volley, not a clump. Reduce Motion: direct-set scale, no burst (AuraBurstView
+/// is RM-clear anyway).
+private struct BadgePremiereMedallion: View {
+    let name: String
+    let index: Int
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var scale: CGFloat = 0.6
+    @State private var showBurst = false
+
+    var body: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "medal.fill")
+                .font(.title2)
+                .foregroundStyle(SettColor.etch)
+                .frame(width: 64, height: 64)
+                .background(Aura.gold, in: Circle())
+                .scaleEffect(scale)
+                .overlay {
+                    if showBurst {
+                        AuraBurstView(gold: true)
+                            .frame(width: 130, height: 130)
+                    }
+                }
+            Text(name)
+                .font(.caption2)
+                .foregroundStyle(SettColor.bone)
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+                .minimumScaleFactor(0.8)
+                .frame(width: 84, height: 28, alignment: .top)
+        }
+        .task {
+            guard !reduceMotion else {
+                scale = 1
+                return
+            }
+            try? await Task.sleep(for: .milliseconds(150 * index))
+            showBurst = true
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.55)) { scale = 1 }
+        }
     }
 }
 

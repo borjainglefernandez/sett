@@ -45,8 +45,13 @@ struct E1RMTrendsCard: View {
         let trends = trends
         if !trends.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
-                Text("e1RM Trends")
-                    .font(.title3.weight(.semibold))
+                VStack(alignment: .leading, spacing: 2) {
+                    CardTitle("e1RM Trends")
+                    // Defines the jargon with zero taps.
+                    Text("estimated one-rep max per lift")
+                        .font(.caption)
+                        .foregroundStyle(SettColor.ash)
+                }
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 12) {
                         ForEach(trends) { trend in

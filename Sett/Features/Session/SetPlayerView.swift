@@ -18,6 +18,9 @@ struct SetPlayerView: View {
     /// Called after a successful commit; the shell owns the REST/advance transition.
     /// Carries the classified outcome so the shell can tint the transition.
     let onLogged: (_ outcome: LogOutcome) -> Void
+    /// Skip the rest of this exercise (shell jumps the cursor past its remaining
+    /// slots). Optional so previews outside the shell still render.
+    var onSkip: (() -> Void)? = nil
 
     @Environment(WorkoutSessionStore.self) private var session
     @Environment(AppServices.self) private var services
@@ -270,6 +273,16 @@ struct SetPlayerView: View {
         // White Void / Golden Sanctuary).
         .shadow(color: .black.opacity(0.85), radius: 2)
         .shadow(color: .black.opacity(0.5), radius: 7)
+        // Discreet escape: long-press the header to yield this exercise's remaining
+        // slots (no log, no removal — the shell just moves on).
+        .contentShape(Rectangle())
+        .contextMenu {
+            if let onSkip {
+                Button {
+                    onSkip()
+                } label: { Label("Skip exercise", systemImage: "forward.end") }
+            }
+        }
     }
 
     // MARK: Scouter core (numerals inside the living aura ring)
