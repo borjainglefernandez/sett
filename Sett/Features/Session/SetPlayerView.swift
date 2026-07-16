@@ -461,12 +461,30 @@ struct SetPlayerView: View {
                 .font(.system(size: 9, weight: .bold, design: .monospaced))
                 .kerning(1.5)
             }
+            // Past the Epley cap the PWR estimate freezes by design (a 20-rep pump set
+            // doesn't predict a 1RM) — say so instead of silently ignoring the dial.
+            if reps > ProgressEngine.e1rmRepCap {
+                Text("PWR CAPS AT \(ProgressEngine.e1rmRepCap) REPS · EXTRAS FEED VOLUME")
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .kerning(1.2)
+                    .foregroundStyle(SettColor.ash)
+                    .transition(.opacity)
+            }
         }
         .shadow(color: .black.opacity(0.85), radius: 3)
         .animation(.snappy(duration: 0.2), value: powerReading)
+        .animation(.snappy(duration: 0.2), value: reps > ProgressEngine.e1rmRepCap)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(overCeiling ? "Power reading \(powerReading), over the ceiling"
-                                        : "Power reading \(powerReading)")
+        .accessibilityLabel(repCapAccessibilityLabel)
+    }
+
+    private var repCapAccessibilityLabel: String {
+        var label = overCeiling ? "Power reading \(powerReading), over the ceiling"
+                                : "Power reading \(powerReading)"
+        if reps > ProgressEngine.e1rmRepCap {
+            label += ". Power caps at \(ProgressEngine.e1rmRepCap) reps; extra reps count toward volume"
+        }
+        return label
     }
 
     /// This set's e1RM ("output") — from canonical grams, so it's the SAME number

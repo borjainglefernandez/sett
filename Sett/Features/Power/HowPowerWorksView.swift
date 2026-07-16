@@ -80,6 +80,11 @@ struct HowPowerWorksView: View {
                 .font(.headline)
             bullet("An effective set lands between \(minReps) and \(maxReps) reps.")
             bullet("""
+                A set's PWR is its estimated one-rep max — rep credit caps at \
+                \(ProgressEngine.e1rmRepCap) (a 20-rep pump set doesn't predict a max). \
+                Reps past the cap still count in full toward VOLUME.
+                """)
+            bullet("""
                 Once a lift has history, a set must reach at least \(minFraction)% \
                 of your best estimated one-rep max.
                 """)

@@ -9,9 +9,15 @@ public enum ProgressEngine {
 
     // MARK: - e1RM (Epley, reps capped at 12)
 
-    /// Epley with reps capped at 12: `w * (1 + min(r, 12) / 30)`, rounded to Int grams.
+    /// Epley's rep credit stops here: past ~12 reps the linear extrapolation stops
+    /// predicting a real 1RM, and uncapped reps would let light pump sets inflate
+    /// PWR/PL. Extra reps still count in full toward the VOLUME lever. Named so the
+    /// scanner UI can EXPLAIN the freeze instead of silently ignoring the dial.
+    public static let e1rmRepCap = 12
+
+    /// Epley with reps capped: `w * (1 + min(r, cap) / 30)`, rounded to Int grams.
     public static func e1RMGrams(weightGrams: Int, reps: Int) -> Int {
-        let cappedReps = min(max(reps, 0), 12)
+        let cappedReps = min(max(reps, 0), e1rmRepCap)
         let estimate = Double(weightGrams) * (1.0 + Double(cappedReps) / 30.0)
         return Int(estimate.rounded())
     }
@@ -23,7 +29,7 @@ public enum ProgressEngine {
     /// as `e1RMGrams`. e.g. 250 lb × 3 → ~7.6 lb per rep. This is why a set can be
     /// scored by e1RM alone: the weight↔reps trade is priced automatically.
     public static func oneRepEquivalentGrams(weightGrams: Int, reps: Int) -> Int {
-        let cappedReps = min(max(reps, 0), 12)
+        let cappedReps = min(max(reps, 0), e1rmRepCap)
         return Int((Double(weightGrams) / Double(30 + cappedReps)).rounded())
     }
 
