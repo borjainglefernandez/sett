@@ -132,14 +132,20 @@ struct ExerciseTransitionView: View {
                 .font(.system(size: 14, weight: .heavy, design: .monospaced))
                 .monospacedDigit()
                 .foregroundStyle(tier.color)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
             if data.phase == .cutting, let pct = data.retentionPct {
                 Text("· \(pct)% CEILING DEFENDED")
                     .font(.system(size: 11, weight: .bold, design: .monospaced))
                     .foregroundStyle(pct >= 94 ? SettColor.positive : tier.color)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
             } else if let best = data.bestDelta {
                 Text("· \(deltaLabel(best, inBand: false)) VS LAST WEEK")
                     .font(.system(size: 11, weight: .bold, design: .monospaced))
                     .foregroundStyle(deltaColor(best, inBand: false))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
             }
         }
         .shadow(color: .black.opacity(0.6), radius: 3)

@@ -34,6 +34,8 @@ struct BodyweightCard: View {
                              y: .value("Weight", displayValue(entry.weightGrams)))
                         .foregroundStyle(SettColor.heroCyan)
                         .interpolationMethod(.monotone)
+                        .symbol(.circle)
+                        .symbolSize(16)
                 }
                 .chartYScale(domain: yDomain(recent))
                 .frame(height: 140)

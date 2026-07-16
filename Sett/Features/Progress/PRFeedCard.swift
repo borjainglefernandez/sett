@@ -20,7 +20,7 @@ struct PRFeedCard: View {
         let exerciseID: UUID
         let workoutID: UUID
         let date: Date
-        let pwr: Int
+        let e1RMGrams: Int
     }
 
     /// Newest-first PR moments, capped at 5. A PR = strictly beating the exercise's
@@ -37,7 +37,7 @@ struct PRFeedCard: View {
                     found.append(PREvent(exerciseID: sample.exerciseID,
                                          workoutID: sample.workoutID,
                                          date: sample.completedAt,
-                                         pwr: Int(Units.pounds(fromGrams: e1RM).rounded())))
+                                         e1RMGrams: e1RM))
                 }
             } else {
                 best[sample.exerciseID] = e1RM
@@ -93,7 +93,7 @@ struct PRFeedCard: View {
                         .foregroundStyle(SettColor.ash)
                 }
                 Spacer(minLength: 8)
-                Text("e1RM \(event.pwr)")
+                Text("e1RM \(WeightText.formatted(grams: event.e1RMGrams, unit: unit))")
                     .font(.system(size: 13, weight: .heavy, design: .monospaced))
                     .monospacedDigit()
                     .foregroundStyle(SettColor.bone)

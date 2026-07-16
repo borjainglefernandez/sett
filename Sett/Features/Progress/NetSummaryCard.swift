@@ -79,7 +79,8 @@ struct NetSummaryCard: View {
     }
 
     private func color(for value: Int) -> Color {
-        if value >= 0 { return SettColor.positive }
+        if value > 0 { return SettColor.positive }
+        if value == 0 { return SettColor.ash }   // a flat week isn't a gain — stay neutral
         return phase == .cutting ? SettColor.ash : SettColor.negative
     }
 }

@@ -485,7 +485,9 @@ struct WorkoutSummaryView: View {
             Text(badgeName(key))
                 .font(.caption2)
                 .multilineTextAlignment(.center)
-                .frame(width: 84)
+                .lineLimit(2)
+                .minimumScaleFactor(0.8)
+                .frame(width: 84, height: 28, alignment: .top)
         }
     }
 
@@ -645,7 +647,7 @@ struct SummaryShareCard: View {
     private var netVolume: Int { Int((Double(netVolumeGrams) / unit.gramsPerUnit).rounded()) }
     private func signed(_ v: Int) -> String { v > 0 ? "+\(v)" : "\(v)" }
     private var durationText: String {
-        let m = max(0, durationSeconds) / 60
+        let m = max(1, durationSeconds / 60)   // floor at 1m, matching the summary card
         return m >= 60 ? "\(m / 60)h \(m % 60)m" : "\(m)m"
     }
 

@@ -222,24 +222,39 @@ public struct SacredNumberView: View {
         .onChange(of: value) { _, newValue in
             rollOdometer(to: newValue)
         }
-        .onDisappear { roll?.cancel() }
+        .onDisappear {
+            // Reset transient roll state so a teardown mid-roll can't leave the halo
+            // stuck bright (or the numeral punched) on the next presentation.
+            roll?.cancel()
+            haloIntensity = 0.35
+            punch = 1
+        }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Power level \(value)")
     }
 
+    // Sigil scales with Dynamic Type in lockstep with PowerNumeral (largeTitle/title/
+    // title2 for xl/l/m), so the mark and the number never diverge at large text sizes.
+    @ScaledMetric(relativeTo: .largeTitle) private var xlSigil: CGFloat = 34
+    @ScaledMetric(relativeTo: .title) private var lSigil: CGFloat = 22
+    @ScaledMetric(relativeTo: .title2) private var mSigil: CGFloat = 14
+    @ScaledMetric(relativeTo: .largeTitle) private var xlSpacing: CGFloat = 10
+    @ScaledMetric(relativeTo: .title) private var lSpacing: CGFloat = 8
+    @ScaledMetric(relativeTo: .title2) private var mSpacing: CGFloat = 6
+
     private var sigilSize: CGFloat {
         switch size {
-        case .xl: 34
-        case .l: 22
-        case .m: 14
+        case .xl: xlSigil
+        case .l: lSigil
+        case .m: mSigil
         }
     }
 
     private var spacing: CGFloat {
         switch size {
-        case .xl: 10
-        case .l: 8
-        case .m: 6
+        case .xl: xlSpacing
+        case .l: lSpacing
+        case .m: mSpacing
         }
     }
 

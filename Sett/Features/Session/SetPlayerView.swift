@@ -557,7 +557,8 @@ struct SetPlayerView: View {
             .opacity(numeralOpacity)
             .shadow(color: overloadFlash ? TimeChamber.scouterRed.opacity(0.7) : .black.opacity(0.85),
                     radius: overloadFlash ? 12 : 6)
-            .fixedSize()
+            .lineLimit(1)
+            .minimumScaleFactor(0.5)
             .contentShape(Rectangle())
             .onTapGesture {
                 guard !isCommitted else { return }

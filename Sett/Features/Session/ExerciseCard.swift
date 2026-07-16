@@ -66,12 +66,13 @@ struct ExerciseCard: View {
                     // and routine workouts alike; planned slots below are removable).
                     addSetButton
                 }
-                // Reset the lifted row if a drag is released over empty space in the card.
-                .onDrop(of: [.text], isTargeted: nil) { _ in draggingSet = nil; return false }
             }
         }
         .padding(14)
         .background(cardBackground)
+        // Reset the lifted row if a drag is released anywhere over the card (incl. the
+        // padding) so a cancelled reorder never leaves a row stuck at 0.35 opacity.
+        .onDrop(of: [.text], isTargeted: nil) { _ in draggingSet = nil; return false }
         .onAppear {
             if exercise == nil {
                 exercise = session.fetchExercise(id: workoutExercise.exerciseID)
@@ -217,6 +218,8 @@ struct ExerciseCard: View {
                         .font(.system(size: 10, weight: .semibold, design: .monospaced))
                         .kerning(1)
                         .foregroundStyle(SettColor.ash)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
                 }
                 Spacer()
                 Image(systemName: "chevron.down")

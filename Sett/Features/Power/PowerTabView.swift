@@ -35,7 +35,7 @@ struct PowerTabView: View {
                               userPL: progression.snapshotPowerLevel,
                               cycle: progression.rivalCycle,
                               rebirthAnnounce: progression.rivalRebirthAnnounce,
-                              onAcknowledgeRebirth: { progression.acknowledgeRivalRebirth() })
+                              onAcknowledgeRebirth: { withAnimation(.snappy) { progression.acknowledgeRivalRebirth() } })
                     badgeCasePreview
                     rosterCard
                 }

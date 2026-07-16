@@ -28,12 +28,18 @@ struct BadgeCaseView: View {
 
     var body: some View {
         ScrollView {
-            LazyVGrid(columns: columns, alignment: .center, spacing: 20) {
-                ForEach(orderedBadges, id: \.key) { definition in
-                    badgeCell(definition)
+            if orderedBadges.isEmpty {
+                EmptyChamber(title: "Badge case unavailable",
+                             message: "Couldn't load the trophy room — try again shortly.")
+                    .frame(maxWidth: .infinity, minHeight: 400)
+            } else {
+                LazyVGrid(columns: columns, alignment: .center, spacing: 20) {
+                    ForEach(orderedBadges, id: \.key) { definition in
+                        badgeCell(definition)
+                    }
                 }
+                .padding(16)
             }
-            .padding(16)
         }
         .dungeonBackground()
         .navigationTitle("Badge Case")
@@ -109,7 +115,7 @@ struct BadgeCaseView: View {
                     .lineLimit(2)
             }
             .padding(12)
-            .frame(maxWidth: .infinity, alignment: .top)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(SettColor.cardNested))
             .frameMaterial(definition.rarity == .legendary ? .prismatic : .gold)
         }
@@ -146,7 +152,7 @@ struct BadgeCaseView: View {
                 .lineLimit(3)
         }
         .padding(12)
-        .frame(maxWidth: .infinity, alignment: .top)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(SettColor.cardNested))
         .frameMaterial(.iron)
         .grayscale(1)
@@ -171,6 +177,7 @@ private struct BadgeDetailSheet: View {
     }
 
     var body: some View {
+        ScrollView {
         VStack(spacing: 16) {
             // The reward pulse: gold breathing aura + one-shot gold burst.
             ZStack {
@@ -208,10 +215,11 @@ private struct BadgeDetailSheet: View {
                         .foregroundStyle(SettColor.ash)
                 }
             }
-            Spacer(minLength: 0)
         }
         .padding(16)
-        .presentationDetents([.medium])
+        .frame(maxWidth: .infinity)
+        }
+        .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
     }
 

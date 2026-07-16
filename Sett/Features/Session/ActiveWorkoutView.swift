@@ -133,6 +133,8 @@ struct ActiveWorkoutView: View {
             Rectangle()
                 .fill(SettColor.cardBorder)
                 .frame(height: 0.5)
+            // In-flow (below the top bar) so it never covers the ✕ / timer / ✓ controls.
+            if session.saveFault { writeFaultBanner }
             if workout.isCasual {
                 offTheRecordPill
                     .opacity(isRestOverlayVisible ? 0.55 : 1)
@@ -170,9 +172,6 @@ struct ActiveWorkoutView: View {
             // horizontal drag (gated in swipeGesture) falls through to page the queue.
             // simultaneousGesture here let the DragGesture swallow every tap.
             .gesture(swipeGesture(exercises))
-        }
-        .overlay(alignment: .top) {
-            if session.saveFault { writeFaultBanner }
         }
         .animation(.snappy, value: session.saveFault)
         .onAppear { initializeCursorIfNeeded(exercises) }
@@ -231,12 +230,12 @@ struct ActiveWorkoutView: View {
     // MARK: Top bar (✕ · elapsed mono iron · overview · ✓ — all small, ash)
 
     private func topBar(_ workout: Workout) -> some View {
+        // Timer in a centered overlay (not between Spacers) so it sits at TRUE screen
+        // center — the left has one control (✕) but the right has three.
         HStack(spacing: 0) {
             barButton("xmark", label: "Cancel workout") {
                 isConfirmingCancel = true
             }
-            Spacer()
-            elapsedTimer(workout)
             Spacer()
             recordToggle(workout)
             barButton("list.bullet", label: "Session overview") {
@@ -246,6 +245,7 @@ struct ActiveWorkoutView: View {
                 finishTapped()
             }
         }
+        .overlay { elapsedTimer(workout).allowsHitTesting(false) }
         .padding(.horizontal, 8)
         .padding(.vertical, 2)
         // Dark halo so the bar (elapsed time + controls) reads over bright realms.

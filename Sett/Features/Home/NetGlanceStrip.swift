@@ -81,6 +81,7 @@ struct NetGlanceStrip: View {
                 }
             }
             .lineLimit(1)
+            .minimumScaleFactor(0.7)
             .padding(.horizontal, 14)
             .frame(minHeight: 38)
             }

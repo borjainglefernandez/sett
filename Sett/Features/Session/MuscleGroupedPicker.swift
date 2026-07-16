@@ -69,8 +69,12 @@ struct MuscleGroupedPicker<Row: View, Footer: View>: View {
                 }
             }
             .listRowBackground(SettColor.card)
-            Section { footer() }
-                .listRowBackground(SettColor.card)
+            // Hide the "Create custom exercise" footer on a search miss, where the host
+            // sheet already shows an EmptyChamber "Forge" button — no double affordance.
+            if !(isSearching && filtered.isEmpty) {
+                Section { footer() }
+                    .listRowBackground(SettColor.card)
+            }
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)

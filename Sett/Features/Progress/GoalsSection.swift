@@ -171,7 +171,9 @@ private struct SwipeToDeleteRow<Content: View>: View {
     var body: some View {
         content()
             .onTapGesture {
-                if isOpen { close() }
+                // Recover a row left partly-open by an interrupted drag (isOpen would be
+                // false then, stranding the offset) — gate on the actual offset instead.
+                if offsetX != 0 { close() }
             }
             .offset(x: offsetX)
             .background(alignment: .trailing) {

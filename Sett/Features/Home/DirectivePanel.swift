@@ -140,7 +140,7 @@ struct DirectivePanel: View {
                 .font(.system(size: 15, weight: .semibold, design: .rounded))
                 .foregroundStyle(SettColor.bone)
                 .lineLimit(1)
-                .minimumScaleFactor(0.85)
+                .minimumScaleFactor(0.7)
             Spacer(minLength: 8)
             Text(directive.progress)
                 .font(.system(size: 12, weight: .semibold, design: .monospaced))

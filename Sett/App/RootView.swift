@@ -117,9 +117,7 @@ struct DebugSurfaceHost: View {
         case "goalprtarget":
             GoalEditorSheet(initialKind: .prTarget)
         case "gympicker":
-            Color.clear.sheet(isPresented: .constant(true)) {
-                GymPickerSheet(currentID: nil) { _ in }
-            }
+            GymPickerSheet(currentID: nil) { _ in }
         case "routineeditor":
             if let routine = allRoutines.first(where: { $0.deletedAt == nil }) {
                 NavigationStack { RoutineEditorView(routine: routine) }

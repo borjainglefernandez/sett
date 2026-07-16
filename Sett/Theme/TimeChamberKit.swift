@@ -750,7 +750,7 @@ struct ScouterLens: View {
     private func tickStrip(in size: CGSize) -> some View {
         let ceilingIndex = ceilingFrac >= 0 ? min(17, max(0, Int((ceilingFrac * 17).rounded()))) : -1
         let lastIndex = lastWeekFrac >= 0 ? min(17, max(0, Int((lastWeekFrac * 17).rounded()))) : -1
-        return HStack(spacing: 5) {
+        return HStack(alignment: .bottom, spacing: 5) {
             ForEach(0 ..< 18, id: \.self) { i in
                 let lit = Double(i) / 17 <= charge
                 let isCeiling = i == ceilingIndex

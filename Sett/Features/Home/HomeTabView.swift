@@ -709,6 +709,8 @@ struct HomeTabView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(workout.title)
                     .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
                 Text(workout.startedAt.formatted(date: .abbreviated, time: .omitted))
                     .font(.caption)
                     .foregroundStyle(.secondary)

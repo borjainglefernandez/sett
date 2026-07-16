@@ -38,9 +38,9 @@ struct ReorderDropDelegate<Item: Identifiable>: DropDelegate where Item.ID: Equa
 /// neutral — ▽ in ash, never penalised.
 enum VsLast {
     static func label(_ delta: Int, phase: TrainingPhase) -> String {
-        if delta > 0 { return "▲+\(delta)" }
-        if delta == 0 { return "◇0" }
-        return phase == .cutting ? "▽\(abs(delta))" : "▼\(abs(delta))"
+        if delta > 0 { return "▲ +\(delta)" }
+        if delta == 0 { return "◇ 0" }
+        return phase == .cutting ? "▽ \(abs(delta))" : "▼ \(abs(delta))"
     }
     static func color(_ delta: Int, phase: TrainingPhase) -> Color {
         if delta > 0 { return SettColor.positive }

@@ -300,7 +300,11 @@ struct SessionOverviewSheet: View {
                 }
             }
             .padding(16)
+            // A card drag released outside any sibling clears the lift so it never
+            // stays stuck greyed-out.
+            .onDrop(of: [.text], isTargeted: nil) { _ in draggingExercise = nil; return false }
         }
+        .onDisappear { draggingExercise = nil }
         .combatTextEmitter(combatText)
         .environment(combatText)
     }

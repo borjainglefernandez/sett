@@ -88,6 +88,9 @@ struct RoutineListView: View {
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
                 .animation(.snappy, value: isRotation)
+                // A drag released over empty space / the header clears the lift so the
+                // card never stays stuck at 0.35 opacity.
+                .onDrop(of: [.text], isTargeted: nil) { _ in draggingRoutine = nil; return false }
             }
         }
         .toolbar {

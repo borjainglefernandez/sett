@@ -38,7 +38,7 @@ struct RoutineExercisePickerSheet: View {
                 } label: {
                     HStack(spacing: 12) {
                         ExerciseGlyphView(muscle: .other)
-                            .frame(width: 28, height: 28)
+                            .frame(width: 40, height: 40)
                         Text("Create custom exercise")
                             .foregroundStyle(SettColor.heroCyan)
                         Spacer()

@@ -154,6 +154,13 @@ struct RoutineEditorView: View {
         .scrollContentBackground(.hidden)
         .dungeonBackground()
         .environment(\.editMode, $editMode)
+        // A drag released outside any row clears the lift so the row never stays greyed.
+        .onDrop(of: [.text], isTargeted: nil) { _ in draggingDraft = nil; return false }
+        // Deleting down to one row while reordering would strand edit mode (the toggle
+        // button hides at <2 rows) — drop out of edit mode so it can't get stuck.
+        .onChange(of: drafts.count) { _, newCount in
+            if newCount <= 1 && editMode.isEditing { withAnimation { editMode = .inactive } }
+        }
         .navigationTitle(routine == nil ? "New Routine" : "Edit Routine")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -382,8 +389,8 @@ struct RoutineEditorView: View {
     // MARK: Machine setup (Exercise.instructions — what to set the machine to)
 
     /// At-a-glance setup caption under the name: the saved setup (tappable to
-    /// edit) if one exists, a quiet "Add setup" for machines/cables when empty,
-    /// hidden for free weights. Mirrors the session card's rule.
+    /// edit) if one exists, else a quiet "Add setup" prompt. Shown for EVERY
+    /// equipment type — free weights carry setup notes (grip, bench angle, stance) too.
     @ViewBuilder
     private func setupLine(_ draft: RoutineDraftExercise) -> some View {
         let setup = draft.machineSetup ?? ""

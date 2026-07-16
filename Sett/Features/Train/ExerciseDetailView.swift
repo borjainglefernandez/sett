@@ -147,6 +147,8 @@ struct ExerciseDetailView: View {
                     .foregroundStyle(SettColor.ash)
                 Text("\(services.settings.displayWeight(best.weightGrams)) × \(best.reps)")
                     .font(.title3.bold())
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
                 Text(best.completedAt.formatted(date: .abbreviated, time: .omitted))
                     .font(.caption)
                     .foregroundStyle(SettColor.ash)
