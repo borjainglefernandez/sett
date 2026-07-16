@@ -134,9 +134,17 @@ struct OnboardingView: View {
     }
 
     /// A warrior-art medallion instead of a floating SF Symbol — day zero shows the
-    /// same marks the rest of the app wears.
+    /// same marks the rest of the app wears. ONE ringed ~104pt treatment shared by
+    /// every page's hero so the centered mark doesn't jump size/framing as you page
+    /// (the rival's carded set-piece is the deliberate exception).
     private func heroMedallion(_ asset: String) -> some View {
-        ExerciseArtView(asset: asset, size: 84, color: SettColor.heroCyan)
+        ExerciseArtView(asset: asset, size: 64, color: SettColor.heroCyan)
+            .padding(20)
+            .background {
+                Circle().fill(TimeChamber.void.opacity(0.6))
+                Circle().strokeBorder(SettColor.heroCyan.opacity(0.4), lineWidth: 1.5)
+            }
+            .shadow(color: SettColor.heroCyan.opacity(0.35), radius: 10)
             .accessibilityHidden(true)
     }
 
@@ -181,7 +189,7 @@ struct OnboardingView: View {
         return VStack(spacing: 20) {
             Spacer()
             EquipmentGlyph(equipment: .barbell, color: SettColor.heroCyan)
-                .frame(width: 74, height: 74)
+                .frame(width: 64, height: 64)
                 .padding(20)
                 .background {
                     Circle().fill(TimeChamber.void.opacity(0.6))
@@ -281,9 +289,9 @@ struct OnboardingView: View {
         VStack(spacing: 20) {
             Spacer()
             Image(systemName: "bed.double.fill")
-                .font(.system(size: 40))
+                .font(.system(size: 44))
                 .foregroundStyle(TimeChamber.indigo)
-                .padding(24)
+                .padding(30)
                 .background {
                     Circle().fill(TimeChamber.void.opacity(0.6))
                     Circle().strokeBorder(TimeChamber.indigo.opacity(0.4), lineWidth: 1.5)

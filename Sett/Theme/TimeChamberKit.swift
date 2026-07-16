@@ -98,7 +98,7 @@ enum AuraTier: Equatable {
     /// 0…1 — how COMPLETE the energy ring reads. A sustained charge closes the halo
     /// (fuller arcs); a resting/quiet tier shows only a thin, broken filament. This is
     /// what separates a HELD win (.base) from the idle .dormant chamber — all green,
-    /// but the win's ring is visibly fuller. Consumed by AuraRing arc trims.
+    /// but the win's ring is visibly fuller. Consumed by the lens ring trims.
     var ringCompleteness: Double {
         switch self {
         case .dormant:  0.34
@@ -394,105 +394,8 @@ struct SeededGen {
     }
 }
 
-// MARK: - Aura ring (the scouter energy halo around the numbers)
-
-/// Concentric energy the numbers sit inside: a soft outer bloom, a base ring, and
-/// three trimmed arcs counter-rotating at tier speed. Rotation is driven by
-/// Core-Animation `repeatForever` (GPU-composited — cheap; a 60 fps TimelineView
-/// here starves touch delivery). `burstToken` (bumped on every log) flares the
-/// ring outward for ~0.6 s — the "power-up." Reduce Motion: a static glowing ring.
-struct AuraRing: View {
-    var tier: AuraTier
-    /// Increment to trigger a one-shot flare (e.g. on log).
-    var burstToken: Int = 0
-
-    @State private var spinA = false   // fast arcs (wrap at 360° — seamless)
-    @State private var spinB = false   // slower counter-arc
-    @State private var pulse = false
-    @State private var flare: CGFloat = 0
-    @State private var spoolKick: Double = 0   // additive rotation on tier-up (deg)
-    @State private var spoolGlow: CGFloat = 0  // bloom overshoot on tier-up
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    var body: some View {
-        ZStack {
-            // Outer bloom — charged phosphor (a held win glows brighter), swelling on
-            // burst (flare) and on a tier-up spool (spoolGlow).
-            Circle()
-                .stroke(tier.phosphor.opacity(0.24 * tier.intensity + Double(abs(spoolGlow)) * 0.22),
-                        lineWidth: 14 + abs(flare) * 22 + abs(spoolGlow) * 10)
-                .blur(radius: 16 + flare * 14)
-                .scaleEffect(reduceMotion ? 1 : (pulse ? 1.015 : 0.985))
-            // Steady base ring — brightness & tone read the tier's FORM (a held win is
-            // a solid charged phosphor; idle is a faint ember).
-            Circle().stroke(tier.phosphor.opacity(0.55 * tier.rimOpacity), lineWidth: 1.5)
-            // Energy arcs — trims scale with ringCompleteness (a sustained charge closes
-            // the halo; idle shows a thin filament), and ±spoolKick flares them open on
-            // a tier-up.
-            arc(trim: 0.55 * tier.ringCompleteness, width: 3.0).rotationEffect(.degrees((spinA ? 360 : 0) + spoolKick))
-            arc(trim: 0.14 * tier.ringCompleteness, width: 4.0).rotationEffect(.degrees((spinA ? 360 : 0) + spoolKick)).blur(radius: 1)
-            arc(trim: 0.30 * tier.ringCompleteness, width: 2.0).rotationEffect(.degrees((spinB ? -360 : 0) - spoolKick))
-        }
-        .scaleEffect(1 + flare * 0.10)
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
-        .onAppear(perform: startSpin)
-        .onChange(of: tier) { old, new in
-            startSpin()
-            guard new.rank > old.rank else { return }
-            spoolUp()
-        }
-        .onChange(of: burstToken) { _, _ in
-            guard !reduceMotion else { return }
-            // Gather (inhale — contract + brighten), then detonate (snap out + settle).
-            withAnimation(.easeIn(duration: 0.14)) { flare = -0.3 }
-            Task { @MainActor in
-                try? await Task.sleep(for: .milliseconds(140))
-                flare = 1
-                withAnimation(.spring(response: 0.5, dampingFraction: 0.55)) { flare = 0 }
-            }
-        }
-    }
-
-    private func arc(trim: CGFloat, width: CGFloat) -> some View {
-        Circle()
-            .trim(from: 0, to: trim)
-            .stroke(tier.gradient, style: StrokeStyle(lineWidth: width, lineCap: .round))
-    }
-
-    /// Transient spool-up on an upward tier change: arcs sweep an extra ~40° over
-    /// 0.4 s (they accelerate) and the outer bloom springs past then settles.
-    private func spoolUp() {
-        guard !reduceMotion else {
-            // Reduce Motion: an instant brightness STEP (no withAnimation — spoolGlow
-            // also feeds the bloom lineWidth geometry, which must not TWEEN under RM).
-            spoolGlow = 1
-            Task { @MainActor in
-                try? await Task.sleep(for: .milliseconds(500))
-                spoolGlow = 0
-            }
-            return
-        }
-        withAnimation(.easeOut(duration: 0.4)) { spoolKick += 40 }
-        spoolGlow = 1
-        withAnimation(.spring(response: 0.5, dampingFraction: 0.5)) { spoolGlow = 0 }
-    }
-
-    private func startSpin() {
-        guard !reduceMotion else { return }
-        // Re-seed the repeating rotations at the current tier speed.
-        spinA = false; spinB = false
-        withAnimation(.linear(duration: 360 / tier.spin).repeatForever(autoreverses: false)) {
-            spinA = true
-        }
-        withAnimation(.linear(duration: 360 / (tier.spin * 0.6)).repeatForever(autoreverses: false)) {
-            spinB = true
-        }
-        withAnimation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true)) {
-            pulse = true
-        }
-    }
-}
+// AuraRing was retired: the ScouterLens replaced it as the numeral frame and the
+// last call site went with it (its per-tier spin re-seed also snapped arcs to 0°).
 
 // MARK: - Scouter lens (the DBZ scouter HUD that frames the reading)
 
@@ -643,7 +546,7 @@ struct ScouterLens: View {
         }
     }
 
-    /// Rim + bloom overshoot on an upward tier change (arcs live in AuraRing).
+    /// Rim + bloom overshoot on an upward tier change.
     /// Composes additively with the burst `flare`.
     private func spoolUp() {
         guard !reduceMotion else {
@@ -827,7 +730,7 @@ struct ScouterLens: View {
 
 /// A one-shot inward particle layer: on `burstToken` a seeded ring of specks rushes
 /// INTO the lens centre over ~260 ms, then cuts out exactly as the outward `flare`
-/// detonates (snaps to +1 at ~140 ms in ScouterLens/AuraRing) — restoring a true
+/// detonates (snaps to +1 at ~140 ms in ScouterLens) — restoring a true
 /// "gather → detonate" on LOG. Pure Core-Animation: ONE shared `converge` value,
 /// per-speck deterministic tracks read through pow() — no TimelineView, no Date, no
 /// random. Reduce Motion renders NOTHING.

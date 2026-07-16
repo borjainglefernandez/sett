@@ -525,35 +525,45 @@ public extension View {
 
 /// The themed empty state — replaces stock `ContentUnavailableView` so an empty screen
 /// still lives in the chamber: a quiet sigil, a mono title, ash body, optional cyan CTA.
-public struct EmptyChamber: View {
+public struct EmptyChamber<Actions: View>: View {
     let title: String
     var message: String? = nil
     var actionLabel: String? = nil
     var action: (() -> Void)? = nil
+    /// Compact = in-card empty states (tighter padding, smaller sigil) so screens
+    /// stop rolling bespoke empty cards just to fit inside a settCard.
+    var compact: Bool = false
+    /// Custom action slot for CTAs a closure can't express (NavigationLink,
+    /// ChamberCTAButton) — previously forced consumers to duplicate the CTA outside.
+    @ViewBuilder var actions: () -> Actions
 
-    public init(title: String, message: String? = nil,
-                actionLabel: String? = nil, action: (() -> Void)? = nil) {
+    public init(title: String, message: String? = nil, compact: Bool = false,
+                @ViewBuilder actions: @escaping () -> Actions) {
         self.title = title
         self.message = message
-        self.actionLabel = actionLabel
-        self.action = action
+        self.compact = compact
+        self.actions = actions
     }
 
     public var body: some View {
         VStack(spacing: 10) {
-            SettSigil(size: 30, color: SettColor.ash.opacity(0.7))
-            Text(title.uppercased())
-                .font(.system(size: 12, weight: .bold, design: .monospaced))
-                .kerning(2)
-                .foregroundStyle(SettColor.ash)
-                .multilineTextAlignment(.center)
-            if let message {
-                Text(message)
-                    .font(.footnote)
-                    .foregroundStyle(SettColor.ash.opacity(0.8))
+            // Prose combines into one VO element; the CTAs below stay interactive.
+            VStack(spacing: 10) {
+                SettSigil(size: compact ? 22 : 30, color: SettColor.ash.opacity(0.7))
+                Text(title.uppercased())
+                    .font(.system(size: 12, weight: .bold, design: .monospaced))
+                    .kerning(2)
+                    .foregroundStyle(SettColor.ash)
                     .multilineTextAlignment(.center)
-                    .frame(maxWidth: 280)
+                if let message {
+                    Text(message)
+                        .font(.footnote)
+                        .foregroundStyle(SettColor.ash.opacity(0.8))
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: 280)
+                }
             }
+            .accessibilityElement(children: .combine)
             if let actionLabel, let action {
                 Button(action: action) {
                     Text(actionLabel.uppercased())
@@ -567,10 +577,23 @@ public struct EmptyChamber: View {
                 .buttonStyle(.plain)
                 .padding(.top, 6)
             }
+            actions()
+                .padding(.top, 6)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 40)
-        .accessibilityElement(children: .combine)
+        .padding(.vertical, compact ? 14 : 40)
+    }
+}
+
+public extension EmptyChamber where Actions == EmptyView {
+    /// The original closure-CTA form — every existing call site keeps compiling.
+    init(title: String, message: String? = nil,
+         actionLabel: String? = nil, action: (() -> Void)? = nil) {
+        self.title = title
+        self.message = message
+        self.actionLabel = actionLabel
+        self.action = action
+        self.actions = { EmptyView() }
     }
 }
 
@@ -899,5 +922,51 @@ public struct ChamberStepControl: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(symbol == "plus" ? "Increment" : "Decrement")
+    }
+}
+
+// MARK: - StatusChip (the ONE small status pill)
+
+/// The status-pill family (CASUAL, SURGE ARMED, NEXT UP, rarity…) as one voice:
+/// mono uppercase kerned capsule. Ghost by default (tinted ink on a 12% tint
+/// wash); `filled` inverts to etch ink on a solid tint fill for the highlighted
+/// state (NEXT UP).
+public struct StatusChip: View {
+    let label: String
+    var tint: Color = SettColor.ash
+    var icon: String? = nil
+    var filled: Bool = false
+
+    public init(_ label: String, tint: Color = SettColor.ash,
+                icon: String? = nil, filled: Bool = false) {
+        self.label = label
+        self.tint = tint
+        self.icon = icon
+        self.filled = filled
+    }
+
+    public var body: some View {
+        HStack(spacing: 5) {
+            if let icon {
+                Image(systemName: icon)
+                    .font(.system(size: 10, weight: .bold))
+                    .accessibilityHidden(true)
+            }
+            Text(label.uppercased())
+                .kerning(1)
+        }
+        .font(.system(size: 10, weight: .bold, design: .monospaced))
+        .foregroundStyle(filled ? SettColor.etch : tint)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 4)
+        .background {
+            if filled {
+                Capsule().fill(tint)
+            } else {
+                Capsule().fill(tint.opacity(0.12))
+                Capsule().strokeBorder(tint.opacity(0.35), lineWidth: 1)
+            }
+        }
+        .accessibilityLabel(label)
     }
 }

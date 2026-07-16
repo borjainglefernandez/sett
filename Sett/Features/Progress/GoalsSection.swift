@@ -85,16 +85,13 @@ struct GoalsSection: View {
     }
 
     private var emptyCard: some View {
-        VStack(spacing: 12) {
-            Text("Set your first goal — start with 3 workouts a week")
-                .font(.subheadline)
-                .foregroundStyle(SettColor.ash)
-                .multilineTextAlignment(.center)
+        EmptyChamber(title: "No goals yet",
+                     message: "Set your first goal — start with 3 workouts a week.",
+                     compact: true) {
             ChamberCTAButton("3 × / week") {
                 createPresetFrequencyGoal()
             }
         }
-        .frame(maxWidth: .infinity)
         .settCard()
     }
 

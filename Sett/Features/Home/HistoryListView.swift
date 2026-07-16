@@ -266,13 +266,7 @@ struct HistoryListView: View {
                     if workout.isCasual {
                         // Casual sessions are off the record — the engine returns (0,0)
                         // for them, so "+0 lb" would be a lie. Say what it is instead.
-                        Text("CASUAL")
-                            .font(.caption2.weight(.bold))
-                            .kerning(0.5)
-                            .foregroundStyle(SettColor.ash)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3)
-                            .background(SettColor.ash.opacity(0.12), in: Capsule())
+                        StatusChip("CASUAL")
                     } else if !samples.isEmpty {
                         netChips(ProgressEngine.workoutNet(samples: samples, workoutID: workout.id),
                                  phase: workout.phase)

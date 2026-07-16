@@ -76,13 +76,13 @@ struct ChartDetailView: View {
                     .foregroundStyle(SettColor.saiyanGold)
                 Text("all-time best e1RM")
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(SettColor.ash)
             }
             VStack(alignment: .leading, spacing: 2) {
                 PowerNumeral(points.count, size: .m, color: .primary)
                 Text("sessions")
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(SettColor.ash)
             }
             Spacer()
         }
@@ -99,7 +99,7 @@ struct ChartDetailView: View {
             if points.isEmpty {
                 Text("Never trained. First set sets the baseline.")
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(SettColor.ash)
                     .frame(maxWidth: .infinity, minHeight: 120)
             } else {
                 chart
@@ -129,7 +129,7 @@ struct ChartDetailView: View {
             }
             if let scrubbedPoint {
                 RuleMark(x: .value("Date", scrubbedPoint.date))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(SettColor.ash)
                     .lineStyle(StrokeStyle(lineWidth: 1))
                     .annotation(position: .top, spacing: 8,
                                 overflowResolution: .init(x: .fit(to: .chart), y: .disabled)) {
@@ -151,7 +151,7 @@ struct ChartDetailView: View {
         VStack(spacing: 2) {
             Text(point.date.formatted(date: .abbreviated, time: .omitted))
                 .font(.caption2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(SettColor.ash)
             Text(WeightText.formatted(point.value, unit: unit))
                 .font(.subheadline.weight(.bold))
                 .monospacedDigit()

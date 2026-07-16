@@ -125,10 +125,8 @@ struct PowerTabView: View {
                 .foregroundStyle(SettColor.bone)
                 .contentTransition(.opacity)
             VStack(spacing: 6) {
-                Text("POWER LEVEL")
-                    .font(.caption2.weight(.semibold))
-                    .kerning(1.5)
-                    .foregroundStyle(SettColor.ash)
+                // The sacred eyebrow — same mono voice as Home's crest and the receipt.
+                Eyebrow("POWER LEVEL")
                 SacredNumberView(value: progression.snapshotPowerLevel)
                 if progression.snapshotPowerLevel == 0 {
                     Text("Everyone starts somewhere.")

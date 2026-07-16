@@ -242,12 +242,8 @@ private struct BadgeDetailSheet: View {
     /// Rarity as a plain word — rank already reads from the frame material,
     /// so no colored label (the v3 rarity-ladder rule).
     private var rarityCapsule: some View {
-        Text((definition?.rarity.rawValue ?? BadgeRarity.bronze.rawValue).capitalized)
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(SettColor.bone)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 5)
-            .background(SettColor.cardNested, in: Capsule())
+        StatusChip(definition?.rarity.rawValue ?? BadgeRarity.bronze.rawValue,
+                   tint: SettColor.bone)
     }
 }
 

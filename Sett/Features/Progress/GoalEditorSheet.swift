@@ -53,7 +53,7 @@ struct GoalEditorSheet: View {
                                symbol: "scalemass.fill")
                     presetCard(.prTarget, title: "One-rep max",
                                subtitle: "Hit a target 1RM on one lift.",
-                               symbol: "trophy.fill")
+                               symbol: "medal.fill")
                     configSection
                     ChamberCTAButton(isEditing ? "Save Goal" : "Create Goal",
                                      enabled: canCreate, action: commit)

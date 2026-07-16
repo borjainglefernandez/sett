@@ -567,17 +567,8 @@ struct HomeTabView: View {
     /// full rest day the next session is surged — its volume counts ×1.25 inside the
     /// scanner window. Cyan (ki), not gold.
     private var restedChip: some View {
-        Label("SURGE ARMED · REST BANKED", systemImage: "bolt.fill")
-            .font(.system(size: 11, weight: .bold, design: .monospaced))
-            .kerning(1)
-            .foregroundStyle(SettColor.heroCyan)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background {
-                Capsule().fill(SettColor.heroCyan.opacity(0.12))
-                Capsule().strokeBorder(SettColor.heroCyan.opacity(0.4), lineWidth: 1)
-            }
-            .accessibilityLabel("Rested surge armed. You come back sharper after a real rest day.")
+        StatusChip("SURGE ARMED · REST BANKED", tint: SettColor.heroCyan, icon: "bolt.fill")
+            .accessibilityLabel("Rested surge armed. This session's volume counts extra in the scanner.")
     }
 
     /// Day zero's launch card wears the same chamber-art doorway as every other day —

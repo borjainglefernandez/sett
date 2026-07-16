@@ -204,13 +204,7 @@ struct RoutineListView: View {
                 .monospacedDigit()
                 .foregroundStyle(.white.opacity(0.85))
             if routine.id == nextUpID {
-                Text("NEXT UP")
-                    .font(.system(size: 10, weight: .heavy, design: .rounded))
-                    .kerning(1)
-                    .foregroundStyle(SettColor.etch)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(Aura.cyan, in: Capsule())
+                StatusChip("NEXT UP", tint: SettColor.heroCyan, filled: true)
             } else {
                 Text("in the cycle")
                     .font(.system(size: 11, weight: .medium, design: .rounded))
@@ -351,22 +345,23 @@ struct RoutineListView: View {
     // MARK: Empty state
 
     private var emptyState: some View {
-        VStack(spacing: 16) {
+        VStack {
             Spacer()
             EmptyChamber(title: "No routines yet",
-                         message: "Build a routine, or Quick Start from Home to train without a plan.")
-            NavigationLink {
-                RoutineEditorView(routine: nil)
-            } label: {
-                Text("CREATE ROUTINE")
-                    .font(.system(size: 12, weight: .bold, design: .monospaced))
-                    .kerning(1.5)
-                    .foregroundStyle(SettColor.etch)
-                    .padding(.horizontal, 18)
-                    .frame(minHeight: 40)
-                    .background(SettColor.heroCyan, in: Capsule())
+                         message: "Build a routine, or Quick Start from Home to train without a plan.") {
+                NavigationLink {
+                    RoutineEditorView(routine: nil)
+                } label: {
+                    Text("CREATE ROUTINE")
+                        .font(.system(size: 12, weight: .bold, design: .monospaced))
+                        .kerning(1.5)
+                        .foregroundStyle(SettColor.etch)
+                        .padding(.horizontal, 18)
+                        .frame(minHeight: 40)
+                        .background(SettColor.heroCyan, in: Capsule())
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
             Spacer()
         }
         .frame(maxWidth: .infinity)
