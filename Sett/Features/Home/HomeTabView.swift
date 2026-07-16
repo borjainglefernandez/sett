@@ -230,12 +230,14 @@ struct HomeTabView: View {
                     Image(systemName: "flame.fill")
                     Text("\(streakWeeks) wk")
                         .monospacedDigit()
+                        .lineLimit(1)
                     if streakState.shields > 0 {
                         Image(systemName: "shield.fill")
                             .font(.system(size: 9))
                             .foregroundStyle(SettColor.heroCyan.opacity(0.7))
                     }
                 }
+                .fixedSize()
                 .font(.footnote.weight(.semibold))
                 .foregroundStyle(SettColor.heroCyan) // gold audit: gold is the PL's, streak is ki
                 .padding(.horizontal, 10)
@@ -371,7 +373,11 @@ struct HomeTabView: View {
                 Text(services.settings.phase.title.uppercased())
                     .font(.system(size: 11, weight: .bold, design: .monospaced))
                     .kerning(1)
+                    .lineLimit(1)
             }
+            // The capsule always takes its ideal one-line width ("MAINTAINING" was
+            // wrapping mid-word); the date eyebrow compresses instead.
+            .fixedSize()
             .foregroundStyle(SettColor.heroCyan)
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
