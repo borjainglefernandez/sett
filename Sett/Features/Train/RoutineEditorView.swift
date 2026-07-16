@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import SettCore
+import UniformTypeIdentifiers
 
 // MARK: - Local draft (value type; nothing touches the store until Save)
 
@@ -57,6 +58,8 @@ struct RoutineEditorView: View {
     @State private var defaultGymID: UUID?
     @State private var defaultGymName: String?
     @State private var isPickingGym = false
+    /// The exercise row lifted for a long-press drag reorder.
+    @State private var draggingDraft: RoutineDraftExercise?
     @State private var hasLoadedDraft = false
     @State private var editMode: EditMode = .inactive
 
@@ -68,13 +71,26 @@ struct RoutineEditorView: View {
             .listRowBackground(Color.clear)
             .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
 
+            // Rotation runs the split in order, so day assignment is meaningless there —
+            // the whole section is omitted rather than shown inert.
+            if !isRotation {
+                Section {
+                    dayChips
+                    Text("Runs on the days you highlight.")
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .foregroundStyle(SettColor.ash)
+                        .padding(.top, 2)
+                } header: {
+                    Eyebrow("SCHEDULE")
+                }
+                .listRowBackground(Color.clear)
+                .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+            }
+
             Section {
-                dayChips
-                    .opacity(isRotation ? 0.4 : 1)
-                scheduleModeNote
                 restControl
             } header: {
-                Eyebrow("SCHEDULE")
+                Eyebrow("DEFAULT REST")
             }
             .listRowBackground(Color.clear)
             .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
@@ -101,6 +117,15 @@ struct RoutineEditorView: View {
                         .listRowBackground(rowBackground)
                         .listRowSeparator(.hidden)
                         .listRowInsets(EdgeInsets(top: 5, leading: 16, bottom: 5, trailing: 16))
+                        .opacity(draggingDraft?.id == draft.id ? 0.35 : 1)
+                        // Long-press lifts a row; drag to reorder live, no edit mode needed.
+                        .onDrag {
+                            draggingDraft = draft
+                            return NSItemProvider(object: draft.id.uuidString as NSString)
+                        }
+                        .onDrop(of: [.text], delegate: ReorderDropDelegate(
+                            target: draft, items: drafts, dragging: $draggingDraft,
+                            move: { from, to in drafts.move(fromOffsets: from, toOffset: to) }))
                         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                             Button(role: .destructive) { remove(draft) } label: {
                                 Label("Delete", systemImage: "trash")
@@ -179,17 +204,6 @@ struct RoutineEditorView: View {
     /// Governs how the SCHEDULE section reads: in rotation, the day chips are inert.
     private var isRotation: Bool { services.settings.scheduleMode == .rotation }
 
-    /// One mono line under the day chips that says what the highlighted days actually
-    /// do given the active schedule mode — so the chips never look broken in rotation.
-    private var scheduleModeNote: some View {
-        Text(isRotation
-             ? "Rotation mode ignores days — routines run in the order you arrange them. Days apply if you switch to Weekday."
-             : "Runs on the days you highlight above.")
-            .font(.system(size: 11, weight: .medium, design: .monospaced))
-            .foregroundStyle(SettColor.ash)
-            .fixedSize(horizontal: false, vertical: true)
-            .padding(.top, 2)
-    }
 
     private var rowBackground: some View {
         RoundedRectangle(cornerRadius: 14, style: .continuous)
@@ -247,9 +261,13 @@ struct RoutineEditorView: View {
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(SettColor.iron)
             }
-            .padding(.horizontal, 14)
-            .frame(height: 44)
-            .settCard()
+            .padding(.horizontal, 12)
+            .frame(height: 34)
+            .background(SettColor.cardNested, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(SettColor.cardBorder, lineWidth: 1)
+            }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -383,7 +401,7 @@ struct RoutineEditorView: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Machine setup: \(setup)")
             .accessibilityHint("Edits the machine setup")
-        } else if draft.equipment == .machine || draft.equipment == .cable {
+        } else {
             Button { openSetup(for: draft) } label: {
                 HStack(spacing: 5) {
                     Image(systemName: "gearshape").font(.system(size: 10))

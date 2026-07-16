@@ -195,9 +195,9 @@ struct SetEntryRow: View {
             commit()
         } label: {
             Image(systemName: "checkmark")
-                .font(.system(size: 15, weight: .heavy))
+                .font(.system(size: 12, weight: .heavy))
                 .foregroundStyle(SettColor.etch)
-                .frame(width: 34, height: 34)
+                .frame(width: 24, height: 24)
                 .background(SettColor.heroCyan, in: Circle())
                 .frame(width: 44, height: 44)   // 34pt disc, full 44pt tap target (a11y)
                 .contentShape(Rectangle())

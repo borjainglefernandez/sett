@@ -251,6 +251,9 @@ struct CreateExerciseSheet: View {
     @State private var name = ""
     @State private var muscle: Muscle = .chest
     @State private var equipment: Equipment = .dumbbell
+    /// True once Save inserts the row — suppresses the duplicate warning that would
+    /// otherwise flash for a frame when the @Query re-fetches and sees the new record.
+    @State private var isSaving = false
     @FocusState private var nameFocused: Bool
 
     var body: some View {
@@ -261,7 +264,7 @@ struct CreateExerciseSheet: View {
                     nameField
                     muscleGrid
                     equipmentRow
-                    if isDuplicate {
+                    if isDuplicate && !isSaving {
                         Label("This exercise is already in your library.",
                               systemImage: "exclamationmark.triangle.fill")
                             .font(.footnote)
@@ -427,6 +430,7 @@ struct CreateExerciseSheet: View {
     }
 
     private func save() {
+        isSaving = true
         let exercise = Exercise(name: trimmedName, muscle: muscle,
                                 equipment: equipment, isCustom: true)
         modelContext.insert(exercise)

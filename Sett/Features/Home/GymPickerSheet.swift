@@ -18,7 +18,14 @@ struct GymPickerSheet: View {
 
     @Query private var gyms: [Gym]
     @State private var newName = ""
+    @State private var newSymbol = "mappin.and.ellipse"
     @FocusState private var newNameFocused: Bool
+
+    /// The icon palette a new gym can wear.
+    private static let gymSymbols = [
+        "mappin.and.ellipse", "house.fill", "dumbbell.fill", "building.2.fill",
+        "figure.strengthtraining.traditional", "tree.fill", "bolt.fill", "flame.fill", "star.fill",
+    ]
 
     init(currentID: UUID?, onPick: @escaping (Gym?) -> Void) {
         self.currentID = currentID
@@ -38,7 +45,7 @@ struct GymPickerSheet: View {
                     }
                     ForEach(gyms) { gym in
                         row(title: gym.name,
-                            icon: gym.isHome ? "house.fill" : "mappin.and.ellipse",
+                            icon: gym.symbolName,
                             isOn: gym.id == currentID) {
                             Haptics.selection()
                             onPick(gym)
@@ -48,6 +55,10 @@ struct GymPickerSheet: View {
                 }
                 Section {
                     HStack(spacing: 10) {
+                        Image(systemName: newSymbol)
+                            .font(.subheadline)
+                            .foregroundStyle(SettColor.heroCyan)
+                            .frame(width: 24)
                         TextField("Gym name", text: $newName)
                             .focused($newNameFocused)
                             .textInputAutocapitalization(.words)
@@ -55,6 +66,27 @@ struct GymPickerSheet: View {
                         Button("Add") { createGym() }
                             .fontWeight(.semibold)
                             .disabled(trimmedNewName.isEmpty)
+                    }
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 10) {
+                            ForEach(Self.gymSymbols, id: \.self) { symbol in
+                                Button {
+                                    newSymbol = symbol
+                                    Haptics.selection()
+                                } label: {
+                                    Image(systemName: symbol)
+                                        .font(.system(size: 15))
+                                        .foregroundStyle(newSymbol == symbol ? SettColor.etch : SettColor.heroCyan)
+                                        .frame(width: 38, height: 38)
+                                        .background(newSymbol == symbol ? SettColor.heroCyan : SettColor.cardNested,
+                                                    in: Circle())
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Gym icon")
+                                .accessibilityAddTraits(newSymbol == symbol ? [.isSelected] : [])
+                            }
+                        }
+                        .padding(.vertical, 2)
                     }
                 } header: {
                     Eyebrow("NEW GYM")
@@ -108,7 +140,7 @@ struct GymPickerSheet: View {
     private func createGym() {
         let name = trimmedNewName
         guard !name.isEmpty else { return }
-        let gym = Gym(name: name, latitude: 0, longitude: 0)
+        let gym = Gym(name: name, latitude: 0, longitude: 0, symbolName: newSymbol)
         modelContext.insert(gym)
         try? modelContext.save()
         Haptics.success()

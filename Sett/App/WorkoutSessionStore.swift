@@ -462,18 +462,33 @@ public final class WorkoutSessionStore {
             ?? routine.orderedExercises.first { $0.orderIndex == orderIndex }
     }
 
-    /// The reference workout for ghost autofill: most recent finished workout containing this exercise.
+    /// The reference workout for ghost autofill: the most recent finished workout
+    /// containing this exercise — preferring the SAME gym you're training at now (gym A's
+    /// machine A compares against the last time you were at gym A). With no location set
+    /// on the current workout, or no same-gym history, it falls back to the most recent
+    /// session regardless of gym.
     public func previousSets(exerciseID: UUID, excluding workoutID: UUID?) -> [SetEntry] {
         let descriptor = FetchDescriptor<Workout>(sortBy: [SortDescriptor(\.startedAt, order: .reverse)])
         let workouts = (try? context.fetch(descriptor)) ?? []
-        for workout in workouts where workout.deletedAt == nil && workout.endedAt != nil
-            && !workout.isCasual && workout.id != workoutID {
-            if let match = workout.orderedExercises.first(where: { $0.exerciseID == exerciseID }) {
-                let sets = match.orderedSets.filter { !$0.isWarmup }
-                if !sets.isEmpty { return sets }
-            }
+        let candidates = workouts.filter {
+            $0.deletedAt == nil && $0.endedAt != nil && !$0.isCasual && $0.id != workoutID
         }
-        return []
+        func firstMatch(in pool: [Workout]) -> [SetEntry]? {
+            for workout in pool {
+                if let match = workout.orderedExercises.first(where: { $0.exerciseID == exerciseID }) {
+                    let sets = match.orderedSets.filter { !$0.isWarmup }
+                    if !sets.isEmpty { return sets }
+                }
+            }
+            return nil
+        }
+        // The gym we're training at now (from the active/excluded workout).
+        let currentGymID = workouts.first(where: { $0.id == workoutID })?.gymID ?? activeWorkout?.gymID
+        if let gym = currentGymID,
+           let sameGym = firstMatch(in: candidates.filter { $0.gymID == gym }) {
+            return sameGym
+        }
+        return firstMatch(in: candidates) ?? []
     }
 
     // MARK: Set readback (item 4 — delta vs the reference set at the same slot)

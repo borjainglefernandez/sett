@@ -115,7 +115,7 @@ struct NetGlanceStrip: View {
     }
 
     private func stat(_ value: Int, suffix: String) -> some View {
-        HStack(spacing: 3) {
+        HStack(spacing: 5) {
             if value != 0 {
                 Image(systemName: value > 0 ? "arrow.up.right" : "arrow.down.right")
                     .font(.system(size: 9, weight: .heavy))

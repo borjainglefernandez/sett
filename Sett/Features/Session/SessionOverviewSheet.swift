@@ -212,11 +212,10 @@ struct SessionOverviewSheet: View {
     private var restStrip: some View {
         TimelineView(.periodic(from: .now, by: 0.5)) { context in
             let remaining = restRemaining(at: context.date)
-            let tierColor = (session.lastReadback?.outcome.auraTier ?? .base).color
             HStack(spacing: 12) {
                 Image(systemName: "timer")
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(tierColor)
+                    .foregroundStyle(SettColor.heroCyan)
                 Text("REST")
                     .font(.system(size: 11, weight: .bold, design: .monospaced))
                     .kerning(2)
@@ -234,7 +233,7 @@ struct SessionOverviewSheet: View {
             .padding(.vertical, 10)
             .background(alignment: .bottom) {
                 Rectangle().fill(TimeChamber.void.opacity(0.94)).ignoresSafeArea(edges: .top)
-                Rectangle().fill(tierColor.opacity(0.4)).frame(height: 1)
+                Rectangle().fill(SettColor.cardBorder).frame(height: 1)
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Rest, \(restTimeText(remaining)) remaining")
@@ -245,9 +244,9 @@ struct SessionOverviewSheet: View {
         Button(action: action) {
             Text(text)
                 .font(.system(size: 11, weight: .heavy, design: .monospaced))
-                .foregroundStyle(TimeChamber.scouterGreen)
+                .foregroundStyle(SettColor.heroCyan)
                 .frame(minWidth: 44, minHeight: 44)
-                .background { Capsule().strokeBorder(TimeChamber.scouterGreen.opacity(0.4), lineWidth: 1) }
+                .background { Capsule().strokeBorder(SettColor.heroCyan.opacity(0.4), lineWidth: 1) }
         }
         .buttonStyle(.plain)
     }

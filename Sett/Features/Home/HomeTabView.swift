@@ -131,16 +131,20 @@ struct HomeTabView: View {
         Image(ChamberBackground.resolve(services.settings.chamberBackground).assetName)
             .resizable()
             .scaledToFill()
-            .frame(height: 300)
+            .frame(height: 340)
             .frame(maxWidth: .infinity)
             .clipped()
             .opacity(0.45)
+            // Fade in from the very top (no hard seam under the nav bar) AND out by the
+            // first card — the sky bleeds behind the status bar instead of being sliced.
             .mask {
-                LinearGradient(stops: [.init(color: .white, location: 0),
-                                       .init(color: .white.opacity(0.5), location: 0.45),
+                LinearGradient(stops: [.init(color: .clear, location: 0),
+                                       .init(color: .white, location: 0.22),
+                                       .init(color: .white.opacity(0.5), location: 0.6),
                                        .init(color: .clear, location: 1)],
                                startPoint: .top, endPoint: .bottom)
             }
+            .ignoresSafeArea(edges: .top)
             .allowsHitTesting(false)
             .accessibilityHidden(true)
     }
@@ -531,9 +535,16 @@ struct HomeTabView: View {
         .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 
-    /// The realm behind the launch card: the routine's own domain, else the app default.
+    /// The realm behind the launch card: the routine's own domain if it has one. When it
+    /// doesn't, we deliberately pick a realm OTHER than the home-hero sky, so the card and
+    /// the header never render the same backdrop (they read as two places, not a smear).
     private var launchRealmAsset: String {
-        ChamberBackground.resolve(todaysRoutine?.domainRaw ?? services.settings.chamberBackground).assetName
+        if let raw = todaysRoutine?.domainRaw {
+            return ChamberBackground.resolve(raw).assetName
+        }
+        let home = ChamberBackground.resolve(services.settings.chamberBackground)
+        let preferred: [ChamberBackground] = [.nebula, .storm, .aurora, .volcanic, .sanctuary, .white]
+        return (preferred.first { $0 != home } ?? .nebula).assetName
     }
 
     private var launchSubline: String {

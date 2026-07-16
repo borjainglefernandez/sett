@@ -75,6 +75,7 @@ struct DebugSurfaceHost: View {
     @Query private var finished: [Workout]
     @Query private var allExercises: [Exercise]
     @Query private var allInsights: [AIInsight]
+    @Query private var allRoutines: [Routine]
 
     init(surface: String) {
         self.surface = surface
@@ -115,6 +116,14 @@ struct DebugSurfaceHost: View {
             }
         case "goalprtarget":
             GoalEditorSheet(initialKind: .prTarget)
+        case "gympicker":
+            Color.clear.sheet(isPresented: .constant(true)) {
+                GymPickerSheet(currentID: nil) { _ in }
+            }
+        case "routineeditor":
+            if let routine = allRoutines.first(where: { $0.deletedAt == nil }) {
+                NavigationStack { RoutineEditorView(routine: routine) }
+            }
         case "streak":
             StreakSheet(
                 state: StreakEngine.streakState(

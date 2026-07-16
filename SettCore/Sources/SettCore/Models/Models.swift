@@ -538,6 +538,9 @@ public final class Gym {
     public var longitude: Double
     public var isHome: Bool
     public var notes: String?
+    /// SF Symbol the gym wears in pickers/rows (stored default keeps the migration
+    /// lightweight for stores created before gym icons existed).
+    public var symbolName: String = "mappin.and.ellipse"
     /// Chamber Log fields (optional community review).
     public var dayPassPriceCents: Int?
     public var quickRating: Int?
@@ -547,12 +550,13 @@ public final class Gym {
     public var needsPush: Bool
 
     public init(id: UUID = UUID(), name: String, latitude: Double, longitude: Double,
-                isHome: Bool = false, now: Date = .now) {
+                isHome: Bool = false, symbolName: String = "mappin.and.ellipse", now: Date = .now) {
         self.id = id
         self.name = name
         self.latitude = latitude
         self.longitude = longitude
         self.isHome = isHome
+        self.symbolName = symbolName
         self.notes = nil
         self.dayPassPriceCents = nil
         self.quickRating = nil

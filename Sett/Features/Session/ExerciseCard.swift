@@ -26,6 +26,9 @@ struct ExerciseCard: View {
     @State private var openSwipeRowID: UUID?
     /// The logged row currently lifted for a long-press drag reorder.
     @State private var draggingSet: SetEntry?
+    /// An unstarted exercise shows its whole plan as PLANNED — tapping the first row
+    /// "begins" it (reveals the active input) so the order is deliberate, not pre-armed.
+    @State private var hasBegun = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -52,16 +55,19 @@ struct ExerciseCard: View {
                             dragging: $draggingSet,
                             move: { session.moveSet(in: workoutExercise, from: $0, to: $1) }))
                     }
-                    if !planComplete {
+                    if !planComplete && isStarted {
                         SetEntryRow(workoutExercise: workoutExercise, setNumber: workingLoggedCount + 1)
                     }
                     ForEach(pendingSlots, id: \.self) { ordinal in
-                        plannedRow(number: ordinal + 1, slot: ordinal)
+                        plannedRow(number: ordinal + 1, slot: ordinal,
+                                   canBegin: !isStarted && ordinal == pendingSlots.first)
                     }
                     // Always available — add a set to the plan on the fly (quick-start
                     // and routine workouts alike; planned slots below are removable).
                     addSetButton
                 }
+                // Reset the lifted row if a drag is released over empty space in the card.
+                .onDrop(of: [.text], isTargeted: nil) { _ in draggingSet = nil; return false }
             }
         }
         .padding(14)
@@ -114,6 +120,10 @@ struct ExerciseCard: View {
     /// Every planned working set is logged (only meaningful when there IS a plan).
     private var planComplete: Bool { plannedWorking > 0 && workingLoggedCount >= plannedWorking }
 
+    /// The exercise is underway — a set is logged, or the lifter tapped its first
+    /// planned row to begin. Until then the whole plan reads as PLANNED (no armed check).
+    private var isStarted: Bool { workingLoggedCount > 0 || hasBegun }
+
     /// Add one set to the session plan on the fly. When the plan was already met this
     /// reopens the active input row; otherwise it appends another planned placeholder.
     private var addSetButton: some View {
@@ -141,6 +151,10 @@ struct ExerciseCard: View {
     /// ordinal `workingLoggedCount`). Empty for a quick-start (no plan) or once the
     /// plan is met — the whole plan is shown from the start, not revealed one at a time.
     private var pendingSlots: [Int] {
+        guard isStarted else {
+            // Not started: the whole plan shows as planned; slot 0 is the "begin" row.
+            return Array(0 ..< max(1, plannedWorking))
+        }
         let start = workingLoggedCount + 1
         guard plannedWorking > start else { return [] }
         return Array(start ..< plannedWorking)
@@ -431,33 +445,21 @@ struct ExerciseCard: View {
         !referenceSets.isEmpty || workoutExercise.orderedSets.contains { !$0.isWarmup }
     }
 
-    private func plannedRow(number: Int, slot: Int) -> some View {
+    /// A dimmed planned set. `canBegin` marks the FIRST row of an unstarted exercise —
+    /// it reads "START" and tapping it reveals the active input (go-in-order nudge).
+    private func plannedRow(number: Int, slot: Int, canBegin: Bool) -> some View {
         let ghost = session.ghostValues(for: workoutExercise, slot: slot)
         let weightText = hasTarget ? WeightFormat.compactWithUnit(grams: ghost.weightGrams, unit: unit) : "—"
         let repsText = hasTarget ? "\(ghost.reps)" : "—"
         let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
         return HStack(spacing: 0) {
-            HStack(spacing: 0) {
-                SetIndexBadge(label: "\(number)", charge: .unearned)
-                Spacer().frame(width: SetRowGrid.badgeGap)
-                // Target numbers in ash (legible), not iron — they're the functional part.
-                setValueColumns(weightText: weightText, repsText: repsText,
-                                valueColor: SettColor.ash, weight: .semibold)
-                Spacer(minLength: 8)
-                Text("PLANNED")
-                    .font(.system(size: 9, weight: .bold, design: .monospaced))
-                    .kerning(1)
-                    .foregroundStyle(SettColor.iron)
-            }
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(hasTarget ? "Planned set \(number), target \(weightText) by \(repsText)"
-                                           : "Planned set \(number)")
+            plannedInfo(number: number, weightText: weightText, repsText: repsText, canBegin: canBegin)
             // Drop a planned set from this session's plan (never touches the routine).
             Button {
                 withAnimation(.snappy) { session.removePlannedSet(from: workoutExercise) }
             } label: {
                 Image(systemName: "minus.circle.fill")
-                    .font(.system(size: 17))
+                    .font(.system(size: 24))
                     .foregroundStyle(SettColor.iron)
                     .padding(.leading, 10)
                     .contentShape(Rectangle())
@@ -468,8 +470,39 @@ struct ExerciseCard: View {
         .padding(.horizontal, SetRowGrid.hPad)
         .frame(height: SetRowGrid.rowHeight)
         .background {
-            shape.strokeBorder(SettColor.cardBorder.opacity(0.7),
+            shape.strokeBorder(canBegin ? SettColor.heroCyan.opacity(0.5) : SettColor.cardBorder.opacity(0.7),
                                style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+        }
+    }
+
+    @ViewBuilder
+    private func plannedInfo(number: Int, weightText: String, repsText: String, canBegin: Bool) -> some View {
+        let content = HStack(spacing: 0) {
+            SetIndexBadge(label: "\(number)", charge: .unearned)
+            Spacer().frame(width: SetRowGrid.badgeGap)
+            // Target numbers in ash (legible), not iron — they're the functional part.
+            setValueColumns(weightText: weightText, repsText: repsText,
+                            valueColor: SettColor.ash, weight: .semibold)
+            Spacer(minLength: 8)
+            Text(canBegin ? "START" : "PLANNED")
+                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .kerning(1)
+                .foregroundStyle(canBegin ? SettColor.heroCyan : SettColor.iron)
+        }
+        if canBegin {
+            Button {
+                withAnimation(.snappy) { hasBegun = true }
+                Haptics.selection()
+            } label: { content.contentShape(Rectangle()) }
+            .buttonStyle(.plain)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Start set \(number), target \(weightText) by \(repsText)")
+            .accessibilityHint("Begins this exercise")
+        } else {
+            content
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(hasTarget ? "Planned set \(number), target \(weightText) by \(repsText)"
+                                               : "Planned set \(number)")
         }
     }
 

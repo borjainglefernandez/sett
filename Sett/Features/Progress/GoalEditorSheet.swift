@@ -44,8 +44,8 @@ struct GoalEditorSheet: View {
                     presetCard(.volumeTarget, title: "Volume target",
                                subtitle: "Total weight moved across all lifts.",
                                symbol: "scalemass.fill")
-                    presetCard(.prTarget, title: "PR target",
-                               subtitle: "Chase an e1RM on one lift.",
+                    presetCard(.prTarget, title: "One-rep max",
+                               subtitle: "Hit a target 1RM on one lift.",
                                symbol: "trophy.fill")
                     configSection
                     createButton
@@ -160,7 +160,7 @@ struct GoalEditorSheet: View {
                 .accessibilityLabel("Exercise: \(selectedExerciseName ?? "not chosen")")
                 Stepper {
                     HStack {
-                        Text("Target e1RM")
+                        Text("Target 1RM")
                         Spacer()
                         Text(services.settings.displayWeight(prTargetGrams))
                             .font(.headline)

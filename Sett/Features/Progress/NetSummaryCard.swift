@@ -57,7 +57,7 @@ struct NetSummaryCard: View {
                     .kerning(1.5)
                     .foregroundStyle(SettColor.heroCyan)
             } else {
-                HStack(spacing: 3) {
+                HStack(spacing: 6) {
                     if value != 0 {
                         Image(systemName: value > 0 ? "arrow.up.right" : "arrow.down.right")
                             .font(.system(size: 13, weight: .heavy))

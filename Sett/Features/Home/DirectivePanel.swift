@@ -97,14 +97,18 @@ struct DirectivePanel: View {
         let trained = todaysWorkouts.isEmpty ? 0 : 1
         let weighed = todaysBodyweight.isEmpty ? 0 : 1
         let setCount = min(todaysSets.filter { !$0.isWarmup }.count, 10)   // working sets only, like every other count
+        // ONE training directive: on a planned day "Start <routine>" already means
+        // "feed the scanner", so the two aren't shown side by side. Without a plan, the
+        // concrete 10-set goal stands in as the day's training call.
+        let training = todaysRoutine.map {
+            Directive(key: DirectiveKey.chamber, title: "Start \($0.name)",
+                      progress: "\(trained)/1", isMet: trained == 1)
+        } ?? Directive(key: DirectiveKey.scanner, title: "Feed the Scanner",
+                       progress: "\(setCount)/10", isMet: setCount >= 10)
         return [
-            Directive(key: DirectiveKey.chamber,
-                      title: todaysRoutine.map { "Start \($0.name)" } ?? "Enter the chamber",
-                      progress: "\(trained)/1", isMet: trained == 1),
+            training,
             Directive(key: DirectiveKey.bodyweight, title: "Log bodyweight",
                       progress: "\(weighed)/1", isMet: weighed == 1),
-            Directive(key: DirectiveKey.scanner, title: "Feed the Scanner",
-                      progress: "\(setCount)/10", isMet: setCount >= 10),
         ]
     }
 
@@ -133,10 +137,10 @@ struct DirectivePanel: View {
         let isClaimed = claimedKeys.contains(directive.key)
         HStack(spacing: 12) {
             Text(directive.title)
-                .font(.subheadline.weight(.semibold))
+                .font(.system(size: 15, weight: .semibold, design: .rounded))
                 .foregroundStyle(SettColor.bone)
                 .lineLimit(1)
-                .minimumScaleFactor(0.7)
+                .minimumScaleFactor(0.85)
             Spacer(minLength: 8)
             Text(directive.progress)
                 .font(.system(size: 12, weight: .semibold, design: .monospaced))
