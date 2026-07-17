@@ -30,7 +30,15 @@ struct ActiveWorkoutView: View {
 
     init(startsInOverview: Bool = false) {
         self.startsInOverview = startsInOverview
-        _isShowingOverview = State(initialValue: startsInOverview)
+        var initial = startsInOverview
+        #if DEBUG
+        // Screenshot harness: pick the pane BEFORE the first frame. Flipping it in
+        // onAppear read as a real bug (list flashed, then scanner crossfaded in).
+        if let f = ProcessInfo.processInfo.environment["SETT_DEBUG_OVERVIEW"], !f.isEmpty {
+            initial = f != "player"
+        }
+        #endif
+        _isShowingOverview = State(initialValue: initial)
     }
 
     @State private var cursor = QueuePosition(exerciseIndex: 0, slotIndex: 0)
@@ -79,17 +87,8 @@ struct ActiveWorkoutView: View {
         .overlay(TransformationBurst(tier: ambientTier, token: transformationToken).allowsHitTesting(false))
         .combatTextEmitter(combatText)
         .environment(combatText)
-        .onAppear {
-            #if DEBUG
-            if let f = ProcessInfo.processInfo.environment["SETT_DEBUG_OVERVIEW"], !f.isEmpty {
-                // Authoritative both ways — the list-default setting otherwise wins
-                // via init state and "player" captures would show the list.
-                isShowingOverview = f != "player"
-                return
-            }
-            #endif
-            // (The list-first default is honored via init state, not here.)
-        }
+        // (The list-first default and the SETT_DEBUG_OVERVIEW override are both
+        // honored via init state — nothing may flip the pane after the first frame.)
         .confirmationDialog("Finish workout?",
                             isPresented: $isConfirmingFinish,
                             titleVisibility: .visible) {
