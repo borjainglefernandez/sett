@@ -2,14 +2,14 @@ import SwiftUI
 import SettCore
 import UniformTypeIdentifiers
 
-/// Overview state (v3.1): the old exercise-card list survives as a sheet — the
-/// toolbox, not the workspace. Add exercises, review every logged set, edit notes
-/// and machine setups. Keeps the normal Dark Chamber styling; incognito rules apply
-/// to the player behind it, not here.
-struct SessionOverviewSheet: View {
+/// Overview pane: the old exercise-card list as a full SIBLING of the scanner under
+/// `ActiveWorkoutView`'s shared top bar (✕ · timer · toggle · ✓) — not a sheet, so
+/// switching views never slides or blanks. Add exercises, review every logged set,
+/// edit notes and machine setups. Keeps the normal Dark Chamber styling; incognito
+/// rules apply to the scanner, not here.
+struct SessionOverviewPane: View {
     @Environment(WorkoutSessionStore.self) private var session
     @Environment(AppServices.self) private var services
-    @Environment(\.dismiss) private var dismiss
 
     @State private var isShowingExercisePicker = false
     @State private var isPickingGym = false
@@ -19,93 +19,108 @@ struct SessionOverviewSheet: View {
     @State private var reorderScope: ReorderScope = .exercises
     /// The exercise card currently lifted for a long-press drag reorder.
     @State private var draggingExercise: WorkoutExercise?
-    /// The sheet gets its own emitter so combat text from SetEntryRow commits rises
-    /// over the sheet, not under it on the player root.
+    /// The pane gets its own emitter so combat text from SetEntryRow commits rises
+    /// over the list, not under it on the player root.
     @State private var combatText = CombatTextEmitter()
 
     private enum ReorderScope: Hashable { case exercises, sets }
     private var unit: WeightUnit { services.settings.unit }
 
     var body: some View {
-        NavigationStack {
-            Group {
-                if let workout = session.activeWorkout {
-                    if isReordering { reorderList(workout) } else { list(workout) }
-                } else {
-                    Color.clear
-                }
-            }
-            .dungeonBackground()
-            // The rest clock lives full-screen in RestOverlayView BEHIND this sheet, so
-            // it vanishes exactly when you open the toolbox — usually DURING rest. Pin a
-            // slim rest strip up top so the one time-critical number is always here too.
-            // While reordering, that slot holds the scope toggle instead.
-            .safeAreaInset(edge: .top, spacing: 0) {
-                if isReordering {
-                    scopePicker
-                } else if session.isResting {
-                    restStrip
-                }
-            }
-            .navigationTitle(isReordering ? "Reorder" : (session.activeWorkout?.title ?? "Workout"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { toolbarContent }
-            .sheet(isPresented: $isShowingExercisePicker) {
-                // The shared multi-add picker (one sheet, N exercises) — the session's
-                // single-tap picker retired with it.
-                RoutineExercisePickerSheet(allowsMultiple: true) { exercise in
-                    session.addExercise(exercise)
-                }
-            }
-            .sheet(isPresented: $isPickingGym) {
-                if let workout = session.activeWorkout {
-                    GymPickerSheet(currentID: workout.gymID) { gym in
-                        session.setGym(gym, for: workout)
-                    }
-                }
-            }
-            .onAppear {
-                #if DEBUG
-                if let scope = ProcessInfo.processInfo.environment["SETT_DEBUG_REORDER"] {
-                    reorderScope = scope == "sets" ? .sets : .exercises
-                    isReordering = true
-                }
-                #endif
+        Group {
+            if let workout = session.activeWorkout {
+                if isReordering { reorderList(workout) } else { list(workout) }
+            } else {
+                Color.clear
             }
         }
-        .presentationDetents([.large])
+        .dungeonBackground()
+        // The rest clock lives full-screen in RestOverlayView on the SCANNER pane, so
+        // it vanishes exactly when you open the list — usually DURING rest. Pin a
+        // slim rest strip up top so the one time-critical number is always here too.
+        // While reordering, that slot holds the scope toggle instead.
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if isReordering {
+                scopePicker
+            } else if session.isResting {
+                restStrip
+            }
+        }
+        .sheet(isPresented: $isShowingExercisePicker) {
+            // The shared multi-add picker (one sheet, N exercises) — the session's
+            // single-tap picker retired with it.
+            RoutineExercisePickerSheet(allowsMultiple: true) { exercise in
+                session.addExercise(exercise)
+            }
+        }
+        .sheet(isPresented: $isPickingGym) {
+            if let workout = session.activeWorkout {
+                GymPickerSheet(currentID: workout.gymID) { gym in
+                    session.setGym(gym, for: workout)
+                }
+            }
+        }
+        .onAppear {
+            #if DEBUG
+            if let scope = ProcessInfo.processInfo.environment["SETT_DEBUG_REORDER"] {
+                reorderScope = scope == "sets" ? .sets : .exercises
+                isReordering = true
+            }
+            #endif
+        }
     }
 
-    // MARK: Toolbar — Reorder ⇄ Done
+    // MARK: Header row (workout title + reorder — the nav bar's job, re-housed)
 
-    @ToolbarContentBuilder
-    private var toolbarContent: some ToolbarContent {
-        if isReordering {
-            ToolbarItem(placement: .confirmationAction) {
-                Button("Done") { withAnimation { isReordering = false } }
-                    .fontWeight(.semibold)
+    private func headerRow(_ workout: Workout) -> some View {
+        HStack(spacing: 8) {
+            Text(workout.title.uppercased())
+                .font(.system(.callout, design: .monospaced).weight(.bold))
+                .kerning(1.5)
+                .foregroundStyle(SettColor.bone)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            Spacer(minLength: 8)
+            Button {
+                withAnimation { isReordering = true }
+            } label: {
+                Image(systemName: "arrow.up.arrow.down")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(SettColor.heroCyan)
+                    .frame(width: 38, height: 38)
+                    .background {
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(TimeChamber.void.opacity(0.5))
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .strokeBorder(SettColor.cardBorder.opacity(0.5), lineWidth: 1)
+                    }
+                    .contentShape(Rectangle())
             }
-        } else {
-            ToolbarItem(placement: .topBarLeading) {
-                Button {
-                    withAnimation { isReordering = true }
-                } label: {
-                    Image(systemName: "arrow.up.arrow.down")
-                }
-                .disabled(session.activeWorkout?.orderedExercises.isEmpty ?? true)
-                .accessibilityLabel("Reorder exercises and sets")
-            }
-            ToolbarItem(placement: .confirmationAction) {
-                Button("Done") { dismiss() }
-            }
+            .buttonStyle(.plain)
+            .disabled(workout.orderedExercises.isEmpty)
+            .opacity(workout.orderedExercises.isEmpty ? 0.4 : 1)
+            .accessibilityLabel("Reorder exercises and sets")
         }
     }
 
     private var scopePicker: some View {
-        ChamberSegments(selection: $reorderScope,
-                        options: [(ReorderScope.exercises, "Exercises"),
-                                  (ReorderScope.sets, "Sets")],
-                        compact: true)
+        HStack(spacing: 12) {
+            ChamberSegments(selection: $reorderScope,
+                            options: [(ReorderScope.exercises, "Exercises"),
+                                      (ReorderScope.sets, "Sets")],
+                            compact: true)
+            Button {
+                withAnimation { isReordering = false }
+            } label: {
+                Text("DONE")
+                    .font(.system(size: 11, weight: .heavy, design: .monospaced))
+                    .foregroundStyle(SettColor.heroCyan)
+                    .frame(minWidth: 52, minHeight: 36)
+                    .background { Capsule().strokeBorder(SettColor.heroCyan.opacity(0.4), lineWidth: 1) }
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Done reordering")
+        }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
         .background(alignment: .bottom) {
@@ -268,6 +283,7 @@ struct SessionOverviewSheet: View {
     private func list(_ workout: Workout) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
+                headerRow(workout)
                 locationRow(workout)
                 ForEach(workout.orderedExercises) { workoutExercise in
                     ExerciseCard(workoutExercise: workoutExercise)

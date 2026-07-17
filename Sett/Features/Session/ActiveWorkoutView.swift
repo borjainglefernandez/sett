@@ -4,7 +4,10 @@ import SettCore
 /// The Set Player shell (v3.1 — replaces the scrolling card list). A workout is a
 /// queue of sets, so the session screen is a player, not a document: one set fills
 /// the screen (`SetPlayerView`), rest owns the whole display (`RestOverlayView`),
-/// and the old card list survives as the overview sheet (`SessionOverviewSheet`).
+/// and the old card list survives as the overview pane (`SessionOverviewPane`) — a
+/// SIBLING screen under the shared top bar, not a sheet. Sheet presentation left a
+/// blank first frame for list-default users and slide animations on every toggle;
+/// the panes now switch in place with a crossfade.
 ///
 /// Incognito rules: pure `Color.black` ground (never dungeonBackground in session —
 /// no vignette, no grime, no embers), bone/ash/iron text only, hairline dividers
@@ -17,9 +20,8 @@ import SettCore
 /// pair clamped on every read, so mutations from the overview sheet can never
 /// strand it. Swiping past the final set shows the END pane.
 struct ActiveWorkoutView: View {
-    /// True when the user's default workout view is the list: the overview sheet is
-    /// up from the FIRST frame (state-initialized, not onAppear-presented) and the
-    /// scanner stays hidden until the sheet is dismissed once — no scanner flash.
+    /// True when the user's default workout view is the list: the overview pane IS
+    /// the first frame's content (state-initialized) — no scanner flash, no blank.
     var startsInOverview: Bool = false
 
     @Environment(WorkoutSessionStore.self) private var session
@@ -29,12 +31,7 @@ struct ActiveWorkoutView: View {
     init(startsInOverview: Bool = false) {
         self.startsInOverview = startsInOverview
         _isShowingOverview = State(initialValue: startsInOverview)
-        _hasRevealedPlayer = State(initialValue: !startsInOverview)
     }
-
-    /// False until the list-first sheet is dismissed — the scanner pane stays hidden
-    /// behind the sheet so it never flashes during the presentation animation.
-    @State private var hasRevealedPlayer: Bool
 
     @State private var cursor = QueuePosition(exerciseIndex: 0, slotIndex: 0)
     @State private var hasInitializedCursor = false
@@ -82,21 +79,16 @@ struct ActiveWorkoutView: View {
         .overlay(TransformationBurst(tier: ambientTier, token: transformationToken).allowsHitTesting(false))
         .combatTextEmitter(combatText)
         .environment(combatText)
-        .sheet(isPresented: $isShowingOverview, onDismiss: {
-            hasRevealedPlayer = true
-            reconcileCursor()
-        }) {
-            SessionOverviewSheet()
-        }
         .onAppear {
             #if DEBUG
             if let f = ProcessInfo.processInfo.environment["SETT_DEBUG_OVERVIEW"], !f.isEmpty {
-                if f != "player" { isShowingOverview = true }
+                // Authoritative both ways — the list-default setting otherwise wins
+                // via init state and "player" captures would show the list.
+                isShowingOverview = f != "player"
                 return
             }
             #endif
-            // (The list-first default is honored via init state, not here — an
-            // onAppear-presented sheet let the scanner flash first for a beat.)
+            // (The list-first default is honored via init state, not here.)
         }
         .confirmationDialog("Finish workout?",
                             isPresented: $isConfirmingFinish,
@@ -139,11 +131,9 @@ struct ActiveWorkoutView: View {
     }
 
     private func player(_ workout: Workout) -> some View {
-        let exercises = workout.orderedExercises
-        let position = clamped(cursor, in: exercises)
-        return VStack(spacing: 0) {
+        VStack(spacing: 0) {
             topBar(workout)
-                .opacity(isRestOverlayVisible ? 0.55 : 1)
+                .opacity(isRestOverlayVisible && !isShowingOverview ? 0.55 : 1)
             Rectangle()
                 .fill(SettColor.cardBorder)
                 .frame(height: 0.5)
@@ -151,43 +141,60 @@ struct ActiveWorkoutView: View {
             if session.saveFault { writeFaultBanner }
             if workout.isCasual {
                 offTheRecordPill
-                    .opacity(isRestOverlayVisible ? 0.55 : 1)
+                    .opacity(isRestOverlayVisible && !isShowingOverview ? 0.55 : 1)
             }
+            // Scanner and list are SIBLING panes that swap in place — never a sheet,
+            // so switching is a crossfade with no blank frame and no slide-up.
             ZStack {
-                pane(workout, exercises: exercises, position: position)
-                    .transition(paneTransition)
-                    // Hide the SET pane while resting or between exercises so the
-                    // overlay's translucent scrim reveals only the cosmic backdrop.
-                    .opacity(isRestOverlayVisible || exerciseSummary != nil || !hasRevealedPlayer ? 0 : 1)
-                if isShowingInPlaceReadback, let readback = session.lastReadback {
-                    ReadbackBlock(payload: readback, unit: services.settings.unit)
-                        .padding(.horizontal, 24)
+                if isShowingOverview {
+                    SessionOverviewPane()
                         .transition(.opacity)
-                }
-                if isRestOverlayVisible {
-                    RestOverlayView(nextLabel: nextPreviewLabel(exercises, from: position),
-                                    onAdvance: { advanceCursor() })
+                } else {
+                    scannerContent(workout)
                         .transition(.opacity)
-                }
-                if let summary = exerciseSummary {
-                    ExerciseTransitionView(data: summary, unit: services.settings.unit,
-                                           tier: ambientTier) {
-                        exerciseSummary = nil
-                        advanceCursor()
-                    }
-                    .transition(.opacity)
                 }
             }
-            .animation(.easeInOut(duration: 0.25), value: isRestOverlayVisible)
-            .animation(.easeInOut(duration: 0.2), value: isShowingInPlaceReadback)
-            .animation(.easeInOut(duration: 0.3), value: exerciseSummary?.id)
-            // `.gesture` (not `.simultaneousGesture`): descendant button taps take
-            // priority, so LOG SET / numerals / chips receive taps; only a clearly
-            // horizontal drag (gated in swipeGesture) falls through to page the queue.
-            // simultaneousGesture here let the DragGesture swallow every tap.
-            .gesture(swipeGesture(exercises))
+            .animation(.easeInOut(duration: 0.22), value: isShowingOverview)
         }
         .animation(.snappy, value: session.saveFault)
+    }
+
+    private func scannerContent(_ workout: Workout) -> some View {
+        let exercises = workout.orderedExercises
+        let position = clamped(cursor, in: exercises)
+        return ZStack {
+            pane(workout, exercises: exercises, position: position)
+                .transition(paneTransition)
+                // Hide the SET pane while resting or between exercises so the
+                // overlay's translucent scrim reveals only the cosmic backdrop.
+                .opacity(isRestOverlayVisible || exerciseSummary != nil ? 0 : 1)
+            if isShowingInPlaceReadback, let readback = session.lastReadback {
+                ReadbackBlock(payload: readback, unit: services.settings.unit)
+                    .padding(.horizontal, 24)
+                    .transition(.opacity)
+            }
+            if isRestOverlayVisible {
+                RestOverlayView(nextLabel: nextPreviewLabel(exercises, from: position),
+                                onAdvance: { advanceCursor() })
+                    .transition(.opacity)
+            }
+            if let summary = exerciseSummary {
+                ExerciseTransitionView(data: summary, unit: services.settings.unit,
+                                       tier: ambientTier) {
+                    exerciseSummary = nil
+                    advanceCursor()
+                }
+                .transition(.opacity)
+            }
+        }
+        .animation(.easeInOut(duration: 0.25), value: isRestOverlayVisible)
+        .animation(.easeInOut(duration: 0.2), value: isShowingInPlaceReadback)
+        .animation(.easeInOut(duration: 0.3), value: exerciseSummary?.id)
+        // `.gesture` (not `.simultaneousGesture`): descendant button taps take
+        // priority, so LOG SET / numerals / chips receive taps; only a clearly
+        // horizontal drag (gated in swipeGesture) falls through to page the queue.
+        // simultaneousGesture here let the DragGesture swallow every tap.
+        .gesture(swipeGesture(exercises))
         .onAppear { initializeCursorIfNeeded(exercises) }
     }
 
@@ -253,8 +260,9 @@ struct ActiveWorkoutView: View {
             }
             Spacer()
             recordToggle(workout)
-            barButton("list.bullet", label: "Session overview") {
-                isShowingOverview = true
+            barButton(isShowingOverview ? "dot.viewfinder" : "list.bullet",
+                      label: isShowingOverview ? "Show scanner" : "Show set list") {
+                toggleOverview()
             }
             barButton("checkmark", label: "Finish workout") {
                 finishTapped()
@@ -384,7 +392,7 @@ struct ActiveWorkoutView: View {
             .accessibilityElement(children: .combine)
             Spacer()
             PlayerSlab(title: "ADD EXERCISE", flashesCyan: false) {
-                isShowingOverview = true
+                toggleOverview()
             }
             .padding(.horizontal, 20)
             .padding(.bottom, 12)
@@ -408,7 +416,15 @@ struct ActiveWorkoutView: View {
         min(exercise.orderedSets.count, slotCount(for: exercise) - 1)
     }
 
-    /// After logging/editing in the overview sheet, the shell cursor can point at a slot
+    /// Scanner ⇄ list. Leaving the list reconciles the cursor FIRST, so the scanner's
+    /// first revealed frame already points at the next open slot.
+    private func toggleOverview() {
+        if isShowingOverview { reconcileCursor() }
+        Haptics.selection()
+        withAnimation(.easeInOut(duration: 0.22)) { isShowingOverview.toggle() }
+    }
+
+    /// After logging/editing in the overview pane, the shell cursor can point at a slot
     /// that is now filled — advance it to the current exercise's next open slot so the
     /// scouter doesn't reopen a committed set. (The overview logs via the store directly,
     /// so it can't advance the cursor the way SetPlayerView's onLogged does.)
