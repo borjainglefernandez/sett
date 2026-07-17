@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import UIKit
 import SettCore
 
 // MARK: - 7-Slot Burst Row (Dark Chamber v3 — replaces the weekly goal ring)
@@ -19,6 +20,7 @@ struct SevenSlotBurstRow: View {
 
     @State private var isClaimed: Bool
     @State private var isShowingCeremony = false
+    @Environment(\.scenePhase) private var scenePhase
 
     init(trainedDays: Set<Int>, goalTarget: Int, streakWeeks: Int = 0) {
         self.trainedDays = trainedDays
@@ -72,8 +74,8 @@ struct SevenSlotBurstRow: View {
                         BurstSlot(isFilled: trainedDays.contains(day), isToday: day == todayIndex,
                                   cascadeDelay: Double(position) * 0.04)
                         Text(Self.dayLetters[day])
-                            .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                            .foregroundStyle(day == todayIndex ? SettColor.ash : SettColor.iron)
+                            .font(.system(size: 10, weight: day == todayIndex ? .bold : .semibold, design: .monospaced))
+                            .foregroundStyle(SettColor.ash)
                     }
                     .frame(maxWidth: .infinity)
                 }
@@ -92,6 +94,15 @@ struct SevenSlotBurstRow: View {
             }
         }
         .settCard()
+        // claimKey reads the live ISO week, but isClaimed is seeded once at init.
+        // Re-read it on foreground and at local midnight so the SEALED ✓ / burst
+        // state follows the ISO-week rollover instead of freezing on the old week.
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { isClaimed = UserDefaults.standard.bool(forKey: Self.claimKey) }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.significantTimeChangeNotification)) { _ in
+            isClaimed = UserDefaults.standard.bool(forKey: Self.claimKey)
+        }
         .sheet(isPresented: $isShowingCeremony) {
             BurstCeremonyView(streakWeeks: streakWeeks)
         }

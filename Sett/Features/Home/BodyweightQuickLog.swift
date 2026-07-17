@@ -120,8 +120,7 @@ struct BodyweightLogSheet: View {
                 .foregroundStyle(SettColor.heroCyan)
                 .frame(width: 56, height: 56)
                 .background {
-                    Circle().fill(SettColor.cardNested)
-                    Circle().strokeBorder(SettColor.heroCyan.opacity(0.35), lineWidth: 1)
+                    Circle().strokeBorder(SettColor.heroCyan.opacity(0.4), lineWidth: 1)
                 }
         }
         .buttonStyle(.plain)

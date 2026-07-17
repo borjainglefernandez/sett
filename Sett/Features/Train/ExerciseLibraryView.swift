@@ -48,8 +48,15 @@ struct ExerciseLibraryView: View {
                         prefillName = ""
                         isShowingCreateForm = true
                     } label: {
-                        Label("Create custom exercise", systemImage: "plus")
-                            .foregroundStyle(SettColor.heroCyan)
+                        HStack(spacing: 12) {
+                            ExerciseGlyphView(muscle: .other)
+                                .frame(width: 40, height: 40)
+                            Text("Create custom exercise")
+                                .foregroundStyle(SettColor.heroCyan)
+                            Spacer()
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                        .contentShape(Rectangle())
                     }
                 }
                 .listRowBackground(SettColor.card)
@@ -171,7 +178,7 @@ struct ExerciseLibraryView: View {
                 Spacer()
                 if let e1rm = bestE1RMs[exercise.id] {
                     // Power-number canon: the gold PowerNumeral is the PL's alone.
-                    Text("e1RM \(displayValue(e1rm))")
+                    Text("e1RM \(displayValue(e1rm)) \(services.settings.unit.symbol)")
                         .font(.system(size: 13, weight: .heavy, design: .monospaced))
                         .monospacedDigit()
                         .foregroundStyle(SettColor.heroCyan)
@@ -256,10 +263,10 @@ struct CreateExerciseSheet: View {
                     muscleGrid
                     equipmentRow
                     if isDuplicate && !isSaving {
-                        Label("This exercise is already in your library.",
-                              systemImage: "exclamationmark.triangle.fill")
+                        Label("You've already forged this lift — it's in your library.",
+                              systemImage: "info.circle")
                             .font(.footnote)
-                            .foregroundStyle(SettColor.negative)
+                            .foregroundStyle(SettColor.ash)
                     }
                 }
                 .padding(16)
@@ -372,10 +379,10 @@ struct CreateExerciseSheet: View {
                                            color: equipment == candidate ? SettColor.heroCyan : SettColor.ash)
                                 .frame(width: 26, height: 26)
                             Text(candidate.rawValue.capitalized)
-                                .font(.system(size: 9, weight: .semibold))
+                                .font(.caption2.weight(.semibold))
                                 .foregroundStyle(equipment == candidate ? SettColor.bone : SettColor.ash)
                                 .lineLimit(1)
-                                .minimumScaleFactor(0.7)
+                                .minimumScaleFactor(0.8)
                         }
                     }
                     .accessibilityLabel(candidate.rawValue.capitalized)
@@ -388,7 +395,9 @@ struct CreateExerciseSheet: View {
     private func choiceChip<Content: View>(isSelected: Bool, action: @escaping () -> Void,
                                            @ViewBuilder content: () -> Content) -> some View {
         Button {
-            action()
+            // 0.15 mirrors ChamberSegments/ChamberStepControl — the fill and
+            // border-weight change eases instead of snapping.
+            withAnimation(.snappy(duration: 0.15)) { action() }
             Haptics.selection()
         } label: {
             content()

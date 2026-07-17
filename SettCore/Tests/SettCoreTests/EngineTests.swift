@@ -963,3 +963,74 @@ struct GoalEvaluatorTests {
         #expect(progress.fraction == 0.0)
     }
 }
+
+// MARK: - Like-for-like to-date nets (the live-dashboard variant)
+
+@Suite("ProgressEngine.netToDate")
+struct NetToDateTests {
+    let cal = isoMadrid()
+    let workoutA = UUID()
+    let workoutB = UUID()
+    let workoutC = UUID()
+
+    // ISO weeks: Mon Jul 6–Sun Jul 12 is the previous week; current starts Mon Jul 13.
+    // asOf is Wednesday Jul 15 noon — the previous week's Friday must NOT count.
+
+    @Test("On-pace mid-week reads flat where the strict net reads red")
+    func onPaceIsFlat() {
+        let samples = [
+            sample(bench, weightGrams: 100_000, reps: 10, at: date(2026, 7, 6), workoutID: workoutA),
+            sample(bench, weightGrams: 100_000, reps: 10, at: date(2026, 7, 10), workoutID: workoutB),
+            sample(bench, weightGrams: 100_000, reps: 10, at: date(2026, 7, 13), workoutID: workoutC)
+        ]
+        let asOf = date(2026, 7, 15)
+        let toDate = ProgressEngine.netToDate(samples: samples, exerciseID: bench, period: .week,
+                                              asOf: asOf, calendar: cal)
+        #expect(toDate.reps == 0)
+        #expect(toDate.volumeGrams == 0)
+        #expect(!toDate.isNew)
+        // The strict completed-bucket comparison punishes the same on-pace lifter.
+        let strict = ProgressEngine.netSummary(samples: samples, exerciseID: bench, period: .week,
+                                               containing: asOf, calendar: cal)
+        #expect(strict.reps == -10)
+    }
+
+    @Test("Ahead of last week's pace reads positive mid-week")
+    func aheadReadsPositive() {
+        let samples = [
+            sample(bench, weightGrams: 100_000, reps: 10, at: date(2026, 7, 6), workoutID: workoutA),
+            sample(bench, weightGrams: 100_000, reps: 12, at: date(2026, 7, 13), workoutID: workoutC)
+        ]
+        let toDate = ProgressEngine.netToDate(samples: samples, exerciseID: bench, period: .week,
+                                              asOf: date(2026, 7, 15), calendar: cal)
+        #expect(toDate.reps == 2)
+        #expect(toDate.volumeGrams == 200_000)
+    }
+
+    @Test("isNew when the previous week had nothing up to the same offset")
+    func isNewBeforePreviousFirstSession() {
+        let samples = [
+            // Previous week trained only Friday — after Wednesday's offset.
+            sample(bench, weightGrams: 100_000, reps: 10, at: date(2026, 7, 10), workoutID: workoutA),
+            sample(bench, weightGrams: 100_000, reps: 10, at: date(2026, 7, 13), workoutID: workoutC)
+        ]
+        let toDate = ProgressEngine.netToDate(samples: samples, exerciseID: bench, period: .week,
+                                              asOf: date(2026, 7, 15), calendar: cal)
+        #expect(toDate.isNew)
+        #expect(toDate.reps == 10)
+    }
+
+    @Test("Warm-ups are excluded on both sides")
+    func warmupsExcluded() {
+        let samples = [
+            sample(bench, weightGrams: 100_000, reps: 10, at: date(2026, 7, 6), workoutID: workoutA),
+            sample(bench, weightGrams: 100_000, reps: 10, at: date(2026, 7, 13), workoutID: workoutC),
+            sample(bench, weightGrams: 60_000, reps: 15, at: date(2026, 7, 13), workoutID: workoutC,
+                   warmup: true)
+        ]
+        let toDate = ProgressEngine.netToDate(samples: samples, exerciseID: nil, period: .week,
+                                              asOf: date(2026, 7, 15), calendar: cal)
+        #expect(toDate.reps == 0)
+        #expect(toDate.volumeGrams == 0)
+    }
+}

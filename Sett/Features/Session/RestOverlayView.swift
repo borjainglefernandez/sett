@@ -106,9 +106,16 @@ struct RestOverlayView: View {
                 .stroke(tier.gradient, style: StrokeStyle(lineWidth: 3, lineCap: .round))
                 .shadow(color: tier.color.opacity(0.7), radius: 8)
                 .rotationEffect(.degrees(-90))
+                // Linear over the 0.5 s tick interval so the arc sweeps continuously
+                // between TimelineView redraws instead of stepping.
+                .animation(.linear(duration: 0.5), value: fraction)
             Text(timeText(remaining))
                 .font(.system(size: numeralSize, weight: .heavy, design: .monospaced))
                 .monospacedDigit()
+                // The Int-keyed .animation gives contentTransition an animation context
+                // (TimelineView's redraw doesn't), so the seconds roll instead of snap.
+                .contentTransition(.numericText(countsDown: true))
+                .animation(.snappy(duration: 0.25), value: remaining)
                 .foregroundStyle(SettColor.bone)
                 .shadow(color: .black.opacity(0.7), radius: 5)
                 .lineLimit(1)

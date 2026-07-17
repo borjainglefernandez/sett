@@ -845,7 +845,8 @@ public final class WorkoutSessionStore {
             consistencyAfter: progression.snapshot?.consistencyMultiplier ?? cmBefore,
             didQualify: workoutQualifies(workout),
             surgeActive: workout.restedSurge,
-            completedGoalTitles: completedGoals
+            completedGoalTitles: completedGoals,
+            phase: workout.phase
         )
         activeWorkout = nil
         isPresentingWorkout = false

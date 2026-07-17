@@ -1,9 +1,12 @@
 import SwiftUI
 import SettCore
 
-/// Card 1 — strict previous-calendar-bucket net (Flow 3): two `PowerNumeral(.m)`
+/// Card 1 — like-for-like net for the IN-PROGRESS bucket (Flow 3): two mono
 /// deltas (net reps, net volume in the display unit), green when positive, red
-/// when negative, cyan "NEW" when the previous bucket was empty.
+/// when negative, cyan "NEW" when the previous bucket was empty. Uses
+/// `netToDate` (current bucket through now vs previous bucket through the same
+/// offset) so a mid-bucket glance matches Home's strip instead of reading
+/// structurally red against a completed bucket.
 struct NetSummaryCard: View {
     let samples: [SetSample]
     let period: Period
@@ -14,8 +17,8 @@ struct NetSummaryCard: View {
     var phase: TrainingPhase = .maintaining
 
     private var net: NetSummary {
-        ProgressEngine.netSummary(samples: samples, exerciseID: nil, period: period,
-                                  containing: .now, calendar: calendar)
+        ProgressEngine.netToDate(samples: samples, exerciseID: nil, period: period,
+                                 asOf: .now, calendar: calendar)
     }
 
     private var vsLabel: String {

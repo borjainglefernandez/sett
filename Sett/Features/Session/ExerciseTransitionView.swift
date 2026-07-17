@@ -9,17 +9,26 @@ import SettCore
 struct ExerciseSummaryData: Identifiable, Equatable {
     let id = UUID()
     let exerciseName: String
-    let equipmentSymbol: String
+    let equipment: Equipment
+    let muscle: Muscle
     let rows: [SetRow]          // working sets only (warmups counted separately)
     let warmupCount: Int
     let topPower: Int           // best working-set e1RM, lb (unit-consistent)
     let bestDelta: Int?         // best set's Δ PWR vs last week (nil = no reference)
+    /// Whether the best-delta set held or beat the phase band — drives the headline's
+    /// held-vs-loss vocabulary so it agrees with the per-set rows below it. (The
+    /// transition deliberately speaks a held-aware voice that SetRowGrid.VsLast does
+    /// not model, so it keeps its own delta helpers.)
+    let bestDeltaInBand: Bool
     let hasReference: Bool
     let phase: TrainingPhase
     let retentionPct: Int?      // top set as % of last week's (for the cut header)
     let quote: String
     let nextLabel: String       // next exercise name, or "" when this was the last
     let isFinal: Bool
+    /// Snapshotted at log time so the recap holds its win hue even if the live ambient
+    /// tier decays back to base while the user lingers on this tap-to-continue screen.
+    let tier: AuraTier
 
     struct SetRow: Identifiable, Equatable {
         let id = UUID()
@@ -52,6 +61,7 @@ struct ExerciseTransitionView: View {
             card
             Spacer(minLength: 8)
             PlayerSlab(title: data.isFinal ? "END READING" : "NEXT · \(data.nextLabel.uppercased())",
+                       titleKerning: data.isFinal ? 4 : 2,
                        accent: tier.color) {
                 onContinue()
             }
@@ -93,14 +103,7 @@ struct ExerciseTransitionView: View {
         }
         .padding(22)
         .frame(maxWidth: .infinity)
-        .background {
-            let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
-            shape.fill(TimeChamber.void.opacity(0.85))
-            shape.strokeBorder(tier.color.opacity(0.5), lineWidth: 1.5)
-                .shadow(color: tier.color.opacity(0.4), radius: 9)
-            CornerTicksShape(length: 7, inset: 7)
-                .stroke(tier.color.opacity(0.55), lineWidth: 1)
-        }
+        .hudCard(tint: tier.color, heavy: true, radius: 18, padding: nil)
     }
 
     private var header: some View {
@@ -110,9 +113,8 @@ struct ExerciseTransitionView: View {
                 .kerning(3)
                 .foregroundStyle(tier.color)
             HStack(spacing: 9) {
-                Image(systemName: data.equipmentSymbol)
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(tier.color)
+                ExerciseIcon(name: data.exerciseName, equipment: data.equipment,
+                             muscle: data.muscle, size: 42, color: tier.color)
                 Text(data.exerciseName.uppercased())
                     .font(.system(.title3, design: .monospaced).weight(.bold))
                     .kerning(1)
@@ -141,9 +143,9 @@ struct ExerciseTransitionView: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.6)
             } else if let best = data.bestDelta {
-                Text("· \(deltaLabel(best, inBand: false)) VS LAST WEEK")
+                Text("· \(deltaLabel(best, inBand: data.bestDeltaInBand)) VS LAST WEEK")
                     .font(.system(size: 11, weight: .bold, design: .monospaced))
-                    .foregroundStyle(deltaColor(best, inBand: false))
+                    .foregroundStyle(deltaColor(best, inBand: data.bestDeltaInBand))
                     .lineLimit(1)
                     .minimumScaleFactor(0.6)
             }
@@ -202,7 +204,7 @@ struct ExerciseTransitionView: View {
         if delta > 0 { return "▲ +\(delta)" }
         if delta == 0 { return "= 0" }
         // A dip that stayed inside the phase's success band is "held", not a loss.
-        return inBand ? "◇ held" : "▼ \(delta)"
+        return inBand ? "◇ held" : "▼ \(abs(delta))"
     }
 
     private func deltaColor(_ delta: Int, inBand: Bool) -> Color {

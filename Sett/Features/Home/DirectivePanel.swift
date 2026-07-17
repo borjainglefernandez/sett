@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import UIKit
 import SettCore
 
 // MARK: - Directive Panel (Dark Chamber v3 — the ONLY quest surface in the app)
@@ -12,6 +13,7 @@ import SettCore
 /// local day under `sett.directives.<yyyymmdd>`.
 struct DirectivePanel: View {
     @Environment(AppServices.self) private var services
+    @Environment(\.scenePhase) private var scenePhase
 
     @Query private var todaysWorkouts: [Workout]
     @Query private var todaysBodyweight: [BodyweightEntry]
@@ -136,6 +138,16 @@ struct DirectivePanel: View {
             }
         }
         .hudCard()
+        // The panel is built once inside the persistent Home tab, so init's live
+        // dayKey freezes at first appearance. Re-seed the claim set when the app
+        // returns to foreground or the clock crosses local midnight, so a session
+        // left alive across midnight shows the new day's (empty) claims, not stale ✓.
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { claimedKeys = Self.loadClaims() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.significantTimeChangeNotification)) { _ in
+            claimedKeys = Self.loadClaims()
+        }
         .sheet(isPresented: $isLoggingBodyweight) {
             BodyweightLogSheet(latest: latestBodyweight.first)
         }

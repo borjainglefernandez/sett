@@ -70,10 +70,13 @@ struct ExerciseCard: View {
                     // and routine workouts alike; planned slots below are removable).
                     addSetButton
                 }
+                // Log/delete/duplicate change orderedSets.count — animate so the
+                // committed row and the shifting planned rows slide in rather than pop
+                // (add/remove planned rows self-animate on plannedWorking, not this key).
+                .animation(.snappy(duration: 0.25), value: workoutExercise.orderedSets.count)
             }
         }
-        .padding(14)
-        .background(cardBackground)
+        .hudCard(tint: topTier.color)
         // Reset the lifted row if a drag is released anywhere over the card (incl. the
         // padding) so a cancelled reorder never leaves a row stuck at 0.35 opacity.
         .onDrop(of: [.text], isTargeted: nil) { _ in draggingSet = nil; return false }
@@ -271,6 +274,9 @@ struct ExerciseCard: View {
 
     private var statLine: String {
         let working = workoutExercise.orderedSets.filter { !$0.isWarmup }
+        // Before any working set is logged, surface the queued plan ("3 PLANNED") rather
+        // than the empty "0 SETS" — forward pull, matching the START/PLANNED row labels.
+        if working.isEmpty && plannedWorking > 0 { return "\(plannedWorking) PLANNED" }
         var parts = ["\(working.count) SET\(working.count == 1 ? "" : "S")"]
         if topPwr > 0 { parts.append("TOP \(topPwr) PWR") }
         // Banked volume this session — "how much work have I done" at a glance.
@@ -282,17 +288,8 @@ struct ExerciseCard: View {
         return parts.joined(separator: " · ")
     }
 
-    /// Void card with a scouter rim + corner reticle, tinted by the best set's tier.
-    private var cardBackground: some View {
-        let shape = RoundedRectangle(cornerRadius: 16, style: .continuous)
-        return ZStack {
-            shape.fill(TimeChamber.void.opacity(0.72))
-            shape.strokeBorder(topTier.color.opacity(0.32), lineWidth: 1)
-                .shadow(color: topTier.color.opacity(0.25), radius: 7)
-            CornerTicksShape(length: 6, inset: 7)
-                .stroke(topTier.color.opacity(0.4), lineWidth: 1)
-        }
-    }
+    // (Card chrome is the shared ambient .hudCard — the hand-rolled near-twin
+    // retired with F71; its faint extra glow was the only casualty.)
 
     // MARK: Machine setup (Exercise.instructions — what do I set the machine to)
 
@@ -377,10 +374,10 @@ struct ExerciseCard: View {
                                     .lineLimit(1)
                                     .minimumScaleFactor(0.7)
                                 if let delta, delta != 0 {
-                                    Text(deltaLabel(delta))
+                                    Text(deltaLabel(delta, tier: tier))
                                         .font(.system(size: 11, weight: .heavy, design: .monospaced))
                                         .monospacedDigit()
-                                        .foregroundStyle(deltaColor(delta))
+                                        .foregroundStyle(deltaColor(delta, tier: tier))
                                         .frame(minWidth: 28, alignment: .leading)
                                 }
                             }
@@ -562,8 +559,10 @@ struct ExerciseCard: View {
     }
 
     /// vs-last PWR delta — the SAME glyph + colour the scouter showed (shared VsLast).
-    private func deltaLabel(_ d: Int) -> String { VsLast.label(d, phase: phase) }
-    private func deltaColor(_ d: Int) -> Color { VsLast.color(d, phase: phase) }
+    /// Keyed off this set's classified `tier` so a within-band hold reads neutral (not
+    /// a red loss) — matching the row's green aura.
+    private func deltaLabel(_ d: Int, tier: AuraTier) -> String { VsLast.label(d, phase: phase, tier: tier) }
+    private func deltaColor(_ d: Int, tier: AuraTier) -> Color { VsLast.color(d, phase: phase, tier: tier) }
 
     /// Mutation rules: updatedAt + needsPush + save on the SetEntry itself.
     private func saveNote(_ note: String?, on set: SetEntry) {

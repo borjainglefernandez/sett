@@ -26,13 +26,17 @@ struct ChamberDomainStrip: View {
 
     private func thumb(raw: String?, title: String, asset: String?, selected: Bool) -> some View {
         Button {
-            selection = raw
+            // 0.15 matches ChamberSegments, which sits directly above this strip
+            // in Settings — one selection tempo across the app.
+            withAnimation(.snappy(duration: 0.15)) { selection = raw }
             Haptics.selection()
         } label: {
             VStack(spacing: 6) {
                 preview(asset: asset, selected: selected)
                 Text(circular ? shortTitle(title) : title)
-                    .font(.system(size: circular ? 9 : 10, weight: .medium, design: .monospaced))
+                    // 10pt floor even in the circular strip — 9 was the app's
+                    // smallest text and the short titles fit at 10.
+                    .font(.system(size: 10, weight: .medium, design: .monospaced))
                     .foregroundStyle(selected ? SettColor.bone : SettColor.ash)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
@@ -53,7 +57,10 @@ struct ChamberDomainStrip: View {
                 .clipShape(Circle())
                 .overlay { Circle().strokeBorder(ring, lineWidth: selected ? 2.5 : 1) }
                 .overlay(alignment: .bottomTrailing) {
-                    if selected { checkmark.offset(x: 3, y: 3) }
+                    if selected {
+                        checkmark.offset(x: 3, y: 3)
+                            .transition(.scale.combined(with: .opacity))
+                    }
                 }
         } else {
             realmImage(asset)
@@ -63,7 +70,12 @@ struct ChamberDomainStrip: View {
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .strokeBorder(ring, lineWidth: selected ? 2.5 : 1)
                 }
-                .overlay(alignment: .topTrailing) { if selected { checkmark.padding(5) } }
+                .overlay(alignment: .topTrailing) {
+                    if selected {
+                        checkmark.padding(5)
+                            .transition(.scale.combined(with: .opacity))
+                    }
+                }
         }
     }
 

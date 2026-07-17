@@ -78,7 +78,7 @@ struct MuscleBalanceCard: View {
             Text(muscle.rawValue.uppercased())
                 .font(.system(size: 10, weight: .bold, design: .monospaced))
                 .kerning(1)
-                .foregroundStyle(share == 0 ? SettColor.iron : SettColor.ash)
+                .foregroundStyle(SettColor.ash)
                 .frame(width: 76, alignment: .leading)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
@@ -98,7 +98,7 @@ struct MuscleBalanceCard: View {
             Text(share.formatted(.percent.precision(.fractionLength(0))))
                 .font(.system(size: 10, weight: .semibold, design: .monospaced))
                 .monospacedDigit()
-                .foregroundStyle(share == 0 ? SettColor.iron : SettColor.ash)
+                .foregroundStyle(SettColor.ash)
                 .frame(width: 34, alignment: .trailing)
         }
         .frame(minHeight: 16)

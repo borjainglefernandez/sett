@@ -79,7 +79,10 @@ struct ChartDetailView: View {
                     .foregroundStyle(SettColor.ash)
             }
             VStack(alignment: .leading, spacing: 2) {
-                PowerNumeral(points.count, size: .m, color: .primary)
+                Text(points.count.formatted())
+                    .font(.system(size: 26, weight: .heavy, design: .monospaced))
+                    .monospacedDigit()
+                    .foregroundStyle(SettColor.bone)
                 Text("sessions")
                     .font(.footnote)
                     .foregroundStyle(SettColor.ash)

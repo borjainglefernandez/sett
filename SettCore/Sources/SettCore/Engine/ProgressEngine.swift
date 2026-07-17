@@ -105,6 +105,48 @@ public enum ProgressEngine {
         return nets
     }
 
+    /// Like-for-like net for an IN-PROGRESS bucket: the current bucket summed only
+    /// through `asOf`, against the previous bucket summed through the same elapsed
+    /// offset. A mid-bucket dashboard reads on-pace as flat/positive instead of
+    /// structurally negative (three days can never "beat" seven). Strict
+    /// completed-bucket comparisons stay on `netSummary`; this is the live-glance
+    /// variant. `isNew` is true only when the previous bucket had no working sets
+    /// up to the same point.
+    public static func netToDate(samples: [SetSample], exerciseID: UUID?, period: Period,
+                                 asOf: Date, calendar: Calendar) -> NetSummary {
+        guard let current = calendar.dateInterval(of: component(for: period), for: asOf) else {
+            return NetSummary(reps: 0, volumeGrams: 0, isNew: false)
+        }
+        // The same clock offset one bucket back — DST-safe via calendar arithmetic.
+        let step: (Calendar.Component, Int) = switch period {
+        case .week: (.weekOfYear, -1)
+        case .month: (.month, -1)
+        case .year: (.year, -1)
+        }
+        let previousAsOf = calendar.date(byAdding: step.0, value: step.1, to: asOf) ?? asOf
+        let previousStart = calendar.dateInterval(of: component(for: period), for: previousAsOf)?.start
+            ?? previousAsOf
+
+        var currentReps = 0, currentVolume = 0, currentCount = 0
+        var previousReps = 0, previousVolume = 0, previousCount = 0
+        for sample in samples where !sample.isWarmup && !sample.isCasual
+            && (exerciseID == nil || sample.exerciseID == exerciseID) {
+            let at = sample.completedAt
+            if at >= current.start && at <= asOf {
+                currentReps += sample.reps
+                currentVolume += sample.weightGrams * sample.reps
+                currentCount += 1
+            } else if at >= previousStart && at <= previousAsOf {
+                previousReps += sample.reps
+                previousVolume += sample.weightGrams * sample.reps
+                previousCount += 1
+            }
+        }
+        return NetSummary(reps: currentReps - previousReps,
+                          volumeGrams: currentVolume - previousVolume,
+                          isNew: previousCount == 0 && currentCount > 0)
+    }
+
     private static func netBetweenBuckets(_ working: [SetSample], period: Period,
                                           containing date: Date, calendar: Calendar) -> NetSummary {
         let currentKey = bucketKey(for: date, period: period, calendar: calendar)

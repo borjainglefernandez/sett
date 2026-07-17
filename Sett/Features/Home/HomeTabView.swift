@@ -188,7 +188,16 @@ struct HomeTabView: View {
             }
             .buttonStyle(.plain)
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Power level \(pl)")
+            .accessibilityLabel({
+                // Mirror what the crest shows sighted: the form rank, and the weekly
+                // ΔPL momentum when the delta row is visible (non-nil), read naturally.
+                var label = "Power level \(pl), \(UserForm.form(forPL: pl).title.capitalized)"
+                if let delta = services.progression.plDeltaThisWeek {
+                    label += delta == 0 ? ", no change this week"
+                                        : ", \(delta > 0 ? "up" : "down") \(abs(delta)) this week"
+                }
+                return label
+            }())
             .accessibilityHint("Shows how the power level works")
         }
     }
@@ -387,12 +396,38 @@ struct HomeTabView: View {
         .accessibilityLabel("Training phase: \(services.settings.phase.title)")
     }
 
+    /// The home marquee — the largest, most-read line. Not a to-do app's "Good
+    /// evening": it speaks in the chamber's voice, keyed to the time of day and
+    /// whether today's work is already sealed. Selection is deterministic per
+    /// calendar day (day-of-year index, never random) so it holds steady across
+    /// re-renders instead of flickering. Stays on the bone ramp — no gold (PL's)
+    /// or crimson (Vexeth's) here. First launch keeps the plain time-of-day line.
     private var greeting: String {
-        switch Calendar.current.component(.hour, from: .now) {
-        case ..<12: "Good morning"
-        case ..<18: "Good afternoon"
-        default: "Good evening"
+        let hour = Calendar.current.component(.hour, from: .now)
+        let timeOfDay = hour < 12 ? "Good morning" : (hour < 18 ? "Good afternoon" : "Good evening")
+        // Before any history the plain time-of-day line is the honest first word.
+        guard !finishedWorkouts.isEmpty else { return timeOfDay }
+
+        let dayOfYear = Calendar.current.ordinality(of: .day, in: .year, for: .now) ?? 0
+        let todayIndex = (Self.isoCalendar.component(.weekday, from: .now) + 5) % 7
+        let loggedToday = trainedDaysThisWeek.contains(todayIndex)
+
+        let lines: [String]
+        if loggedToday {
+            // Today's work is sealed — the chamber cools, never "come train".
+            lines = ["Sealed. The chamber holds.",
+                     "The work is logged. The chamber cools.",
+                     "Today's set is sealed."]
+        } else if let routine = todaysRoutine?.name {
+            lines = ["The chamber's warm — \(routine) waits.",
+                     "\(routine) is racked and waiting.",
+                     "The chamber's still lit — \(routine) next."]
+        } else {
+            lines = ["The chamber's still lit.",
+                     "The chamber waits — enter when ready.",
+                     "\(timeOfDay). The chamber holds."]
         }
+        return lines[dayOfYear % lines.count]
     }
 
     // MARK: Streak — target-aware, shield-forgiving (StreakEngine.streakState)
@@ -486,7 +521,7 @@ struct HomeTabView: View {
                         }
                         .contentShape(Capsule())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(PressableSlabStyle(haptic: .light))
                 .frame(maxWidth: .infinity)
             }
         }
@@ -684,6 +719,7 @@ struct HomeTabView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(workout.title)
                     .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(SettColor.bone)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
                 Text(workout.startedAt.formatted(date: .abbreviated, time: .omitted))

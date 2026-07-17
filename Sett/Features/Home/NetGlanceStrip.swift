@@ -56,7 +56,7 @@ struct NetGlanceStrip: View {
 
             if week.sets > 0 {
                 Rectangle()
-                    .fill(SettColor.saiyanGold.opacity(0.15))
+                    .fill(SettColor.cardBorder.opacity(0.6))
                     .frame(height: 1)
                     .padding(.horizontal, 12)
             }
@@ -86,7 +86,7 @@ struct NetGlanceStrip: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .background(slab)
+        .settCard(padding: 0)
         .task { reload() }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilitySummary)
@@ -104,8 +104,8 @@ struct NetGlanceStrip: View {
                 .foregroundStyle(SettColor.bone)
                 .contentTransition(.numericText(value: numeric))
             Text(caption)
-                .font(.system(size: 8, weight: .bold, design: .monospaced))
-                .kerning(1)
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .kerning(0.5)
                 .foregroundStyle(SettColor.ash)
         }
         .frame(maxWidth: .infinity)
@@ -144,36 +144,16 @@ struct NetGlanceStrip: View {
         return SettColor.ash
     }
 
-    // MARK: The slim slab — settCard's etched groove without its 16pt padding
-
-    private var slab: some View {
-        let shape = RoundedRectangle(cornerRadius: 16, style: .continuous)
-        return shape
-            .fill(SettColor.card)
-            .overlay {
-                // Outer groove wall — near-black.
-                shape.strokeBorder(SettColor.etch, lineWidth: 1)
-            }
-            .overlay {
-                // Inner groove floor — faint gold catching torchlight.
-                RoundedRectangle(cornerRadius: 14.5, style: .continuous)
-                    .strokeBorder(SettColor.saiyanGold.opacity(0.2), lineWidth: 1)
-                    .padding(1.5)
-            }
-            .overlay {
-                CornerTicksShape(length: 5, inset: 4)
-                    .stroke(SettColor.saiyanGold.opacity(0.25), lineWidth: 1)
-            }
-    }
-
     // MARK: Data (extracted once per appearance, then engine math off the samples)
 
     private func reload() {
         let samples = SampleExtractor.setSamples(context: modelContext)
-        let summary = ProgressEngine.netSummary(
-            samples: samples, exerciseID: nil, period: .week,
-            containing: .now, calendar: Self.isoCalendar
-        )
+        // Like-for-like proration, NOT strict ProgressEngine.netSummary: a partial
+        // current week compared against a full prior week reads structurally red
+        // mid-week and punishes the lifter for opening the app after three sessions.
+        let summary = ProgressEngine.netToDate(samples: samples, exerciseID: nil,
+                                               period: .week, asOf: .now,
+                                               calendar: Self.isoCalendar)
         // Absolute totals for the current ISO week: working sets only. Casual sessions
         // DO count here (they're real training) — only the net comparison excludes them.
         var totals = WeekTotals()
@@ -190,9 +170,12 @@ struct NetGlanceStrip: View {
     }
 
     private var accessibilitySummary: String {
+        let unit = services.settings.unit.symbol
+        let totals = "\(week.workouts) sessions, \(week.sets) sets, \(tonnageDisplay) \(unit) this week"
+        guard week.sets > 0 else { return totals }
         if net.isNew {
-            return "Net this week: new territory"
+            return "\(totals). Net vs last week: new territory"
         }
-        return "Net this week: \(signed(net.reps)) reps, \(signed(netVolumeDisplay)) \(services.settings.unit.symbol)"
+        return "\(totals). Net vs last week: \(signed(net.reps)) reps, \(signed(netVolumeDisplay)) \(unit)"
     }
 }

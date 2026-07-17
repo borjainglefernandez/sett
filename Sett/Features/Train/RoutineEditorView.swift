@@ -3,6 +3,15 @@ import SwiftData
 import SettCore
 import UniformTypeIdentifiers
 
+private extension View {
+    /// Apply modifiers only when `cond` holds (mirrors RoutineListView.ifRotation),
+    /// so a row's custom drag can be suppressed while edit mode owns the grips.
+    @ViewBuilder
+    func `if`<Content: View>(_ cond: Bool, _ transform: (Self) -> Content) -> some View {
+        if cond { transform(self) } else { self }
+    }
+}
+
 // MARK: - Local draft (value type; nothing touches the store until Save)
 
 /// A routine plans an exercise and HOW MANY sets — never target reps/weight.
@@ -76,6 +85,7 @@ struct RoutineEditorView: View {
                 nameField
             }
             .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
             .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
 
             // Rotation runs the split in order, so day assignment is meaningless there —
@@ -91,6 +101,7 @@ struct RoutineEditorView: View {
                     Eyebrow("SCHEDULE")
                 }
                 .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
                 .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
             }
 
@@ -100,6 +111,7 @@ struct RoutineEditorView: View {
                 Eyebrow("DEFAULT REST")
             }
             .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
             .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
 
             Section {
@@ -108,6 +120,7 @@ struct RoutineEditorView: View {
                 Eyebrow("REALM")
             }
             .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
             .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
 
             Section {
@@ -116,6 +129,7 @@ struct RoutineEditorView: View {
                 Eyebrow("DEFAULT GYM")
             }
             .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
             .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
 
             Section {
@@ -125,14 +139,18 @@ struct RoutineEditorView: View {
                         .listRowSeparator(.hidden)
                         .listRowInsets(EdgeInsets(top: 5, leading: 16, bottom: 5, trailing: 16))
                         .opacity(draggingDraft?.id == draft.id ? 0.35 : 1)
-                        // Long-press lifts a row; drag to reorder live, no edit mode needed.
-                        .onDrag {
-                            draggingDraft = draft
-                            return NSItemProvider(object: draft.id.uuidString as NSString)
+                        // Long-press lifts a row to reorder live (no edit mode needed).
+                        // Suppressed while edit mode is active so the native .onMove grips
+                        // own the drag and the two systems never fight.
+                        .if(!editMode.isEditing) {
+                            $0.onDrag {
+                                draggingDraft = draft
+                                return NSItemProvider(object: draft.id.uuidString as NSString)
+                            }
+                            .onDrop(of: [.text], delegate: ReorderDropDelegate(
+                                target: draft, items: drafts, dragging: $draggingDraft,
+                                move: { from, to in drafts.move(fromOffsets: from, toOffset: to) }))
                         }
-                        .onDrop(of: [.text], delegate: ReorderDropDelegate(
-                            target: draft, items: drafts, dragging: $draggingDraft,
-                            move: { from, to in drafts.move(fromOffsets: from, toOffset: to) }))
                         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                             Button(role: .destructive) { remove(draft) } label: {
                                 Label("Delete", systemImage: "trash")
@@ -151,7 +169,7 @@ struct RoutineEditorView: View {
                 Eyebrow("EXERCISES")
             } footer: {
                 if drafts.isEmpty {
-                    Text("Add your first exercise. Swipe a row to delete; tap Reorder to rearrange.")
+                    Text("Line up your first lift — the day fills as you forge it.")
                         .font(.system(.footnote, design: .monospaced))
                         .foregroundStyle(SettColor.iron)
                 }
@@ -234,7 +252,9 @@ struct RoutineEditorView: View {
             .textInputAutocapitalization(.words)
             .padding(.horizontal, 14)
             .frame(height: 44)
-            .settCard()
+            // Plain card fill (matching the forge's name field) — not settCard, whose
+            // gold groove/ticks are reserved for Power Level / rewards, not a text input.
+            .background(SettColor.card, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     /// Whether the app is running the split in rotation order (vs. weekday assignment).
@@ -310,30 +330,29 @@ struct RoutineEditorView: View {
                 .font(.system(size: 13, weight: .medium, design: .rounded))
                 .foregroundStyle(SettColor.ash)
             Spacer(minLength: 8)
-            stepButton("minus") {
-                defaultRestSeconds = max(RestTuning.range.lowerBound, defaultRestSeconds - RestTuning.step); Haptics.selection()
-            }
-            .accessibilityLabel("Decrease rest")
-            Text("\(defaultRestSeconds)s")
-                .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                .foregroundStyle(SettColor.bone)
-                .monospacedDigit()
-                .frame(minWidth: 42)
-            stepButton("plus") {
-                defaultRestSeconds = min(RestTuning.range.upperBound, defaultRestSeconds + RestTuning.step); Haptics.selection()
-            }
-            .accessibilityLabel("Increase rest")
+            // Shared stepper primitive: value rolls, flanks own their haptics + clamp.
+            ChamberStepControl(
+                text: "\(defaultRestSeconds)s",
+                onDecrement: {
+                    defaultRestSeconds = max(RestTuning.range.lowerBound, defaultRestSeconds - RestTuning.step)
+                },
+                onIncrement: {
+                    defaultRestSeconds = min(RestTuning.range.upperBound, defaultRestSeconds + RestTuning.step)
+                })
         }
         .padding(.vertical, 2)
     }
 
-    private func stepButton(_ symbol: String, action: @escaping () -> Void) -> some View {
+    /// The app-standard ± flank (cyan outline, no fill) so the inline set-count
+    /// stepper reads identically on any background — clear rows or nestedSlab.
+    private func circleStepButton(_ symbol: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.caption.weight(.bold))
+                .font(.system(size: 13, weight: .bold))
                 .foregroundStyle(SettColor.heroCyan)
-                .frame(width: 30, height: 28)
-                .background(SettColor.cardNested, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .frame(width: 34, height: 34)
+                .background { Circle().strokeBorder(SettColor.heroCyan.opacity(0.4), lineWidth: 1) }
+                .contentShape(Circle())
         }
         .buttonStyle(.plain)
     }
@@ -354,7 +373,7 @@ struct RoutineEditorView: View {
                     .fixedSize(horizontal: false, vertical: true)
                 Text(draft.wrappedValue.equipment.rawValue.capitalized)
                     .font(.system(size: 11, weight: .medium, design: .monospaced))
-                    .foregroundStyle(SettColor.iron)
+                    .foregroundStyle(SettColor.ash)
                 setupLine(draft.wrappedValue)
             }
             Spacer(minLength: 6)
@@ -466,22 +485,29 @@ struct RoutineEditorView: View {
 
     private func setCountControl(_ draft: Binding<RoutineDraftExercise>) -> some View {
         HStack(spacing: 6) {
-            stepButton("minus") {
-                if draft.wrappedValue.setCount > SetTuning.range.lowerBound { draft.wrappedValue.setCount -= 1; Haptics.selection() }
+            circleStepButton("minus") {
+                if draft.wrappedValue.setCount > SetTuning.range.lowerBound {
+                    withAnimation(.snappy(duration: 0.15)) { draft.wrappedValue.setCount -= 1 }
+                    Haptics.selection()
+                }
             }
             VStack(spacing: 0) {
                 Text("\(draft.wrappedValue.setCount)")
                     .font(.system(size: 17, weight: .bold, design: .rounded))
                     .monospacedDigit()
                     .foregroundStyle(SettColor.bone)
+                    .contentTransition(.numericText(value: Double(draft.wrappedValue.setCount)))
                 Text(draft.wrappedValue.setCount == 1 ? "SET" : "SETS")
-                    .font(.system(size: 8, weight: .semibold, design: .monospaced))
+                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
                     .kerning(1)
                     .foregroundStyle(SettColor.iron)
             }
             .frame(minWidth: 26)
-            stepButton("plus") {
-                if draft.wrappedValue.setCount < SetTuning.range.upperBound { draft.wrappedValue.setCount += 1; Haptics.selection() }
+            circleStepButton("plus") {
+                if draft.wrappedValue.setCount < SetTuning.range.upperBound {
+                    withAnimation(.snappy(duration: 0.15)) { draft.wrappedValue.setCount += 1 }
+                    Haptics.selection()
+                }
             }
         }
         .fixedSize()

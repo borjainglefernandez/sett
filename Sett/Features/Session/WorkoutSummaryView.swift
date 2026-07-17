@@ -307,14 +307,7 @@ struct WorkoutSummaryView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(24)
-        .background {
-            let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
-            shape.fill(TimeChamber.void.opacity(0.82))
-            shape.strokeBorder(summaryTier.color.opacity(0.5), lineWidth: 1.5)
-                .shadow(color: summaryTier.color.opacity(0.4), radius: 9)
-            CornerTicksShape(length: 7, inset: 7)
-                .stroke(summaryTier.color.opacity(0.55), lineWidth: 1)
-        }
+        .hudCard(tint: summaryTier.color, heavy: true, radius: 18, padding: nil)
         .overlay {
             // Clip only the scanline, so the numeral's ember halo can spill.
             if stage == .scanning && !reduceMotion {
@@ -508,11 +501,14 @@ struct WorkoutSummaryView: View {
     }
 
     private func netStat(value: String, caption: String, positive: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
+        // A negative net while CUTTING is the expected trade, not an alarm — ash,
+        // not red. Bulk/maintain keep the red so a real slide still reads as one.
+        let negative = summary.phase == .cutting ? SettColor.ash : SettColor.negative
+        return VStack(alignment: .leading, spacing: 2) {
             Text(value)
                 .font(PowerFont.m())
                 .monospacedDigit()
-                .foregroundStyle(positive ? SettColor.positive : SettColor.negative)
+                .foregroundStyle(positive ? SettColor.positive : negative)
             Text(caption)
                 .font(.footnote)
                 .foregroundStyle(SettColor.ash)
@@ -520,8 +516,9 @@ struct WorkoutSummaryView: View {
     }
 
     private var netWeightText: String {
-        let pounds = Int(Units.pounds(fromGrams: summary.netVolumeGrams).rounded())
-        return "\(pounds >= 0 ? "+" : "")\(pounds) lb"
+        let unit = services.settings.unit
+        let value = Int((Double(summary.netVolumeGrams) / unit.gramsPerUnit).rounded())
+        return "\(value >= 0 ? "+" : "")\(value) \(unit.symbol)"
     }
 
     private var netRepsText: String {

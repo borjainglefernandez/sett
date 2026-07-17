@@ -185,6 +185,9 @@ public struct WorkoutSummaryData: Identifiable, Sendable {
     public let surgeActive: Bool
     /// Goals whose completion flipped true during this workout's recompute.
     public let completedGoalTitles: [String]
+    /// The phase this workout was scored under — the receipt reads net drops
+    /// through it (a retained-but-negative cut is neutral, not alarm-red).
+    public let phase: TrainingPhase
 
     public init(id: UUID, title: String, durationSeconds: Int,
                 powerLevelBefore: Int, powerLevelAfter: Int,
@@ -197,7 +200,8 @@ public struct WorkoutSummaryData: Identifiable, Sendable {
                 weeklyVolumeLbBefore: Int = 0, weeklyVolumeLbAfter: Int = 0,
                 consistencyBefore: Double = 1.0, consistencyAfter: Double = 1.0,
                 didQualify: Bool = true, surgeActive: Bool = false,
-                completedGoalTitles: [String] = []) {
+                completedGoalTitles: [String] = [],
+                phase: TrainingPhase = .maintaining) {
         self.id = id
         self.title = title
         self.durationSeconds = durationSeconds
@@ -223,5 +227,6 @@ public struct WorkoutSummaryData: Identifiable, Sendable {
         self.didQualify = didQualify
         self.surgeActive = surgeActive
         self.completedGoalTitles = completedGoalTitles
+        self.phase = phase
     }
 }

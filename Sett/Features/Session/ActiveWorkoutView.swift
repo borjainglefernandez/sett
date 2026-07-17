@@ -178,8 +178,10 @@ struct ActiveWorkoutView: View {
                     .transition(.opacity)
             }
             if let summary = exerciseSummary {
+                // Use the snapshotted win tier (not the live ambientTier, which decays
+                // to .base after 8 s) so the recap holds its hue while the user lingers.
                 ExerciseTransitionView(data: summary, unit: services.settings.unit,
-                                       tier: ambientTier) {
+                                       tier: summary.tier) {
                     exerciseSummary = nil
                     advanceCursor()
                 }
@@ -571,7 +573,7 @@ struct ActiveWorkoutView: View {
             if target.exerciseIndex != pos.exerciseIndex {
                 session.skipRest()   // cancel the auto-started rest
                 exerciseSummary = buildExerciseSummary(finished: exercise, target: target,
-                                                       exercises: exercises)
+                                                       exercises: exercises, tier: tier)
                 return
             }
         }
@@ -601,7 +603,7 @@ struct ActiveWorkoutView: View {
     /// Per-set recap of the exercise just finished — power reading + last-week
     /// comparison per set — with a context-tuned motivational line.
     private func buildExerciseSummary(finished: WorkoutExercise, target: QueuePosition,
-                                      exercises: [WorkoutExercise]) -> ExerciseSummaryData {
+                                      exercises: [WorkoutExercise], tier: AuraTier) -> ExerciseSummaryData {
         let phase = session.activeWorkout?.phase ?? .maintaining
         let ordered = finished.orderedSets
         let working = ordered.filter { !$0.isWarmup }
@@ -619,6 +621,7 @@ struct ActiveWorkoutView: View {
         var rows: [ExerciseSummaryData.SetRow] = []
         var topPower = 0
         var bestDelta: Int?
+        var bestDeltaInBand = false   // in-band status of the best-delta set (headline)
         var hasReference = false
         for (index, set) in working.enumerated() {
             let e1RM = ProgressEngine.e1RMGrams(weightGrams: eff(set), reps: set.reps)
@@ -630,13 +633,18 @@ struct ActiveWorkoutView: View {
                 hasReference = true
                 let refE1RM = ProgressEngine.e1RMGrams(weightGrams: eff(refs[index]), reps: refs[index].reps)
                 delta = Int(Units.pounds(fromGrams: e1RM - refE1RM).rounded())
-                if bestDelta == nil || delta! > bestDelta! { bestDelta = delta }
                 // In-band = not a genuine drop for this phase (so a cut dip isn't red).
                 let preview = SetReadback(weightDeltaGrams: nil, repsDelta: nil, isBaseline: false,
                                           e1RMGrams: e1RM, referenceE1RMGrams: refE1RM,
                                           e1RMDeltaGrams: e1RM - refE1RM, isPersonalBest: false)
                 inBand = LogOutcome.classify(readback: preview, phase: phase,
                                              isWarmup: false, isCasual: false) != .dropped
+                // Record the winning set's in-band status alongside bestDelta so the
+                // headline speaks "held" vs "loss" in agreement with the per-set rows.
+                if bestDelta == nil || delta! > bestDelta! {
+                    bestDelta = delta
+                    bestDeltaInBand = inBand
+                }
             }
             rows.append(.init(number: index + 1, weightGrams: set.weightGrams,
                               reps: set.reps, power: power, delta: delta, inBand: inBand))
@@ -646,24 +654,30 @@ struct ActiveWorkoutView: View {
             let refTopLb = max(1, Int(Units.pounds(fromGrams: refTopE1RM).rounded()))
             return Int((Double(topPower) / Double(refTopLb) * 100).rounded())
         }()
+        // Fold the session's own id into the seed so the same exercise doesn't resolve
+        // to the identical line every session — deterministic within a session (no
+        // .random, recompute-safe) but walks the pool session to session.
         let quote = MotivationQuotes.line(for: session.motivationContext(),
-                                          seed: finished.orderIndex &+ finished.exerciseID.stableSeed)
+                                          seed: finished.orderIndex &+ finished.exerciseID.stableSeed
+                                              &+ (session.activeWorkout?.id.stableSeed ?? 0))
         let isFinal = target.exerciseIndex >= exercises.count
         let nextLabel = isFinal ? "" : exercises[target.exerciseIndex].exerciseNameSnapshot
-        let symbol = session.fetchExercise(id: finished.exerciseID)?.equipment.symbolName ?? "dumbbell.fill"
         return ExerciseSummaryData(
             exerciseName: finished.exerciseNameSnapshot,
-            equipmentSymbol: symbol,
+            equipment: finished.equipment,
+            muscle: finished.muscle,
             rows: rows,
             warmupCount: ordered.count - working.count,
             topPower: topPower,
             bestDelta: bestDelta,
+            bestDeltaInBand: bestDeltaInBand,
             hasReference: hasReference,
             phase: phase,
             retentionPct: retentionPct,
             quote: quote,
             nextLabel: nextLabel,
-            isFinal: isFinal
+            isFinal: isFinal,
+            tier: tier
         )
     }
 
@@ -689,7 +703,11 @@ struct ActiveWorkoutView: View {
     private func swipeGesture(_ exercises: [WorkoutExercise]) -> some Gesture {
         DragGesture(minimumDistance: 25)
             .onEnded { value in
-                guard session.restEndsAt == nil, exerciseSummary == nil else { return }
+                // Also block paging while the zero-rest in-place readback is on screen,
+                // so a swipe->move() can't race the pending 1.2 s auto-advance Task and
+                // jump the cursor twice.
+                guard session.restEndsAt == nil, exerciseSummary == nil,
+                      !isShowingInPlaceReadback else { return }
                 let dx = value.translation.width
                 let dy = value.translation.height
                 guard abs(dx) > 60, abs(dx) > abs(dy) * 1.4 else { return }

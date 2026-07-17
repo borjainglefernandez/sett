@@ -59,6 +59,7 @@ struct GoalEditorSheet: View {
                                subtitle: "Hit a target 1RM on one lift.",
                                symbol: "medal.fill")
                     configSection
+                        .transition(.opacity)
                     ChamberCTAButton(isEditing ? "Save Goal" : "Create Goal",
                                      enabled: canCreate, action: commit)
                 }
@@ -102,6 +103,13 @@ struct GoalEditorSheet: View {
                                            selectedID: selectedExerciseID) { exercise in
                     selectedExerciseID = exercise.id
                     selectedExerciseName = exercise.name
+                    // Seed one plate-step above the lift's current best so a fresh PR goal
+                    // never opens already-completed; the flat 135/60 fallback stands for
+                    // lifts with no history, and editing never re-seeds a committed target.
+                    if !isEditing {
+                        let best = currentBestE1RM(for: exercise.id)
+                        if best > 0 { prTargetGrams = best + services.settings.incrementGrams }
+                    }
                 }
             }
         }
@@ -112,7 +120,7 @@ struct GoalEditorSheet: View {
     private func presetCard(_ cardKind: GoalKind, title: String, subtitle: String,
                             symbol: String, isHero: Bool = false) -> some View {
         Button {
-            kind = cardKind
+            withAnimation(.snappy(duration: 0.2)) { kind = cardKind }
             Haptics.selection()
         } label: {
             HStack(spacing: 12) {
@@ -132,10 +140,10 @@ struct GoalEditorSheet: View {
                 Spacer()
                 Image(systemName: kind == cardKind ? "checkmark.circle.fill" : "circle")
                     .foregroundStyle(kind == cardKind ? AnyShapeStyle(SettColor.heroCyan) : AnyShapeStyle(SettColor.iron))
+                    .contentTransition(.symbolEffect(.replace))
             }
-            .padding(isHero ? 20 : 16)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(SettColor.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .settCard(padding: isHero ? 20 : 16)
             .overlay {
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .strokeBorder(kind == cardKind ? SettColor.heroCyan : .clear, lineWidth: 2)
@@ -144,6 +152,8 @@ struct GoalEditorSheet: View {
         }
         .buttonStyle(.plain)
         .disabled(isEditing)
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(kind == cardKind ? [.isSelected] : [])
     }
 
     // MARK: Per-kind configuration
@@ -202,6 +212,15 @@ struct GoalEditorSheet: View {
                                        },
                                        onIncrement: { prTargetGrams += services.settings.incrementGrams },
                                        onTapValue: { isTypingTarget = true })
+                }
+                if let id = selectedExerciseID {
+                    let best = currentBestE1RM(for: id)
+                    if best > 0 {
+                        HStack {
+                            Eyebrow("CURRENT e1RM \(services.settings.displayWeight(best))")
+                            Spacer()
+                        }
+                    }
                 }
             }
             .settCard()
@@ -281,5 +300,14 @@ struct GoalEditorSheet: View {
             selectedExerciseID = goal.exerciseID
             selectedExerciseName = goal.exerciseNameSnapshot
         }
+    }
+
+    /// Highest e1RM this lift has ever produced (grams), 0 if never trained — the anchor
+    /// for seeding a PR goal above the lifter's current max. Mirrors ExerciseDetailView.
+    private func currentBestE1RM(for exerciseID: UUID) -> Int {
+        SampleExtractor.setSamples(context: modelContext)
+            .filter { $0.exerciseID == exerciseID && !$0.isWarmup }
+            .map { ProgressEngine.e1RMGrams(weightGrams: $0.weightGrams, reps: $0.reps) }
+            .max() ?? 0
     }
 }

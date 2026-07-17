@@ -107,6 +107,7 @@ struct RoutineExercisePickerSheet: View {
     private func toggle(_ exercise: Exercise) {
         if let i = pickedIDs.firstIndex(of: exercise.id) {
             pickedIDs.remove(at: i)
+            Haptics.selection()
         } else {
             pickedIDs.append(exercise.id)
             Haptics.selection()
@@ -148,6 +149,10 @@ struct RoutineExercisePickerSheet: View {
                 Image(systemName: isChecked ? "checkmark.circle.fill" : "plus.circle")
                     .foregroundStyle(isChecked ? SettColor.heroCyan
                                                : (allowsMultiple ? SettColor.iron : SettColor.heroCyan))
+                    // isChecked recomputes when pickedIDs mutates, so the value-scoped
+                    // animation is what drives the plus↔checkmark symbol replace.
+                    .contentTransition(.symbolEffect(.replace))
+                    .animation(.snappy(duration: 0.2), value: isChecked)
                     .accessibilityHidden(true)
             }
             .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)

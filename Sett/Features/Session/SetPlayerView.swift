@@ -125,9 +125,12 @@ struct SetPlayerView: View {
                                       bodyweightGrams: session.activeWorkout?.bodyweightGrams)
     }
 
-    private var liveTier: AuraTier {
-        if isWarmup { return .calm }
-        guard let ref = reference else { return .base }
+    /// The live CLASSIFIED verdict for the current input — the same outcome LOG will
+    /// deliver — so the header can affirm a hold the moment the numbers land there
+    /// (not just post-log). Pure recompute from the cached `reference`.
+    private var liveOutcome: LogOutcome {
+        if isWarmup { return .warmup }
+        guard let ref = reference else { return .baseline }
         let e1RM = ProgressEngine.e1RMGrams(weightGrams: effectiveGrams(displayedWeightGrams), reps: displayedReps)
         let isPB = ref.priorBestE1RMGrams > 0 && e1RM > ref.priorBestE1RMGrams
         let refE1RM: Int? = (ref.hasReference && ref.weightGrams != nil && ref.reps != nil)
@@ -139,8 +142,10 @@ struct SetPlayerView: View {
                                   e1RMDeltaGrams: refE1RM.map { e1RM - $0 },
                                   isPersonalBest: isPB)
         return LogOutcome.classify(readback: preview, phase: activePhase,
-                                   isWarmup: false, isCasual: false).auraTier
+                                   isWarmup: false, isCasual: false)
     }
+
+    private var liveTier: AuraTier { liveOutcome.auraTier }
 
     // MARK: Acquisition (scanline sweep + deterministic digit scramble)
 
@@ -229,7 +234,7 @@ struct SetPlayerView: View {
         isGhost = true
         // If we open onto a set already above the ceiling, reflect that in the
         // initial state (the crossing kick/haptic only fire on a live edge later).
-        overCeiling = ceilingPwr > 0 && powerReading >= ceilingPwr
+        overCeiling = ceilingPwr > 0 && powerReading > ceilingPwr
         // Seed the milestone gate to the hundred we OPEN on, so climbing acks only NEW
         // hundreds (opening onto a 250-lb slot never re-acks 100/200).
         lastMilestone = max(0, (powerReading / 100) * 100)
@@ -248,7 +253,7 @@ struct SetPlayerView: View {
                 .font(.system(size: 10, weight: .bold, design: .monospaced))
                 .kerning(3)
                 .foregroundStyle(overCeiling ? TimeChamber.scouterRed
-                                 : (aheadOfLast ? SettColor.positive : liveTier.color))
+                                 : (aheadOfLast ? TimeChamber.scouterGreen : liveTier.color))
                 .accessibilityHidden(true)
             HStack(spacing: 9) {
                 ExerciseIcon(name: workoutExercise.exerciseNameSnapshot,
@@ -319,7 +324,8 @@ struct SetPlayerView: View {
                 fieldRow(text: WeightFormat.compact(grams: displayedWeightGrams,
                                                     unit: services.settings.unit),
                          unit: services.settings.unit.symbol.uppercased(),
-                         field: .weight, salt: 0x11, accessibility: "Weight")
+                         field: .weight, salt: 0x11, accessibility: "Weight",
+                         spokenUnit: spokenWeightUnit)
                 Spacer(minLength: 6)
                 powerReadout
                 Spacer(minLength: 6)
@@ -338,7 +344,7 @@ struct SetPlayerView: View {
     /// the reading). Pure edge detection — deterministic; Reduce Motion drops the
     /// scale punches but keeps the state/haptic.
     private func handlePowerChange(old: Int, new: Int) {
-        let over = ceilingPwr > 0 && new >= ceilingPwr
+        let over = ceilingPwr > 0 && new > ceilingPwr
         if over != overCeiling {
             withAnimation(.easeInOut(duration: 0.25)) { overCeiling = over }
             if over {
@@ -410,16 +416,20 @@ struct SetPlayerView: View {
     /// One half of the scouter: the big number (tap to type) flanked by − / + circle
     /// pickers, with the unit inline. Committed slots show the number alone.
     private func fieldRow(text: String, unit: String, field: NumericField,
-                          salt: UInt64, accessibility: String) -> some View {
+                          salt: UInt64, accessibility: String, spokenUnit: String? = nil) -> some View {
         HStack(spacing: 12) {
             if !isCommitted { stepCircle("minus") { step(field, -1) } }
             HStack(alignment: .firstTextBaseline, spacing: 5) {
-                numeralText(text, field: field, salt: salt, accessibility: accessibility)
+                numeralText(text, field: field, salt: salt, accessibility: accessibility, spokenUnit: spokenUnit)
                 unitCaption(unit)
             }
             if !isCommitted { stepCircle("plus") { step(field, 1) } }
         }
     }
+
+    /// Full-word unit spoken to VoiceOver on the weight numeral only, so "Weight 147.5"
+    /// doesn't drop the lb/kg the whole logging screen turns on. Word, not abbreviation.
+    private var spokenWeightUnit: String { services.settings.unit == .kg ? "kilograms" : "pounds" }
 
     /// The scouter's power reading — this set's estimated output (e1RM), dead centre
     /// of the lens, rolling as you dial the numbers, in the live scouter hue.
@@ -441,7 +451,7 @@ struct SetPlayerView: View {
                 // The NEAR win: your gain vs last week, the thing you actually move
                 // most sessions — a first-class number, not just an aura tint.
                 if let delta = vsLastDelta, delta != 0 {
-                    Text(VsLast.label(delta, phase: activePhase))
+                    Text(VsLast.label(delta, phase: activePhase, tier: liveTier))
                         .font(.system(size: 13, weight: .heavy, design: .monospaced))
                         .monospacedDigit()
                         .foregroundStyle(vsLastColor)
@@ -452,7 +462,9 @@ struct SetPlayerView: View {
             // all-time CEILING (far) — the dim ghost that flips to OVER when you break it.
             if ceilingPwr > 0 {
                 HStack(spacing: 8) {
-                    if lastWeekPwr > 0 {
+                    // Suppress LAST when it equals the ceiling — otherwise the row reads
+                    // "LAST 207 OVER 207", two identical numerals parsing as one run.
+                    if lastWeekPwr > 0 && lastWeekPwr != ceilingPwr {
                         Text("LAST \(lastWeekPwr)")
                             .foregroundStyle(SettColor.bone.opacity(0.7))
                     }
@@ -536,12 +548,16 @@ struct SetPlayerView: View {
         return min(0.82, Double(lastWeekPwr) / Double(ceilingPwr) * 0.82)
     }
 
-    /// Colour for the vs-last delta: green ahead; on a cut a lighter week is neutral
-    /// (never penalised); otherwise a muted red behind.
+    /// Colour for the vs-last delta, on the scouter ramp (this is the incognito pane, so
+    /// no system green/red here): scouter green ahead; a dip the classifier scores as a
+    /// hold (.base/.defended) — or any cut — is neutral ash, never penalised; only a
+    /// genuine decline reads scouter red.
     private var vsLastColor: Color {
         if overCeiling { return liveTier.color }   // subsumed by the red ceiling break — stay one colour
         guard let d = vsLastDelta else { return SettColor.ash }
-        return VsLast.color(d, phase: activePhase)
+        if d > 0 { return TimeChamber.scouterGreen }
+        let neutralDip = activePhase == .cutting || liveTier == .base || liveTier == .defended
+        return neutralDip ? SettColor.ash : TimeChamber.scouterRed
     }
 
     /// Ahead of last week but not yet at the all-time ceiling — the common weekly win.
@@ -550,7 +566,14 @@ struct SetPlayerView: View {
     private var headerStatus: String {
         if overCeiling { return "CEILING BROKEN" }
         if aheadOfLast { return "AHEAD OF LAST" }
-        return "TARGET ACQUIRED"
+        // On a cut/maintain, matching or defending last week's number IS the win —
+        // affirm the hold live instead of the neutral "TARGET ACQUIRED".
+        switch liveOutcome {
+        case .held, .heldUnderFire:
+            return activePhase == .cutting ? "DEFENDING" : "HOLDING THE LINE"
+        default:
+            return "TARGET ACQUIRED"
+        }
     }
 
     /// Last session's output at this slot as a power level (0 = none) — the base of the
@@ -567,7 +590,7 @@ struct SetPlayerView: View {
     private var liveOverload: Double {
         guard ceilingPwr > 0 else { return 0 }
         let floor = holdFloorPwr > 0 ? holdFloorPwr : Int((Double(ceilingPwr) * 0.82).rounded())
-        guard ceilingPwr > floor else { return powerReading >= ceilingPwr ? 1 : 0 }
+        guard ceilingPwr > floor else { return powerReading > ceilingPwr ? 1 : 0 }
         return min(1, max(0, Double(powerReading - floor) / Double(ceilingPwr - floor)))
     }
 
@@ -581,10 +604,11 @@ struct SetPlayerView: View {
     }
 
     private func numeralText(_ text: String, field: NumericField, salt: UInt64,
-                             accessibility: String) -> some View {
+                             accessibility: String, spokenUnit: String? = nil) -> some View {
         Text(scanned(text, salt: salt))
             .font(.system(size: numeralSize, weight: .heavy, design: .monospaced))
             .monospacedDigit()
+            .contentTransition(.numericText())
             .foregroundStyle(numeralColor)
             .opacity(numeralOpacity)
             .shadow(color: overloadFlash ? TimeChamber.scouterRed.opacity(0.7) : .black.opacity(0.85),
@@ -598,7 +622,7 @@ struct SetPlayerView: View {
                 padField = field   // tap the number → type it on the keypad
             }
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel("\(accessibility) \(text)")
+            .accessibilityLabel("\(accessibility) \(text)\(spokenUnit.map { " \($0)" } ?? "")")
             .accessibilityHint(isCommitted ? "" : "Tap to type, or use the − / + buttons")
     }
 
@@ -619,13 +643,17 @@ struct SetPlayerView: View {
     }
 
     private func step(_ field: NumericField, _ direction: Int) {
-        switch field {
-        case .weight:
-            weightGrams = max(0, weightGrams + direction * services.settings.incrementGrams)
-        case .reps:
-            reps = max(0, reps + direction)
+        // Roll the hero numeral with the PWR readout's cadence — the numericText
+        // contentTransition only fires inside an animation transaction.
+        withAnimation(.snappy(duration: 0.18)) {
+            switch field {
+            case .weight:
+                weightGrams = max(0, weightGrams + direction * services.settings.incrementGrams)
+            case .reps:
+                reps = max(0, reps + direction)
+            }
+            isGhost = false
         }
-        isGhost = false
         Haptics.selection()
     }
 
@@ -831,7 +859,7 @@ struct SetPlayerView: View {
 
         let loggedSetCount = session.activeWorkout?.orderedExercises
             .reduce(0) { $0 + $1.orderedSets.count } ?? 0
-        let message = ScannerMessages.line(for: outcome, loggedSetCount: loggedSetCount)
+        let message = ScannerMessages.line(for: outcome, phase: phase, loggedSetCount: loggedSetCount)
         session.lastReadback = LoggedReadback(weightGrams: weightGrams, reps: reps,
                                               readback: readback, outcome: outcome,
                                               message: message, phase: phase)
@@ -895,6 +923,9 @@ struct SetPlayerView: View {
 /// latency is sacred, celebration is the caller's job.
 struct PlayerSlab: View {
     let title: String
+    /// Default 4 suits the short all-caps commands (LOG SET, END READING); the
+    /// exercise-transition NEXT slab relaxes to 2 for longer exercise names.
+    var titleKerning: CGFloat = 4
     var flashesCyan = true
     var accent: Color = SettColor.heroCyan
     var isEnabled = true
@@ -912,7 +943,7 @@ struct PlayerSlab: View {
         } label: {
             Text(title)
                 .font(.system(size: 17, weight: .bold, design: .monospaced))
-                .kerning(4)
+                .kerning(titleKerning)
                 .foregroundStyle(isEnabled ? SettColor.bone : SettColor.iron)
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)

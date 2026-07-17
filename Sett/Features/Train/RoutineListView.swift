@@ -80,17 +80,21 @@ struct RoutineListView: View {
                                     Label("Delete", systemImage: "trash")
                                 }
                             }
-                            .contextMenu {
+                            // Leading swipe (not contextMenu): long-press is reserved
+                            // for the rotation .onDrag reorder, so a menu would hijack it.
+                            .swipeActions(edge: .leading, allowsFullSwipe: false) {
                                 Button {
                                     duplicate(routine)
                                 } label: {
                                     Label("Duplicate", systemImage: "plus.square.on.square")
                                 }
+                                .tint(SettColor.heroCyan)
                                 Button {
                                     setArchived(routine, true)
                                 } label: {
                                     Label("Archive", systemImage: "archivebox")
                                 }
+                                .tint(SettColor.iron)
                             }
                     }
                     if !archivedRoutines.isEmpty {
@@ -129,9 +133,10 @@ struct RoutineListView: View {
             }
             .opacity(0)
             .accessibilityLabel(routine.name)
+            .accessibilityValue(rowSummary(routine))
             .accessibilityHint("Edits the routine")
 
-            RealmDoorwayCard(asset: domainAsset(routine), emphasized: false, height: 118) {
+            RealmDoorwayCard(asset: domainAsset(routine), emphasized: routine.id == nextUpID, height: 118) {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(routine.name)
                         .font(.system(.title3, design: .rounded).weight(.bold))
@@ -148,6 +153,10 @@ struct RoutineListView: View {
                         .font(.system(.caption, design: .rounded).weight(.medium))
                         .foregroundStyle(.white.opacity(0.8))
                 }
+                // Name/position/day-chips/count are folded into the link's
+                // accessibilityValue, so hide the visible Texts from VoiceOver to
+                // stop the routine name doubling and the metadata scattering.
+                .accessibilityHidden(true)
             } accessory: {
                 playButton(routine)
             }
@@ -162,9 +171,11 @@ struct RoutineListView: View {
     @ViewBuilder
     private func dayChips(mask: Int) -> some View {
         if mask == 0 {
-            Text("No scheduled days")
-                .font(.system(.caption2, design: .rounded).weight(.medium))
-                .foregroundStyle(.white.opacity(0.55))
+            // A weekday routine with no days can never surface as "today's" — so the
+            // empty state reads as an action, not a dead-end. Measured (unfilled) so it
+            // doesn't out-shout scheduled routines' muted day pills.
+            StatusChip("SET SCHEDULE", tint: SettColor.heroCyan, icon: "calendar")
+                .accessibilityLabel("No days assigned. Tap the card to schedule.")
         } else {
             HStack(spacing: 5) {
                 ForEach(TrainDays.sundayFirstOrder, id: \.self) { day in
@@ -186,6 +197,28 @@ struct RoutineListView: View {
     private func exerciseCountText(_ routine: Routine) -> String {
         let count = routine.orderedExercises.count
         return count == 1 ? "1 exercise" : "\(count) exercises"
+    }
+
+    /// Fold the card's visible metadata (position or scheduled days, plus the
+    /// exercise count) into one VoiceOver phrase for the row's link — the visible
+    /// Texts are accessibilityHidden, so this carries the info without doubling.
+    private func rowSummary(_ routine: Routine) -> String {
+        var parts: [String] = []
+        if isRotation {
+            let order = Scheduling.orderedActive(routines)
+            let pos = (order.firstIndex { $0.id == routine.id } ?? 0) + 1
+            parts.append("#\(pos) in the cycle")
+            if routine.id == nextUpID { parts.append("Next up") }
+        } else if routine.daysOfWeekMask == 0 {
+            parts.append("No scheduled days")
+        } else {
+            let days = TrainDays.sundayFirstOrder
+                .filter { TrainDays.isSet(routine.daysOfWeekMask, day: $0) }
+                .map { TrainDays.names[$0] }
+            parts.append(days.joined(separator: ", "))
+        }
+        parts.append(exerciseCountText(routine))
+        return parts.joined(separator: ", ")
     }
 
     // MARK: Rotation ordering

@@ -34,6 +34,8 @@ struct PowerTabView: View {
                     RivalCard(rivalPL: rivalPL,
                               rivalForm: rivalForm,
                               userPL: progression.snapshotPowerLevel,
+                              pace: progression.trailingWeeklyPace,
+                              growth: progression.effectiveRivalGrowth,
                               cycle: progression.rivalCycle,
                               rebirthAnnounce: progression.rivalRebirthAnnounce,
                               onAcknowledgeRebirth: { withAnimation(.snappy) { progression.acknowledgeRivalRebirth() } })
@@ -60,7 +62,7 @@ struct PowerTabView: View {
                 HowPowerWorksView()
             }
             .task {
-                progression.recompute(context: modelContext)
+                withAnimation(.snappy) { progression.recompute(context: modelContext) }
                 recomputeRadar()
             }
         }
@@ -80,6 +82,21 @@ struct PowerTabView: View {
 
     private var peakPL: Int {
         progression.snapshot?.allTimePeakPL ?? 0
+    }
+
+    /// Below peak, the caption frames the gap as ground to reclaim rather than a
+    /// bare high-water mark — the one backward-looking number gets a forward hook.
+    private var peakLine: String {
+        let pl = progression.snapshotPowerLevel
+        if pl < peakPL {
+            return "PEAK \(peakPL.formatted()) · \((peakPL - pl).formatted()) TO RECLAIM"
+        }
+        return "PEAK \(peakPL.formatted())"
+    }
+
+    private var reclaimSpeech: String {
+        let pl = progression.snapshotPowerLevel
+        return pl < peakPL ? ", \((peakPL - pl).formatted()) to reclaim" : ""
     }
 
     private var rivalPL: Int {
@@ -133,7 +150,7 @@ struct PowerTabView: View {
                         .font(.footnote)
                         .foregroundStyle(SettColor.ash)
                 } else {
-                    Text("PEAK \(peakPL.formatted())")
+                    Text(peakLine)
                         .font(.system(size: 12, weight: .semibold, design: .monospaced))
                         .kerning(1.5)
                         .foregroundStyle(SettColor.ash)
@@ -157,20 +174,21 @@ struct PowerTabView: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .settCard()
+        .padding(16)
+        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(SettColor.card))
         .frameMaterial(activeTier.frameMaterial)
         .padding(.top, 8)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("""
             \(activeCharacter.displayName), \(activeTier.displayName). \
-            Power level \(progression.snapshotPowerLevel), peak \(peakPL).
+            Power level \(progression.snapshotPowerLevel), peak \(peakPL)\(reclaimSpeech).
             """)
     }
 
     // MARK: (2) Character sheet — mono stat rows + muscle radar
 
-    /// PR-milestone badge keys — the snapshot exposes no raw PR count, so the
-    /// PRS stat counts the earned PR badge ladder (0–3).
+    /// PR-milestone badge keys — the snapshot exposes no raw PR count, so this
+    /// tracks the earned PR-milestone badge ladder (0–3), not a total PR count.
     private static let prBadgeKeys: Set<String> = ["new_ceiling", "limit_break", "walking_legend"]
 
     private var prBadgeCount: Int {
@@ -187,7 +205,7 @@ struct PowerTabView: View {
                 hairline
                 statRow("STREAK", "\(progression.snapshot?.streakWeeks ?? 0) WK")
                 hairline
-                statRow("PRS", "\(prBadgeCount)")
+                statRow("PR MILESTONES", "\(prBadgeCount)/3")
             }
             Eyebrow("MUSCLE BALANCE — 28 DAYS")
                 .padding(.top, 4)
@@ -201,12 +219,13 @@ struct PowerTabView: View {
     private func statRow(_ label: String, _ value: String) -> some View {
         HStack {
             Text(label)
-                .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                .font(.system(.footnote, design: .monospaced).weight(.semibold))
                 .kerning(1.5)
                 .foregroundStyle(SettColor.ash)
             Spacer()
             Text(value)
-                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                .font(.system(.footnote, design: .monospaced).weight(.bold))
+                .contentTransition(.numericText())
                 .foregroundStyle(SettColor.bone)
         }
         .accessibilityElement(children: .combine)
@@ -255,6 +274,7 @@ struct PowerTabView: View {
                 HStack {
                     Label("Badge Case", systemImage: "medal.fill")
                         .font(.title3.weight(.semibold))
+                        .foregroundStyle(SettColor.bone)
                     Spacer()
                     Image(systemName: "chevron.right")
                         .font(.caption.weight(.semibold))
@@ -310,8 +330,7 @@ struct PowerTabView: View {
 
     private var rosterCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Roster")
-                .font(.title3.weight(.semibold))
+            CardTitle("Roster")
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .top, spacing: 16) {
                     ForEach(CharacterKey.allCases, id: \.self) { character in
@@ -361,8 +380,16 @@ struct PowerTabView: View {
             state.needsPush = true
             try? modelContext.save()
         }
-        rosterBurstID = UUID()
+        let burstID = UUID()
+        rosterBurstID = burstID
         Haptics.medium()
+        // A spent AuraBurstView's TimelineView(.animation) keeps ticking invisibly —
+        // clear the id once the 0.8s burst finishes so it unmounts (DirectivePanel.claim precedent).
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(900))
+            guard rosterBurstID == burstID else { return }   // don't clobber a newer swap's burst
+            rosterBurstID = nil
+        }
     }
 
     private func rosterAccessibilityLabel(_ character: CharacterKey, isActive: Bool) -> String {
@@ -466,6 +493,8 @@ private struct RivalCard: View {
     let rivalPL: Int
     let rivalForm: Int
     let userPL: Int
+    let pace: Int
+    let growth: Int
     var cycle: Int = 1
     var rebirthAnnounce: Bool = false
     var onAcknowledgeRebirth: () -> Void = {}
@@ -473,6 +502,18 @@ private struct RivalCard: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Drives the slow crimson menace pulse on the border (static under RM).
     @State private var menace = false
+
+    /// The forward hook: how far behind Vexeth stands and, if the user is
+    /// out-pacing his growth, how many weeks until the catch — mirrors Home's
+    /// Weekly Reading VEXETH row.
+    private var gapLine: String {
+        let gap = rivalPL - userPL
+        if gap > 0 {
+            let eta = pace > growth ? " · CATCH IN \(Int((Double(gap) / Double(pace - growth)).rounded(.up))) WK" : ""
+            return "\(gap.formatted()) PL AHEAD\(eta)"
+        }
+        return "\(abs(gap).formatted()) PL BEHIND YOU"
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -521,6 +562,10 @@ private struct RivalCard: View {
                     .background(SettColor.villainCrimson.opacity(0.15), in: Capsule())
             }
             PowerNumeral(rivalPL, size: .l, color: SettColor.villainCrimson)
+            Text(gapLine)
+                .font(.system(size: 12, weight: .heavy, design: .monospaced))
+                .monospacedDigit()
+                .foregroundStyle(SettColor.villainCrimson)
             Text(rebirthAnnounce ? "\u{201C}You thought that was my ceiling? Cute.\u{201D}"
                  : userPL > rivalPL ? "You've forced my hand." : "He hasn't shown his final form.")
                 .font(.subheadline.italic())
@@ -545,6 +590,6 @@ private struct RivalCard: View {
             if announced { Haptics.rigid() }   // one hit as the rebirth banner lands
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Emperor Vexeth, the Crimson Star. Power level \(rivalPL), form \(rivalForm) of 3.")
+        .accessibilityLabel("Emperor Vexeth, the Crimson Star. Power level \(rivalPL), form \(rivalForm) of 3, \(gapLine).")
     }
 }

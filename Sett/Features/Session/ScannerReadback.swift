@@ -130,8 +130,19 @@ enum ScannerMessages {
         ],
     ]
 
-    static func line(for outcome: LogOutcome, loggedSetCount: Int) -> String {
-        let pool = pools[outcome] ?? ["RECORDED. RECOVER."]
+    /// `.heldUnderFire` fires on a MAINTAIN dip too, not only a cut — but the cut pool
+    /// above is written entirely in leaning-out language ("getting lean"). Off a cut, a
+    /// maintaining lifter's flat day needs a phase-neutral voice.
+    private static let heldUnderFireMaintain = [
+        "HELD UNDER FIRE. The ceiling still stands.",
+        "BELOW THE LINE, STILL ON IT. Answer next set.",
+        "The ceiling still stands. Regroup and re-fire.",
+    ]
+
+    static func line(for outcome: LogOutcome, phase: TrainingPhase, loggedSetCount: Int) -> String {
+        let pool = (outcome == .heldUnderFire && phase != .cutting)
+            ? heldUnderFireMaintain
+            : (pools[outcome] ?? ["RECORDED. RECOVER."])
         let index = ((loggedSetCount % pool.count) + pool.count) % pool.count
         return pool[index]
     }
@@ -230,14 +241,7 @@ struct ReadbackBlock: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 16)
         .padding(.horizontal, 20)
-        .background {
-            let shape = RoundedRectangle(cornerRadius: 16, style: .continuous)
-            shape.fill(TimeChamber.void.opacity(0.85))
-            shape.strokeBorder(tier.color.opacity(0.5), lineWidth: 1.5)
-                .shadow(color: tier.color.opacity(0.45), radius: 9)
-            CornerTicksShape(length: 6, inset: 6)
-                .stroke(tier.color.opacity(0.55), lineWidth: 1)
-        }
+        .hudCard(tint: tier.color, heavy: true, radius: 18, padding: nil)
         .opacity(materialized ? 1 : 0)
         .blur(radius: materialized || reduceMotion ? 0 : 6)
         .scaleEffect(materialized || reduceMotion ? 1 : 1.04)

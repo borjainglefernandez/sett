@@ -4,9 +4,12 @@ import SettCore
 // MARK: - Shared display formatting for workout rows and headers
 
 enum WorkoutFormat {
-    /// "45 min" under an hour, "1 h 12 min" above.
+    /// "45 min" under an hour, "1 h 12 min" above. A finished session under a
+    /// minute reads "<1 min" — "0 min" looked like broken/zeroed data.
     static func duration(_ seconds: Int) -> String {
-        let minutes = max(0, seconds) / 60
+        let clamped = max(0, seconds)
+        let minutes = clamped / 60
+        if minutes == 0 { return clamped > 0 ? "<1 min" : "0 min" }
         guard minutes >= 60 else { return "\(minutes) min" }
         return "\(minutes / 60) h \(minutes % 60) min"
     }

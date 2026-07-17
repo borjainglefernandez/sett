@@ -260,16 +260,23 @@ public struct CornerTicksShape: Shape {
 /// (`settCard` stays the warm stone/gold-groove look for parchment-y content.)
 public struct HUDCardStyle: ViewModifier {
     var tint: Color = SettColor.heroCyan
+    var radius: CGFloat = 16
+    /// nil ⇒ the caller owns its insets (the ceremony cards keep bespoke padding).
+    var padding: CGFloat? = 14
+    /// Two deliberate tiers, not a knob: ambient (list cards, secondary blocks)
+    /// vs heavy (the ceremony trio — readback, exercise recap, summary scan card).
+    var heavy: Bool = false
 
     public func body(content: Content) -> some View {
         content
-            .padding(14)
+            .padding(.all, padding ?? 0)
             .background {
-                let shape = RoundedRectangle(cornerRadius: 16, style: .continuous)
-                shape.fill(TimeChamber.void.opacity(0.72))
-                shape.strokeBorder(tint.opacity(0.28), lineWidth: 1)
-                CornerTicksShape(length: 6, inset: 7)
-                    .stroke(tint.opacity(0.35), lineWidth: 1)
+                let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
+                shape.fill(TimeChamber.void.opacity(heavy ? 0.85 : 0.72))
+                shape.strokeBorder(tint.opacity(heavy ? 0.5 : 0.28), lineWidth: heavy ? 1.5 : 1)
+                    .shadow(color: heavy ? tint.opacity(0.4) : .clear, radius: 9)
+                CornerTicksShape(length: heavy ? 7 : 6, inset: 7)
+                    .stroke(tint.opacity(heavy ? 0.55 : 0.35), lineWidth: 1)
             }
     }
 }
@@ -292,8 +299,9 @@ public extension View {
     /// 0.3s) as ONE modifier — extracted from SystemMessageView/BurstReadyButton so
     /// set-piece cards materialize instead of popping. Plain fade under Reduce Motion.
     func materialize() -> some View { modifier(MaterializeOnAppear()) }
-    func hudCard(tint: Color = SettColor.heroCyan) -> some View {
-        modifier(HUDCardStyle(tint: tint))
+    func hudCard(tint: Color = SettColor.heroCyan, heavy: Bool = false,
+                 radius: CGFloat = 16, padding: CGFloat? = 14) -> some View {
+        modifier(HUDCardStyle(tint: tint, radius: radius, padding: padding, heavy: heavy))
     }
 }
 
@@ -922,6 +930,10 @@ public struct ChamberStepControl: View {
             .font(.system(.title3, design: .monospaced).weight(.bold))
             .monospacedDigit()
             .foregroundStyle(SettColor.bone)
+            // String-diff form on purpose: `text` is pre-formatted with a unit
+            // suffix, so digits roll while the suffix stays put. The flanks'
+            // withAnimation drives the transaction.
+            .contentTransition(.numericText())
             .frame(minWidth: 44)
             .lineLimit(1)
             .minimumScaleFactor(0.7)

@@ -103,7 +103,9 @@ struct ProgressTabView: View {
     private static let placeholderBars: [Double] = [3, 5, 4, 7, 6, 9, 8, 10]
 
     private var chartsLockedCard: some View {
-        VStack(spacing: 12) {
+        ZStack {
+            // Faint ghost bars sit behind the empty state so the locked card still reads
+            // as a chart-to-be rather than a dead panel.
             Chart {
                 ForEach(Array(Self.placeholderBars.enumerated()), id: \.offset) { item in
                     BarMark(x: .value("Period", item.offset),
@@ -118,9 +120,11 @@ struct ProgressTabView: View {
             .frame(height: 120)
             .allowsHitTesting(false)
             .accessibilityHidden(true)
-            Text("Charts unlock after 2 workouts")
-                .font(.subheadline)
-                .foregroundStyle(SettColor.ash)
+            EmptyChamber(title: "Scouters offline",
+                         message: "Log two sessions and the charts come online.",
+                         compact: true) {
+                ChamberCTAButton("Start a workout") { services.session.quickStart() }
+            }
         }
         .frame(maxWidth: .infinity)
         .settCard()

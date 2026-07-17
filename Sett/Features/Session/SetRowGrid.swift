@@ -34,18 +34,25 @@ struct ReorderDropDelegate<Item: Identifiable>: DropDelegate where Item.ID: Equa
 
 /// The ONE source of truth for a "vs last week" PWR delta's glyph + colour, so the
 /// scouter (SetPlayerView) and the overview rows (ExerciseCard) can never disagree
-/// about the same number: ▲ ahead (green), ▼ behind (red), and on a CUT a dip is
-/// neutral — ▽ in ash, never penalised.
+/// about the same number: ▲ ahead (green), ▼ behind (red), and a dip the classifier
+/// scored as a hold (.base/.defended) — or ANY cut — is neutral ▽ in ash, never
+/// penalised. Keying the dip off the classified `tier` (not raw sign+phase) means a
+/// within-band maintain hold reads neutral, matching its green aura, while a genuine
+/// .fatigued/.dropped decline still reads red.
 enum VsLast {
-    static func label(_ delta: Int, phase: TrainingPhase) -> String {
+    /// A dip that must not paint red — a scored hold, or any cut (which never drops).
+    private static func neutralDip(phase: TrainingPhase, tier: AuraTier) -> Bool {
+        phase == .cutting || tier == .base || tier == .defended
+    }
+    static func label(_ delta: Int, phase: TrainingPhase, tier: AuraTier) -> String {
         if delta > 0 { return "▲ +\(delta)" }
         if delta == 0 { return "◇ 0" }
-        return phase == .cutting ? "▽ \(abs(delta))" : "▼ \(abs(delta))"
+        return neutralDip(phase: phase, tier: tier) ? "▽ \(abs(delta))" : "▼ \(abs(delta))"
     }
-    static func color(_ delta: Int, phase: TrainingPhase) -> Color {
+    static func color(_ delta: Int, phase: TrainingPhase, tier: AuraTier) -> Color {
         if delta > 0 { return SettColor.positive }
         if delta == 0 { return TimeChamber.teal }
-        return phase == .cutting ? SettColor.ash : SettColor.negative
+        return neutralDip(phase: phase, tier: tier) ? SettColor.ash : SettColor.negative
     }
 }
 

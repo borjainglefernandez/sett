@@ -159,6 +159,7 @@ struct SessionOverviewPane: View {
 
     private func reorderExerciseRow(_ we: WorkoutExercise) -> some View {
         let count = we.orderedSets.filter { !$0.isWarmup }.count
+        let planned = session.plannedSetCount(for: we)
         return HStack(spacing: 12) {
             ExerciseIcon(name: we.exerciseNameSnapshot, equipment: we.equipment,
                          muscle: we.muscle, size: 40, color: SettColor.heroCyan)
@@ -169,7 +170,10 @@ struct SessionOverviewPane: View {
                     .foregroundStyle(SettColor.bone)
                     .lineLimit(1)
                     .minimumScaleFactor(0.6)
-                Text("\(count) SET\(count == 1 ? "" : "S")")
+                // An unstarted exercise reads "3 PLANNED", not the deflating "0 SETS"
+                // — mirrors ExerciseCard's stat line.
+                Text(planned > 0 && count == 0 ? "\(planned) PLANNED"
+                     : "\(count) SET\(count == 1 ? "" : "S")")
                     .font(.system(size: 10, weight: .semibold, design: .monospaced))
                     .kerning(1)
                     .foregroundStyle(SettColor.ash)

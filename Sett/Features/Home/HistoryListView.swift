@@ -88,6 +88,10 @@ struct HistoryListView: View {
             } else if displayedWorkouts.isEmpty && !searchText.isEmpty {
                 EmptyChamber(title: "No match",
                              message: "No workout named \u{201C}\(searchText)\u{201D}.")
+            } else if displayedWorkouts.isEmpty {
+                EmptyChamber(title: "No workouts match",
+                             message: "No sessions fit this filter.",
+                             actionLabel: "Show all") { select(.all) }
             }
         }
         .searchable(text: $searchText, prompt: "Search workouts")
@@ -144,7 +148,18 @@ struct HistoryListView: View {
     }
     private func workoutSetCount(_ w: Workout) -> Int { workingSets(w).count }
     private func workoutTopE1RM(_ w: Workout) -> Int {
-        workingSets(w).map { ProgressEngine.e1RMGrams(weightGrams: $0.weightGrams, reps: $0.reps) }.max() ?? 0
+        // Score power on EFFECTIVE load (bodyweight equipment adds the lifter's
+        // weight), matching WorkoutDetailView.pwr — added weight alone sinks
+        // pull-up/dip sessions below their true e1RM.
+        w.orderedExercises.flatMap { ex in
+            ex.orderedSets.filter { !$0.isWarmup }.map { set in
+                ProgressEngine.e1RMGrams(
+                    weightGrams: LoadMath.effectiveWeightGrams(
+                        addedGrams: set.weightGrams, equipment: ex.equipment,
+                        bodyweightGrams: w.bodyweightGrams),
+                    reps: set.reps)
+            }
+        }.max() ?? 0
     }
 
     private var monthGroups: [(key: Date, workouts: [Workout])] {
@@ -196,8 +211,10 @@ struct HistoryListView: View {
             }
             HStack(spacing: 6) {
                 Text("\(displayedWorkouts.count) SHOWN")
+                    .contentTransition(.numericText())
                 Text("·").foregroundStyle(SettColor.iron)
                 Text("\(tonnageText) \(services.settings.unit.symbol.uppercased()) TOTAL")
+                    .contentTransition(.numericText())
             }
             .font(.system(size: 10, weight: .semibold, design: .monospaced))
             .kerning(1)
@@ -313,6 +330,8 @@ struct HistoryListView: View {
                 netChip(value: netDisplayValue(net.volumeGrams), suffix: services.settings.unit.symbol,
                         phase: phase)
             }
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
         }
     }
 

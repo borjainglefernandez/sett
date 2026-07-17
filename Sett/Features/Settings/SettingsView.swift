@@ -31,8 +31,21 @@ struct SettingsView: View {
                             Text(settings.displayWeight(grams)).tag(grams)
                         }
                     }
-                    Stepper(value: $settings.defaultRestSeconds, in: RestTuning.range, step: RestTuning.step) {
-                        LabeledContent("Default rest", value: restText)
+                    .foregroundStyle(SettColor.bone)
+                    HStack {
+                        Text("Default rest")
+                            .foregroundStyle(SettColor.bone)
+                        Spacer()
+                        ChamberStepControl(
+                            text: restText,
+                            onDecrement: {
+                                settings.defaultRestSeconds = max(RestTuning.range.lowerBound,
+                                                                  settings.defaultRestSeconds - RestTuning.step)
+                            },
+                            onIncrement: {
+                                settings.defaultRestSeconds = min(RestTuning.range.upperBound,
+                                                                  settings.defaultRestSeconds + RestTuning.step)
+                            })
                     }
                     VStack(alignment: .leading, spacing: 8) {
                         Eyebrow("WORKOUT VIEW")
@@ -46,7 +59,7 @@ struct SettingsView: View {
                 } footer: {
                     Text("Scanner is the full-screen scouter; List is the overview of every set.")
                         .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(SettColor.iron)
+                        .foregroundStyle(SettColor.ash)
                 }
                 .listRowBackground(SettColor.card)
                 .listRowSeparatorTint(SettColor.cardBorder)
@@ -71,7 +84,7 @@ struct SettingsView: View {
                 } footer: {
                     Text(phaseFooter)
                         .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(SettColor.iron)
+                        .foregroundStyle(SettColor.ash)
                 }
                 .listRowBackground(SettColor.card)
                 .listRowSeparatorTint(SettColor.cardBorder)
@@ -87,7 +100,7 @@ struct SettingsView: View {
                 } footer: {
                     Text("Your default training realm. Routines can override it.")
                         .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(SettColor.iron)
+                        .foregroundStyle(SettColor.ash)
                 }
                 .listRowBackground(SettColor.card)
                 .listRowSeparatorTint(SettColor.cardBorder)
@@ -154,8 +167,8 @@ struct SettingsView: View {
             }
             .onChange(of: settings.unit) { _, newUnit in
                 // Changing the unit resets the increment to that unit's default step.
+                // ChamberSegments already fires the selection haptic on tap.
                 settings.incrementGrams = newUnit.defaultIncrementGrams
-                Haptics.selection()
             }
         }
     }
@@ -180,10 +193,10 @@ struct SettingsView: View {
         Binding(
             get: { services.settings.phase },
             set: {
+                // ChamberSegments already fires the selection haptic on tap.
                 services.settings.trainingPhase = $0.rawValue
                 services.settings.hasChosenPhase = true
                 services.session.syncActiveWorkoutPhase()
-                Haptics.selection()
             }
         )
     }

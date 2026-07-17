@@ -20,6 +20,9 @@ struct StreakSheet: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var flameScale: CGFloat = 1
+    /// A separate idle loop so the repeatForever breath never collides with the
+    /// one-shot extend spring on flameScale — the two scaleEffects multiply.
+    @State private var flameBreath: CGFloat = 1
 
     var body: some View {
         NavigationStack {
@@ -53,14 +56,20 @@ struct StreakSheet: View {
                 .foregroundStyle(SettColor.heroCyan)
                 .shadow(color: SettColor.heroCyan.opacity(0.6), radius: 8)
                 .scaleEffect(flameScale)
+                .scaleEffect(flameBreath)
                 .background {
                     // The hearth behind the fire — embers thicken as the streak grows.
                     EmberHalo(intensity: min(1, 0.3 + Double(state.weeks) * 0.07))
                         .padding(-36)
                 }
                 .onAppear {
-                    // A week just extended: one celebratory punch, then still.
-                    guard state.extendedThisWeek, !reduceMotion else { return }
+                    guard !reduceMotion else { return }
+                    // Idle breath — a fire that holds perfectly still reads as an icon.
+                    withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true)) {
+                        flameBreath = 1.035
+                    }
+                    // A week just extended: one celebratory punch on top of the breath.
+                    guard state.extendedThisWeek else { return }
                     flameScale = 1.15
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.6)) { flameScale = 1 }
                     Haptics.success()
@@ -89,13 +98,8 @@ struct StreakSheet: View {
             }
             if let plMultiplier, plMultiplier > 1 {
                 // The mechanical payoff: the streak multiplies the power level.
-                Text("POWER LEVEL ×\(plMultiplier.formatted(.number.precision(.fractionLength(2))))")
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                    .kerning(1.2)
-                    .foregroundStyle(SettColor.heroCyan)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
-                    .background(SettColor.heroCyan.opacity(0.12), in: Capsule())
+                StatusChip("POWER LEVEL ×\(plMultiplier.formatted(.number.precision(.fractionLength(2))))",
+                           tint: SettColor.heroCyan)
             }
         }
         .frame(maxWidth: .infinity)

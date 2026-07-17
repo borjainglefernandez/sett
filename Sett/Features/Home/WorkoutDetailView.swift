@@ -13,6 +13,18 @@ struct WorkoutDetailView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
+    /// Badges earned in THIS session — the medal/PR moment the history row
+    /// celebrates, surfaced here where the user relives the workout.
+    @Query private var badgeAwards: [BadgeAward]
+
+    init(workout: Workout) {
+        self.workout = workout
+        let wid = workout.id
+        _badgeAwards = Query(
+            filter: #Predicate<BadgeAward> { $0.workoutID == wid && $0.deletedAt == nil },
+            sort: [SortDescriptor(\BadgeAward.earnedAt)])
+    }
+
     @State private var editing = false
     /// Committed set being corrected in the shared value editor.
     @State private var editingSet: SetEntry?
@@ -55,8 +67,10 @@ struct WorkoutDetailView: View {
         }
         .sheet(item: $editingSet) { set in
             SetValuesEditSheet(set: set, unit: services.settings.unit) { weight, reps, warm in
-                session.editSet(set, weightGrams: weight, reps: reps, isWarmup: warm)
-                recomputeAfterCorrection()
+                withAnimation(.snappy) {
+                    session.editSet(set, weightGrams: weight, reps: reps, isWarmup: warm)
+                    recomputeAfterCorrection()
+                }
             }
         }
         .sheet(isPresented: $isPickingGym) {
@@ -90,8 +104,10 @@ struct WorkoutDetailView: View {
                             titleVisibility: .visible,
                             presenting: deletingSet) { set in
             Button("Delete Set", role: .destructive) {
-                session.deleteSet(set)
-                recomputeAfterCorrection()
+                withAnimation(.snappy) {
+                    session.deleteSet(set)
+                    recomputeAfterCorrection()
+                }
             }
         } message: { _ in
             Text("Removing it rewrites this workout's power numbers.")
@@ -123,6 +139,16 @@ struct WorkoutDetailView: View {
                     netChip(value: Int((Double(net.volumeGrams) / services.settings.unit.gramsPerUnit).rounded()),
                             suffix: services.settings.unit.symbol)
                 }
+            } else if net?.isNew == true, !workout.isCasual {
+                StatusChip("NEW", tint: SettColor.heroCyan)
+            }
+            if !badgeAwards.isEmpty {
+                HStack(spacing: 6) {
+                    ForEach(badgeAwards) { award in
+                        StatusChip(badgeName(award.badgeKey), tint: SettColor.saiyanGold,
+                                   icon: "medal.fill")
+                    }
+                }
             }
             HStack(alignment: .top, spacing: 24) {
                 stat(WorkoutFormat.duration(workout.durationSeconds), caption: "duration")
@@ -142,8 +168,8 @@ struct WorkoutDetailView: View {
                     }
                 }
                 if let bodyweight = workout.bodyweightGrams {
-                    stat(WeightFormat.compactWithUnit(grams: bodyweight,
-                                                      unit: services.settings.unit),
+                    stat(BodyweightFormat.valueWithUnit(grams: bodyweight,
+                                                        unit: services.settings.unit),
                          caption: "bodyweight")
                 }
             }
@@ -152,6 +178,11 @@ struct WorkoutDetailView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .settCard()
+    }
+
+    /// Config's display name for an earned badge key; the raw key is a safe fallback.
+    private func badgeName(_ key: String) -> String {
+        services.progression.config?.badge(key)?.name ?? key
     }
 
     /// Net chip — the history rows' grammar (+N green / −N red, cut-neutral ash).
@@ -165,6 +196,7 @@ struct WorkoutDetailView: View {
             .background(color.opacity(0.12), in: Capsule())
             .font(.caption2.weight(.bold))
             .monospacedDigit()
+            .contentTransition(.numericText(value: Double(value)))
     }
 
     /// Title — read-only text lives in the nav bar; edit mode surfaces it here as
@@ -200,8 +232,10 @@ struct WorkoutDetailView: View {
                            selection: Binding(
                                get: { workout.startedAt },
                                set: { date in
-                                   session.setStartDate(date, for: workout)
-                                   recomputeAfterCorrection()
+                                   withAnimation(.snappy) {
+                                       session.setStartDate(date, for: workout)
+                                       recomputeAfterCorrection()
+                                   }
                                }),
                            displayedComponents: [.date, .hourAndMinute])
                     .labelsHidden()
@@ -262,8 +296,10 @@ struct WorkoutDetailView: View {
         Toggle(isOn: Binding(
             get: { workout.isCasual },
             set: { casual in
-                session.setCasual(casual, for: workout)
-                recomputeAfterCorrection()
+                withAnimation(.snappy) {
+                    session.setCasual(casual, for: workout)
+                    recomputeAfterCorrection()
+                }
             })) {
             Text("OFF THE RECORD")
                 .font(.system(size: 11, weight: .bold, design: .monospaced))
@@ -375,6 +411,7 @@ struct WorkoutDetailView: View {
                         .font(.system(size: 11, weight: .bold, design: .monospaced))
                         .monospacedDigit()
                         .foregroundStyle(isTop ? TimeChamber.scouterAmber : TimeChamber.scouterGreen)
+                        .contentTransition(.numericText(value: Double(pwr(set, in: workoutExercise))))
                 }
                 if editing {
                     Button(role: .destructive) {
@@ -406,8 +443,10 @@ struct WorkoutDetailView: View {
                         Label("Edit note", systemImage: "note.text")
                     }
                     Button {
-                        session.duplicateSet(set)
-                        recomputeAfterCorrection()
+                        withAnimation(.snappy) {
+                            session.duplicateSet(set)
+                            recomputeAfterCorrection()
+                        }
                     } label: {
                         Label("Duplicate set", systemImage: "plus.square.on.square")
                     }
@@ -482,11 +521,13 @@ struct WorkoutDetailView: View {
                            entryUnit: services.settings.unit,
                            reps: last?.reps ?? 0)
         set.workoutExercise = workoutExercise
-        modelContext.insert(set)
-        workout.updatedAt = .now
-        workout.needsPush = true
-        try? modelContext.save()
-        recomputeAfterCorrection()
+        withAnimation(.snappy) {
+            modelContext.insert(set)
+            workout.updatedAt = .now
+            workout.needsPush = true
+            try? modelContext.save()
+            recomputeAfterCorrection()
+        }
         Haptics.light()
     }
 

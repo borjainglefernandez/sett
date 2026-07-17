@@ -40,6 +40,8 @@ struct ExerciseDetailView: View {
     @State private var volumePoints: [VolumePoint] = []
     @State private var bestSet: SetSample?
     @State private var recentGroups: [SessionGroup] = []
+    /// The active PR-target goal for this lift, if the user set one (nil otherwise).
+    @State private var prTargetGoal: Goal?
     @State private var hasLoaded = false
     @State private var isEditingSetup = false
     /// Custom lifts only: the shared forge sheet in edit mode.
@@ -57,6 +59,7 @@ struct ExerciseDetailView: View {
                     if let bestSet {
                         prCard(bestSet)
                     }
+                    prTargetCard
                     e1rmChartCard
                     volumeChartCard
                     recentSetsCard
@@ -157,6 +160,7 @@ struct ExerciseDetailView: View {
                     .foregroundStyle(SettColor.ash)
                 Text("\(services.settings.displayWeight(best.weightGrams)) × \(best.reps)")
                     .font(.title3.bold())
+                    .foregroundStyle(SettColor.bone)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
                 Text(best.completedAt.formatted(date: .abbreviated, time: .omitted))
@@ -177,28 +181,88 @@ struct ExerciseDetailView: View {
                 .strokeBorder(SettColor.saiyanGold.opacity(0.4), lineWidth: 1)
         )
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Personal record: \(services.settings.displayWeight(best.weightGrams)) for \(best.reps) reps")
+        .accessibilityLabel("Personal record: \(services.settings.displayWeight(best.weightGrams)) for \(best.reps) reps. Estimated one-rep max \(displayInt(maxE1RMGrams)) \(services.settings.unit.symbol).")
+    }
+
+    // MARK: PR-target goal (cyan ring in progress; the ring itself turns gold once
+    // earned — gold stays reserved for the earned PR numeral in prCard otherwise)
+
+    /// Distance-to-goal for the committed PR target on this lift. Shown only when an
+    /// active prTarget goal exists; reuses GoalRingView so it reads like every other
+    /// goal in the app. EmptyView when there's no goal.
+    @ViewBuilder
+    private var prTargetCard: some View {
+        if let goal = prTargetGoal {
+            let progress = goalProgress(for: goal)
+            VStack(alignment: .leading, spacing: 12) {
+                Eyebrow("TARGET")
+                HStack(spacing: 16) {
+                    GoalRingView(progress: progress, title: exercise.name)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Target \(progress.targetValue) \(services.settings.unit.symbol)")
+                            .font(.subheadline)
+                            .foregroundStyle(SettColor.bone)
+                        if progress.isComplete {
+                            Label("Complete", systemImage: "checkmark.circle.fill")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(SettColor.saiyanGold)
+                        } else {
+                            Text("\(max(0, progress.targetValue - progress.currentValue)) \(services.settings.unit.symbol) to go")
+                                .font(.subheadline)
+                                .foregroundStyle(SettColor.ash)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .settCard()
+        }
+    }
+
+    /// Evaluate the goal from this lift's samples and convert the gram-valued PR
+    /// current/target into display units, exactly as GoalsSection.displayProgress does.
+    private func goalProgress(for goal: Goal) -> GoalProgress {
+        let sample = GoalSample(id: goal.id, kind: goal.kind, targetValue: goal.targetValue,
+                                exerciseID: goal.exerciseID, startDate: goal.startDate,
+                                endDate: goal.endDate, isActive: goal.isActive,
+                                completedAt: goal.completedAt, createdAt: goal.createdAt)
+        let raw = GoalEvaluator.progress(goal: sample, setSamples: samples, workoutSamples: [],
+                                         calendar: .current, asOf: .now)
+        let unit = services.settings.unit
+        return GoalProgress(
+            goalID: raw.goalID,
+            fraction: raw.fraction,
+            currentValue: Int((Double(raw.currentValue) / unit.gramsPerUnit).rounded()),
+            targetValue: Int((Double(raw.targetValue) / unit.gramsPerUnit).rounded()),
+            isComplete: raw.isComplete
+        )
     }
 
     // MARK: e1RM trend (cyan line, gold dot on the all-time max ONLY)
 
     private var e1rmChartCard: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("e1RM trend (\(services.settings.unit.symbol))")
-                .font(.headline)
+            CardTitle("e1RM trend (\(services.settings.unit.symbol))")
             Chart(e1rmSeries) { point in
                 LineMark(
                     x: .value("Date", point.date),
                     y: .value("e1RM", displayDouble(point.grams))
                 )
                 .foregroundStyle(SettColor.heroCyan)
-                if point.grams == maxE1RMGrams {
+                if point.id == prPoint?.id {
                     PointMark(
                         x: .value("Date", point.date),
                         y: .value("e1RM", displayDouble(point.grams))
                     )
                     .foregroundStyle(SettColor.saiyanGold)
                     .symbolSize(90)
+                    .annotation(position: .overlay, overflowResolution: .init(x: .fit, y: .fit)) {
+                        Circle()
+                            .fill(Aura.gold)
+                            .frame(width: 11, height: 11)
+                            .auraGlow(SettColor.saiyanGold, radius: 8)
+                    }
                 }
             }
             .chartYScale(domain: .automatic(includesZero: false))
@@ -213,8 +277,7 @@ struct ExerciseDetailView: View {
 
     private var volumeChartCard: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Session volume (\(services.settings.unit.symbol)·reps)")
-                .font(.headline)
+            CardTitle("Session volume (\(services.settings.unit.symbol)·reps)")
             Chart(volumePoints) { point in
                 BarMark(
                     x: .value("Date", point.date, unit: .day),
@@ -233,8 +296,7 @@ struct ExerciseDetailView: View {
 
     private var recentSetsCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Recent sets")
-                .font(.headline)
+            CardTitle("Recent sets")
             ForEach(recentGroups) { group in
                 VStack(alignment: .leading, spacing: 6) {
                     Text(group.date.formatted(date: .abbreviated, time: .omitted))
@@ -244,21 +306,19 @@ struct ExerciseDetailView: View {
                         HStack(spacing: 8) {
                             Text("\(services.settings.displayWeight(sample.weightGrams)) × \(sample.reps)")
                                 .font(.subheadline)
+                                .foregroundStyle(SettColor.bone)
                                 .monospacedDigit()
                             if sample.isWarmup {
-                                Text("warmup")
-                                    .font(.caption2)
-                                    .foregroundStyle(SettColor.ash)
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
-                                    .background(SettColor.cardNested, in: Capsule())
+                                StatusChip("warmup")
                             }
                             Spacer()
                         }
                     }
                 }
                 if group.id != recentGroups.last?.id {
-                    Divider()
+                    Rectangle()
+                        .fill(SettColor.cardBorder)
+                        .frame(height: 1)
                 }
             }
         }
@@ -272,6 +332,7 @@ struct ExerciseDetailView: View {
             Toggle(isOn: archiveBinding) {
                 Label("Archive exercise", systemImage: "archivebox")
                     .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(SettColor.bone)
             }
             .tint(SettColor.heroCyan)
             Text("Archived exercises are hidden from pickers but keep their history and charts.")
@@ -303,6 +364,7 @@ struct ExerciseDetailView: View {
                 .foregroundStyle(SettColor.ash)
             Text("Never trained")
                 .font(.headline)
+                .foregroundStyle(SettColor.bone)
             Text("First set sets the baseline.")
                 .font(.subheadline)
                 .foregroundStyle(SettColor.ash)
@@ -315,6 +377,12 @@ struct ExerciseDetailView: View {
 
     private var maxE1RMGrams: Int {
         e1rmSeries.map(\.grams).max() ?? 0
+    }
+
+    /// The single all-time-max point (earliest session on a tie) — the ONE gold dot,
+    /// so a plateau at the max never scatters duplicate marks.
+    private var prPoint: E1RMPoint? {
+        e1rmSeries.max { $0.grams < $1.grams }
     }
 
     private var e1rmXDomain: ClosedRange<Date> { Self.paddedDateDomain(e1rmSeries.map(\.date)) }
@@ -385,5 +453,11 @@ struct ExerciseDetailView: View {
                 .sorted { $0.date > $1.date }
                 .prefix(10)
         )
+
+        // The committed PR target for this lift, if any — surfaces distance-to-goal.
+        let exerciseID: UUID? = exercise.id
+        let goalDescriptor = FetchDescriptor<Goal>(
+            predicate: #Predicate { $0.deletedAt == nil && $0.isActive && $0.exerciseID == exerciseID })
+        prTargetGoal = (try? modelContext.fetch(goalDescriptor))?.first { $0.kind == .prTarget }
     }
 }
