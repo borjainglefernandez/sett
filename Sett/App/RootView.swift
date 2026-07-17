@@ -98,6 +98,8 @@ struct DebugSurfaceHost: View {
             }
         case "settings":
             SettingsView()
+        case "howpower":
+            HowPowerWorksView()
         case "onboarding":
             // The harness renders this as a raw overlay (no presentation), so
             // dismiss() is a no-op there — honor "Begin training" by dropping the

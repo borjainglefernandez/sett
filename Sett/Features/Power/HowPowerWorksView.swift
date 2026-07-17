@@ -45,18 +45,19 @@ struct HowPowerWorksView: View {
         let weeklyPercent = Int(((pl?.consistencyPerWeek ?? 0.05) * 100).rounded())
         let maxWeeks = pl?.consistencyMaxWeeks ?? 10
         return VStack(alignment: .leading, spacing: 10) {
-            Label("The One Number", systemImage: "bolt.fill")
+            Label("The one number", systemImage: "bolt.fill")
                 .font(.headline)
             bullet("""
-                Your Power Level has exactly three levers — STRENGTH, VOLUME, and \
-                your STREAK. Nothing else moves it.
+                Three things move your power level: how strong you are, how much \
+                you've been lifting, and how often you show up. Nothing else.
                 """)
-            bullet("STRENGTH: your best verified lift per muscle group over the last \(strengthDays) days.")
-            bullet("VOLUME: the work you've moved over the last \(volumeDays) days (diminishing returns — double volume doesn't double power).")
-            bullet("STREAK: each consistent week multiplies the total by +\(weeklyPercent)%, up to \(maxWeeks) weeks (\(String(format: "×%.1f", 1 + Double(weeklyPercent) / 100 * Double(maxWeeks)))).")
+            bullet("Strength — your best verified lift in each muscle group over the last \(strengthDays) days.")
+            bullet("Volume — how much you've lifted over the last \(volumeDays) days. Returns taper off, so twice the work isn't twice the power.")
+            bullet("Streak — each week you stay consistent adds \(weeklyPercent)% to the total, up to \(maxWeeks) weeks (\(String(format: "×%.1f", 1 + Double(weeklyPercent) / 100 * Double(maxWeeks)))).")
             footnote("""
-                The windows roll, so power must be MAINTAINED — a long break lets it \
-                fade, and coming back rebuilds it fast.
+                All three windows keep rolling, so the number reflects recent \
+                training. Take a long break and it slips; come back and it builds \
+                again fast.
                 """)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -76,21 +77,21 @@ struct HowPowerWorksView: View {
         let minSets = qualifying?.minEffectiveSets ?? 3
         let minMinutes = qualifying?.minDurationMinutes ?? 10
         return VStack(alignment: .leading, spacing: 10) {
-            Label("What Counts", systemImage: "checkmark.seal")
+            Label("What counts", systemImage: "checkmark.seal")
                 .font(.headline)
-            bullet("An effective set lands between \(minReps) and \(maxReps) reps.")
+            bullet("A set counts when it's between \(minReps) and \(maxReps) reps.")
             bullet("""
-                A set's PWR is its estimated one-rep max — rep credit caps at \
-                \(ProgressEngine.e1rmRepCap) (a 20-rep pump set doesn't predict a max). \
-                Reps past the cap still count in full toward VOLUME.
+                Each set is scored by its estimated one-rep max. Rep credit stops \
+                at \(ProgressEngine.e1rmRepCap), since a 20-rep burnout set says \
+                little about your max — but every rep still adds to your volume.
                 """)
             bullet("""
-                Once a lift has history, a set must reach at least \(minFraction)% \
-                of your best estimated one-rep max.
+                Once a lift has some history, a set has to reach at least \
+                \(minFraction)% of your best estimated one-rep max to count.
                 """)
-            bullet("The first \(perExercise) sets per exercise count, up to \(perWorkout) per workout.")
-            bullet("A qualifying workout has \(minSets)+ effective sets and runs at least \(minMinutes) minutes.")
-            bullet("A surprise PR is provisional until a later session confirms it — no fat-finger power.")
+            bullet("The first \(perExercise) sets of an exercise count, up to \(perWorkout) in a workout.")
+            bullet("A workout qualifies once it has \(minSets) or more counting sets and runs at least \(minMinutes) minutes.")
+            bullet("A surprise personal best stays provisional until a later session backs it up.")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .settCard()
@@ -100,13 +101,13 @@ struct HowPowerWorksView: View {
 
     private var formsCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label("Transformation Forms", systemImage: "flame.fill")
+            Label("Transformation forms", systemImage: "flame.fill")
                 .font(.headline)
             ForEach(Array(UserForm.namedThresholds.dropFirst()), id: \.floor) { entry in
                 valueRow(entry.title, "\(entry.floor.formatted()) PL")
             }
             valueRow("ZENITH II, III, …", "every \(UserForm.zenithStep.formatted()) PL after")
-            footnote("The ladder never ends — there is always a next form.")
+            footnote("The ladder has no top. There's always another form ahead.")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .settCard()
@@ -117,15 +118,15 @@ struct HowPowerWorksView: View {
     private var surgeCard: some View {
         let multiplier = config?.powerLevel.restedSurgeMultiplier ?? 1.25
         return VStack(alignment: .leading, spacing: 10) {
-            Label("Rest-Day Respect", systemImage: "moon.zzz.fill")
+            Label("Rest days count too", systemImage: "moon.zzz.fill")
                 .font(.headline)
             bullet("""
-                A full rest day arms the SURGE: your next qualifying session counts \
-                its volume ×\(multiplier.formatted()) in the scanner window.
+                Take a full rest day and your next qualifying session gets a surge — \
+                its volume counts ×\(multiplier.formatted()) in the scanner window.
                 """)
-            bullet("You'll see it land as a SURGE line on the post-workout receipt.")
-            bullet("Rest can't break your streak week: only missed sessions can, and shields absorb even those.")
-            footnote("Recovery is training. The chamber counts it.")
+            bullet("You'll see it on the post-workout summary as a rested bonus.")
+            bullet("Resting never breaks your weekly streak — only a missed session can, and your shields cover those.")
+            footnote("Recovery is part of the work.")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .settCard()
@@ -139,9 +140,9 @@ struct HowPowerWorksView: View {
             Label("Emperor Vexeth", systemImage: "arrow.triangle.2.circlepath")
                 .font(.headline)
                 .foregroundStyle(SettColor.villainCrimson)
-            bullet("Vexeth climbs ~\(growth) PL a week and reveals stronger forms as you close in.")
-            bullet("Beat his final form and he REBIRTHS above you — faster or slower depending on YOUR recent pace.")
-            footnote("The race has no finish line. That's the point.")
+            bullet("Vexeth gains about \(growth) PL a week and reveals stronger forms as you close in.")
+            bullet("Beat his final form and he's reborn above you — how far ahead depends on how fast you've been moving lately.")
+            footnote("There's no finish line. The race just keeps going.")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .settCard()
