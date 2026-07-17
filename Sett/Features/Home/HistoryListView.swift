@@ -149,7 +149,7 @@ struct HistoryListView: View {
     private func workoutSetCount(_ w: Workout) -> Int { workingSets(w).count }
     private func workoutTopE1RM(_ w: Workout) -> Int {
         // Score power on EFFECTIVE load (bodyweight equipment adds the lifter's
-        // weight), matching WorkoutDetailView.pwr — added weight alone sinks
+        // weight), matching ExerciseCard.e1RM — added weight alone sinks
         // pull-up/dip sessions below their true e1RM.
         w.orderedExercises.flatMap { ex in
             ex.orderedSets.filter { !$0.isWarmup }.map { set in

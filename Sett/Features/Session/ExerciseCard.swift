@@ -3,12 +3,36 @@ import SwiftData
 import SettCore
 import UniformTypeIdentifiers
 
-/// One collapsible card per exercise in the active workout: header (muscle icon, name,
-/// sets logged), the machine-setup line (visible WHILE training — that's the point),
-/// compact confirmed chips for every logged set with a net-vs-reference delta, then a
-/// single editable next-set row (`SetEntryRow`).
+/// How an ExerciseCard behaves. The SAME card renders the live session list AND a
+/// finished workout — history is the session view frozen, not a lookalike that
+/// drifts from it.
+enum ExerciseCardMode: Equatable {
+    /// Active session: the plan shows as planned rows, one live input row, add-to-plan.
+    case live
+    /// Finished workout: every row is history (no plan, no input row). `editable`
+    /// unlocks corrections — tap-to-fix, swipe, add set.
+    case review(editable: Bool)
+
+    var isLive: Bool { self == .live }
+
+    var isEditable: Bool {
+        switch self {
+        case .live: true
+        case .review(let editable): editable
+        }
+    }
+}
+
+/// One collapsible card per exercise: header (muscle icon, name, sets logged), the
+/// machine-setup line (visible WHILE training — that's the point), compact confirmed
+/// chips for every logged set with a net-vs-reference delta, then a single editable
+/// next-set row (`SetEntryRow`). `mode` swaps live logging for history review.
 struct ExerciseCard: View {
     let workoutExercise: WorkoutExercise
+    var mode: ExerciseCardMode = .live
+    /// Review only: a correction to a SEALED workout must move the power level now,
+    /// so the owner recomputes here. Live logging settles up at finishWorkout.
+    var onMutate: (() -> Void)?
 
     @Environment(WorkoutSessionStore.self) private var session
     @Environment(AppServices.self) private var services
@@ -33,6 +57,8 @@ struct ExerciseCard: View {
     @State private var isReplacing = false
     /// Removing an exercise WITH logged sets confirms first; an empty one removes directly.
     @State private var isConfirmingRemove = false
+    /// Review only: deleting from a sealed workout rewrites its power numbers, so it asks.
+    @State private var deletingSet: SetEntry?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -43,32 +69,24 @@ struct ExerciseCard: View {
                     // Logged sets (filled), the active next-set input, then every set
                     // still planned as a dimmed placeholder — the whole plan up front.
                     ForEach(setPairs, id: \.set.id) { pair in
-                        SwipeableSetRow(rowID: pair.set.id, openRowID: $openSwipeRowID,
-                                        onDuplicate: { session.duplicateSet(pair.set) },
-                                        onDelete: { session.deleteSet(pair.set) }) {
-                            setRow(set: pair.set, reference: pair.reference, label: pair.label)
-                        }
-                        // Long-press to lift a logged row, drag to reorder sets live.
-                        .opacity(draggingSet?.id == pair.set.id ? 0.35 : 1)
-                        .onDrag {
-                            draggingSet = pair.set
-                            return NSItemProvider(object: pair.set.id.uuidString as NSString)
-                        }
-                        .onDrop(of: [.text], delegate: ReorderDropDelegate(
-                            target: pair.set, items: workoutExercise.orderedSets,
-                            dragging: $draggingSet,
-                            move: { session.moveSet(in: workoutExercise, from: $0, to: $1) }))
+                        loggedRow(pair)
                     }
-                    if !planComplete && isStarted {
+                    if mode.isLive && !planComplete && isStarted {
                         SetEntryRow(workoutExercise: workoutExercise, setNumber: workingLoggedCount + 1)
                     }
                     ForEach(pendingSlots, id: \.self) { ordinal in
                         plannedRow(number: ordinal + 1, slot: ordinal,
                                    canBegin: !isStarted && ordinal == pendingSlots.first)
                     }
-                    // Always available — add a set to the plan on the fly (quick-start
-                    // and routine workouts alike; planned slots below are removable).
-                    addSetButton
+                    if workoutExercise.orderedSets.isEmpty && !mode.isLive {
+                        Text("No sets logged")
+                            .font(.footnote)
+                            .foregroundStyle(SettColor.iron)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    // Live: add a set to the plan on the fly (quick-start and routine
+                    // workouts alike). Review: append a forgotten set, edit mode only.
+                    if mode.isEditable { addSetButton }
                 }
                 // Log/delete/duplicate change orderedSets.count — animate so the
                 // committed row and the shifting planned rows slide in rather than pop
@@ -77,6 +95,15 @@ struct ExerciseCard: View {
             }
         }
         .hudCard(tint: topTier.color)
+        .confirmationDialog("Delete this set?",
+                            isPresented: Binding(get: { deletingSet != nil },
+                                                 set: { if !$0 { deletingSet = nil } }),
+                            titleVisibility: .visible,
+                            presenting: deletingSet) { set in
+            Button("Delete Set", role: .destructive) { mutate { session.deleteSet(set) } }
+        } message: { _ in
+            Text("Removing it rewrites this workout's power numbers.")
+        }
         // Reset the lifted row if a drag is released anywhere over the card (incl. the
         // padding) so a cancelled reorder never leaves a row stuck at 0.35 opacity.
         .onDrop(of: [.text], isTargeted: nil) { _ in draggingSet = nil; return false }
@@ -90,7 +117,7 @@ struct ExerciseCard: View {
         }
         .sheet(item: $editingValues) { set in
             SetValuesEditSheet(set: set, unit: services.settings.unit) { weight, reps, warm in
-                session.editSet(set, weightGrams: weight, reps: reps, isWarmup: warm)
+                mutate { session.editSet(set, weightGrams: weight, reps: reps, isWarmup: warm) }
             }
         }
         .sheet(item: $setupTarget) { target in
@@ -98,15 +125,56 @@ struct ExerciseCard: View {
         }
     }
 
-    private var phase: TrainingPhase { session.activeWorkout?.phase ?? .maintaining }
+    /// The lens this card's sets were scored through — read off the OWNING workout, so
+    /// a reviewed session keeps the phase it was logged under (never today's).
+    private var phase: TrainingPhase { workoutExercise.workout?.phase ?? .maintaining }
     private var unit: WeightUnit { services.settings.unit }
+
+    /// A logged row: swipe-to-duplicate/delete and drag-to-reorder are live affordances;
+    /// review shows the same row, still and correctable.
+    @ViewBuilder
+    private func loggedRow(_ pair: (set: SetEntry, reference: SetEntry?, label: String)) -> some View {
+        if mode.isLive {
+            SwipeableSetRow(rowID: pair.set.id, openRowID: $openSwipeRowID,
+                            onDuplicate: { session.duplicateSet(pair.set) },
+                            onDelete: { session.deleteSet(pair.set) }) {
+                setRow(set: pair.set, reference: pair.reference, label: pair.label)
+            }
+            // Long-press to lift a logged row, drag to reorder sets live.
+            .opacity(draggingSet?.id == pair.set.id ? 0.35 : 1)
+            .onDrag {
+                draggingSet = pair.set
+                return NSItemProvider(object: pair.set.id.uuidString as NSString)
+            }
+            .onDrop(of: [.text], delegate: ReorderDropDelegate(
+                target: pair.set, items: workoutExercise.orderedSets,
+                dragging: $draggingSet,
+                move: { session.moveSet(in: workoutExercise, from: $0, to: $1) }))
+        } else {
+            // Live's SwipeableSetRow clips the row to its own capsule; without it the
+            // tier accent bar overruns the corner arc and floats free of the row's edge.
+            setRow(set: pair.set, reference: pair.reference, label: pair.label)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+    }
+
+    /// Every set mutation funnels here so a review correction recomputes the power
+    /// level immediately — a mis-logged set poisoned PWR, fixing it must un-poison it.
+    private func mutate(_ change: () -> Void) {
+        withAnimation(.snappy) {
+            change()
+            onMutate?()
+        }
+    }
 
     /// Same-exercise sets from the most recent finished workout (warm-ups already
     /// excluded), paired to THIS session's working sets by working-set ordinal so a
-    /// warm-up never shifts a set onto the wrong reference.
+    /// warm-up never shifts a set onto the wrong reference. Reviewing an old workout
+    /// compares against what came before IT, not against sessions logged since.
     private var referenceSets: [SetEntry] {
         session.previousSets(exerciseID: workoutExercise.exerciseID,
-                             excluding: workoutExercise.workout?.id)
+                             excluding: workoutExercise.workout?.id,
+                             before: mode.isLive ? nil : workoutExercise.workout?.startedAt)
     }
 
     /// Each logged set paired with last week's set at the same working-set ordinal,
@@ -123,7 +191,8 @@ struct ExerciseCard: View {
     }
 
     private var workingLoggedCount: Int { workoutExercise.orderedSets.filter { !$0.isWarmup }.count }
-    private var plannedWorking: Int { session.plannedSetCount(for: workoutExercise) }
+    /// A finished workout has no plan left to run — its sets ARE the record.
+    private var plannedWorking: Int { mode.isLive ? session.plannedSetCount(for: workoutExercise) : 0 }
 
     /// Every planned working set is logged (only meaningful when there IS a plan).
     private var planComplete: Bool { plannedWorking > 0 && workingLoggedCount >= plannedWorking }
@@ -132,11 +201,17 @@ struct ExerciseCard: View {
     /// planned row to begin. Until then the whole plan reads as PLANNED (no armed check).
     private var isStarted: Bool { workingLoggedCount > 0 || hasBegun }
 
-    /// Add one set to the session plan on the fly. When the plan was already met this
-    /// reopens the active input row; otherwise it appends another planned placeholder.
+    /// Live: add one set to the session plan on the fly — when the plan was already met
+    /// this reopens the active input row, otherwise it appends another placeholder.
+    /// Review: append a forgotten set after the last one, ghosting its numbers so the
+    /// correction starts from something plausible instead of zero.
     private var addSetButton: some View {
         Button {
-            withAnimation(.snappy) { session.addPlannedSet(to: workoutExercise) }
+            if mode.isLive {
+                withAnimation(.snappy) { session.addPlannedSet(to: workoutExercise) }
+            } else {
+                mutate { session.appendSet(to: workoutExercise) }
+            }
         } label: {
             Label("Add set", systemImage: "plus")
                 .font(.system(size: 13, weight: .bold, design: .monospaced))
@@ -152,13 +227,15 @@ struct ExerciseCard: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Add another set")
+        .accessibilityLabel(mode.isLive ? "Add another set" : "Add set")
+        .accessibilityHint(mode.isLive ? "" : "Appends a set copying the last set's weight and reps")
     }
 
     /// Working-set ordinals STILL planned after the active next-set input (which covers
-    /// ordinal `workingLoggedCount`). Empty for a quick-start (no plan) or once the
-    /// plan is met — the whole plan is shown from the start, not revealed one at a time.
+    /// ordinal `workingLoggedCount`). Empty for a quick-start (no plan), once the plan
+    /// is met, or in review — the whole plan is shown from the start, not one at a time.
     private var pendingSlots: [Int] {
+        guard mode.isLive else { return [] }
         guard isStarted else {
             // Not started: the whole plan shows as planned; slot 0 is the "begin" row.
             return Array(0 ..< max(1, plannedWorking))
@@ -241,17 +318,20 @@ struct ExerciseCard: View {
         .accessibilityHint(isExpanded ? "Collapses this exercise" : "Expands this exercise")
         // Mid-session escape hatches: swap the lift (machine taken) or drop a
         // mistaken pick entirely. The shell's cursor reconciler absorbs both.
+        // Live only — a sealed workout's exercise list is the record.
         .contextMenu {
-            Button {
-                isReplacing = true
-            } label: { Label("Replace exercise", systemImage: "arrow.triangle.2.circlepath") }
-            Button(role: .destructive) {
-                if workoutExercise.orderedSets.isEmpty {
-                    session.removeExercise(workoutExercise)
-                } else {
-                    isConfirmingRemove = true
-                }
-            } label: { Label("Remove exercise", systemImage: "trash") }
+            if mode.isLive {
+                Button {
+                    isReplacing = true
+                } label: { Label("Replace exercise", systemImage: "arrow.triangle.2.circlepath") }
+                Button(role: .destructive) {
+                    if workoutExercise.orderedSets.isEmpty {
+                        session.removeExercise(workoutExercise)
+                    } else {
+                        isConfirmingRemove = true
+                    }
+                } label: { Label("Remove exercise", systemImage: "trash") }
+            }
         }
         .sheet(isPresented: $isReplacing) {
             RoutineExercisePickerSheet(allowsMultiple: false, title: "Replace Exercise") { exercise in
@@ -348,7 +428,10 @@ struct ExerciseCard: View {
         let note = set.notes?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return VStack(spacing: 0) {
             Button {
-                editingValues = set   // the toolbox's job is CORRECTING — tap fixes the values
+                // The toolbox's job is CORRECTING — tap fixes the values. A read-only
+                // review row is a record, not a control.
+                guard mode.isEditable else { return }
+                editingValues = set
             } label: {
                 HStack(spacing: 0) {
                     SetIndexBadge(label: label, charge: set.isWarmup ? .warmup : .earned(tier))
@@ -391,7 +474,12 @@ struct ExerciseCard: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel(loggedRowLabel(set: set, label: label, tier: tier, delta: delta))
-            .accessibilityHint("Fixes this set's weight and reps. Long-press for note or delete.")
+            .accessibilityHint(mode.isEditable
+                               ? "Fixes this set's weight and reps. Long-press for note or delete."
+                               : "")
+            // A read-only review row is a record: don't announce a button that
+            // activates to nothing.
+            .accessibilityRemoveTraits(mode.isEditable ? [] : [.isButton])
 
             if !note.isEmpty { noteLine(note, on: set) }
         }
@@ -405,32 +493,52 @@ struct ExerciseCard: View {
         }
         .contentShape(shape)
         .contextMenu {
-            Button {
-                editingValues = set
-            } label: { Label("Fix weight & reps", systemImage: "pencil") }
-            Button {
-                editingSet = set
-            } label: { Label(note.isEmpty ? "Add note" : "Edit note", systemImage: "note.text") }
-            Button {
-                session.duplicateSet(set)
-            } label: { Label("Duplicate set", systemImage: "plus.square.on.square") }
-            Button(role: .destructive) {
-                session.deleteSet(set)
-            } label: { Label("Delete set", systemImage: "trash") }
+            if mode.isEditable {
+                Button {
+                    editingValues = set
+                } label: { Label("Fix weight & reps", systemImage: "pencil") }
+                Button {
+                    editingSet = set
+                } label: { Label(note.isEmpty ? "Add note" : "Edit note", systemImage: "note.text") }
+                Button {
+                    mutate { session.duplicateSet(set) }
+                } label: { Label("Duplicate set", systemImage: "plus.square.on.square") }
+                Button(role: .destructive) {
+                    // Live logging deletes on the spot; a sealed workout asks first.
+                    if mode.isLive { session.deleteSet(set) } else { deletingSet = set }
+                } label: { Label("Delete set", systemImage: "trash") }
+            }
         }
     }
 
     /// The note affordance on a logged set — mirrors the active row's note button so
     /// prior sets get notes too. Cyan (with a dot) when a note exists, quiet iron when
     /// empty but still a one-tap add. Its text reads in full on the sub-line below.
+    /// A read-only review row carries no controls — the note still reads below it, and
+    /// the gutter stays reserved as clear space so PWR lands on the same x in both
+    /// modes (the Edit toggle must not slide the column).
+    @ViewBuilder
     private func noteButton(for set: SetEntry, hasNote: Bool) -> some View {
+        if mode.isEditable {
+            noteButtonControl(for: set, hasNote: hasNote)
+        } else {
+            Color.clear.frame(width: Self.noteGutter, height: 1)
+        }
+    }
+
+    /// The logged row's note gutter — reserved in EVERY logged row. Local to this row,
+    /// not a SetRowGrid column: SetEntryRow's note button is a different width and sits
+    /// beside its commit button.
+    private static let noteGutter: CGFloat = 22
+
+    private func noteButtonControl(for set: SetEntry, hasNote: Bool) -> some View {
         Button {
             editingSet = set
         } label: {
             Image(systemName: "note.text")
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(hasNote ? SettColor.heroCyan : SettColor.iron)
-                .frame(width: 22, height: SetRowGrid.rowHeight)
+                .frame(width: Self.noteGutter, height: SetRowGrid.rowHeight)
                 .overlay(alignment: .topTrailing) {
                     if hasNote {
                         Circle().fill(SettColor.heroCyan).frame(width: 5, height: 5).offset(x: -3, y: 12)
@@ -442,32 +550,41 @@ struct ExerciseCard: View {
         .accessibilityLabel(hasNote ? "Edit set note" : "Add set note")
     }
 
-    /// The note text under a logged set — readable in full, tappable to edit.
+    /// The note text under a logged set — readable in full, tappable to edit (a
+    /// read-only review row keeps the text and drops the tap).
+    @ViewBuilder
     private func noteLine(_ note: String, on set: SetEntry) -> some View {
-        Button {
-            editingSet = set
-        } label: {
-            HStack(alignment: .top, spacing: 6) {
-                Image(systemName: "text.alignleft")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(SettColor.iron)
-                    .padding(.top, 1)
-                Text(note)
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundStyle(SettColor.ash)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                Spacer(minLength: 0)
-            }
-            .padding(.leading, SetRowGrid.hPad + SetRowGrid.badge + SetRowGrid.badgeGap)
-            .padding(.trailing, SetRowGrid.hPad)
-            .padding(.bottom, 8)
-            .padding(.top, 1)
-            .contentShape(Rectangle())
+        if mode.isEditable {
+            Button { editingSet = set } label: { noteLineBody(note).contentShape(Rectangle()) }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Note: \(note)")
+                .accessibilityHint("Edits this set's note")
+        } else {
+            noteLineBody(note)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Note: \(note)")
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Note: \(note)")
-        .accessibilityHint("Edits this set's note")
+    }
+
+    private func noteLineBody(_ note: String) -> some View {
+        HStack(alignment: .top, spacing: 6) {
+            Image(systemName: "text.alignleft")
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(SettColor.iron)
+                .padding(.top, 1)
+            Text(note)
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(SettColor.ash)
+                // Live keeps rows scannable at a glance; review is for reading, so a
+                // long note wraps in full instead of dying at the ellipsis.
+                .lineLimit(mode.isLive ? 1 : nil)
+                .truncationMode(.tail)
+            Spacer(minLength: 0)
+        }
+        .padding(.leading, SetRowGrid.hPad + SetRowGrid.badge + SetRowGrid.badgeGap)
+        .padding(.trailing, SetRowGrid.hPad)
+        .padding(.bottom, 8)
+        .padding(.top, 1)
     }
 
     /// A still-to-do planned set: a dashed, dimmed placeholder showing the target (the

@@ -301,7 +301,9 @@ public final class WorkoutSessionStore {
     /// clone's index shifts +1 — so the clone and its old neighbour never collide, and
     /// `logSet`'s `last.orderIndex + 1` next-set assumption still holds after a
     /// mid-exercise copy. Clones `entryUnit` (NOT settings.unit — that would relabel an
-    /// old kg set as lb), plus notes/setting/warm-up.
+    /// old kg set as lb) and `completedAt` (NOT .now — duplicating from a REVIEWED old
+    /// workout would drop a set dated today into a session weeks back), plus
+    /// notes/setting/warm-up.
     public func duplicateSet(_ set: SetEntry) {
         guard let we = set.workoutExercise else { return }
         let insertIndex = set.orderIndex + 1
@@ -311,13 +313,35 @@ public final class WorkoutSessionStore {
             sibling.needsPush = true
         }
         let copy = SetEntry(orderIndex: insertIndex, weightGrams: set.weightGrams,
-                            entryUnit: set.entryUnit, reps: set.reps, isWarmup: set.isWarmup)
+                            entryUnit: set.entryUnit, reps: set.reps, isWarmup: set.isWarmup,
+                            completedAt: set.completedAt)
         copy.notes = set.notes
         copy.setting = set.setting
         copy.workoutExercise = we
         context.insert(copy)
         if let workout = we.workout ?? activeWorkout { touchAndSave(workout) }
         Haptics.medium()
+    }
+
+    /// Review: append a forgotten set to a FINISHED workout, after the last one, ghosting
+    /// its numbers so a correction starts from something plausible instead of zero.
+    /// `completedAt` rides the last set's clock (+1s to keep completedAt order agreeing
+    /// with orderIndex order) — never `.now`, which would bucket a remembered set into
+    /// THIS week's volume, PRs and badges while the rest of its workout sits weeks back.
+    /// Clones `entryUnit` for the same reason `duplicateSet` does; notes/setting belonged
+    /// to that set alone.
+    public func appendSet(to workoutExercise: WorkoutExercise) {
+        let last = workoutExercise.orderedSets.last
+        let set = SetEntry(orderIndex: (last?.orderIndex ?? -1) + 1,
+                           weightGrams: last?.weightGrams ?? 0,
+                           entryUnit: last?.entryUnit ?? settings.unit,
+                           reps: last?.reps ?? 0,
+                           completedAt: last.map { $0.completedAt.addingTimeInterval(1) }
+                               ?? workoutExercise.workout?.startedAt ?? .now)
+        set.workoutExercise = workoutExercise
+        context.insert(set)
+        if let workout = workoutExercise.workout { touchAndSave(workout) }
+        Haptics.light()
     }
 
     /// Reorder sets WITHIN an exercise (`.onMove`). Densifies `orderIndex` 0..<n over the
@@ -555,11 +579,18 @@ public final class WorkoutSessionStore {
     /// machine A compares against the last time you were at gym A). With no location set
     /// on the current workout, or no same-gym history, it falls back to the most recent
     /// session regardless of gym.
-    public func previousSets(exerciseID: UUID, excluding workoutID: UUID?) -> [SetEntry] {
+    ///
+    /// `before` scopes the search to sessions that started earlier — required when
+    /// REVIEWING an old workout, whose reference is what came before IT, not whatever
+    /// was logged since. nil (the live default) searches all history.
+    public func previousSets(exerciseID: UUID, excluding workoutID: UUID?,
+                             before: Date? = nil) -> [SetEntry] {
         let descriptor = FetchDescriptor<Workout>(sortBy: [SortDescriptor(\.startedAt, order: .reverse)])
         let workouts = (try? context.fetch(descriptor)) ?? []
-        let candidates = workouts.filter {
-            $0.deletedAt == nil && $0.endedAt != nil && !$0.isCasual && $0.id != workoutID
+        let candidates = workouts.filter { workout in
+            workout.deletedAt == nil && workout.endedAt != nil && !workout.isCasual
+                && workout.id != workoutID
+                && (before == nil || workout.startedAt < before!)
         }
         func firstMatch(in pool: [Workout]) -> [SetEntry]? {
             for workout in pool {
@@ -570,8 +601,12 @@ public final class WorkoutSessionStore {
             }
             return nil
         }
-        // The gym we're training at now (from the active/excluded workout).
-        let currentGymID = workouts.first(where: { $0.id == workoutID })?.gymID ?? activeWorkout?.gymID
+        // The gym we're training at now. The activeWorkout fallback only covers a nil/unknown
+        // workoutID on the LIVE path — a review lookup (`before` set) must never borrow the
+        // live session's gym, or a reviewed workout with no gym would score against
+        // gym-filtered history instead of the documented most-recent-regardless-of-gym path.
+        let currentGymID = workouts.first(where: { $0.id == workoutID })?.gymID
+            ?? (before == nil ? activeWorkout?.gymID : nil)
         if let gym = currentGymID,
            let sameGym = firstMatch(in: candidates.filter { $0.gymID == gym }) {
             return sameGym

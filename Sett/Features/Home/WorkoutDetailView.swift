@@ -25,13 +25,9 @@ struct WorkoutDetailView: View {
             sort: [SortDescriptor(\BadgeAward.earnedAt)])
     }
 
+    /// Unlocks corrections — the shared ExerciseCard's review affordances, plus the
+    /// header's own live controls (title, date, rating, location, off-the-record).
     @State private var editing = false
-    /// Committed set being corrected in the shared value editor.
-    @State private var editingSet: SetEntry?
-    /// Committed set whose note is open in the shared note sheet.
-    @State private var notingSet: SetEntry?
-    /// Set awaiting the delete confirmation (deleting rewrites PWR).
-    @State private var deletingSet: SetEntry?
     @State private var isPickingGym = false
     @State private var isRenaming = false
     @State private var isEditingNotes = false
@@ -43,8 +39,12 @@ struct WorkoutDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 headerCard
+                // THE session list's card, not a lookalike: same tiers, same vs-last
+                // deltas, same rows. Edit mode unlocks the same corrections.
                 ForEach(workout.orderedExercises) { workoutExercise in
-                    exerciseCard(workoutExercise)
+                    ExerciseCard(workoutExercise: workoutExercise,
+                                 mode: .review(editable: editing),
+                                 onMutate: recomputeAfterCorrection)
                 }
                 if editing {
                     editableNotesCard
@@ -56,21 +56,22 @@ struct WorkoutDetailView: View {
             .padding(16)
         }
         .dungeonBackground()
-        .onAppear(perform: refreshNet)
+        .onAppear {
+            refreshNet()
+            #if DEBUG
+            // Screenshot harness: SETT_DEBUG_SURFACE=detail SETT_DEBUG_EDIT=1 opens
+            // straight into edit mode (the simulator can't be clicked into it).
+            if !(ProcessInfo.processInfo.environment["SETT_DEBUG_EDIT"] ?? "").isEmpty {
+                editing = true
+            }
+            #endif
+        }
         .navigationTitle(workout.title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button(editing ? "Done" : "Edit") { withAnimation(.snappy) { editing.toggle() } }
                     .fontWeight(editing ? .semibold : .regular)
-            }
-        }
-        .sheet(item: $editingSet) { set in
-            SetValuesEditSheet(set: set, unit: services.settings.unit) { weight, reps, warm in
-                withAnimation(.snappy) {
-                    session.editSet(set, weightGrams: weight, reps: reps, isWarmup: warm)
-                    recomputeAfterCorrection()
-                }
             }
         }
         .sheet(isPresented: $isPickingGym) {
@@ -83,34 +84,12 @@ struct WorkoutDetailView: View {
                 session.renameWorkout(title, for: workout)
             }
         }
-        .sheet(item: $notingSet) { set in
-            SetNoteSheet(initialText: set.notes ?? "") { text in
-                set.notes = text
-                set.updatedAt = .now
-                set.needsPush = true
-                try? modelContext.save()
-            }
-        }
         .sheet(isPresented: $isEditingNotes) {
             SetNoteSheet(initialText: workout.notes ?? "",
                          title: "Session Notes",
                          placeholder: "how it went, what to change…") { text in
                 session.setWorkoutNotes(text, for: workout)
             }
-        }
-        .confirmationDialog("Delete this set?",
-                            isPresented: Binding(get: { deletingSet != nil },
-                                                 set: { if !$0 { deletingSet = nil } }),
-                            titleVisibility: .visible,
-                            presenting: deletingSet) { set in
-            Button("Delete Set", role: .destructive) {
-                withAnimation(.snappy) {
-                    session.deleteSet(set)
-                    recomputeAfterCorrection()
-                }
-            }
-        } message: { _ in
-            Text("Removing it rewrites this workout's power numbers.")
         }
     }
 
@@ -348,229 +327,6 @@ struct WorkoutDetailView: View {
         }
     }
 
-
-    // MARK: Exercises — the active session's scouter card, in read-back form.
-    // Same icon medallion, mono header, stat line, badge + value grid; the top set
-    // wears amber, the rest green, warm-ups ash — history reads like the session did.
-
-    private func exerciseCard(_ workoutExercise: WorkoutExercise) -> some View {
-        let topID = topSetID(workoutExercise)
-        return VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 12) {
-                ExerciseIcon(name: workoutExercise.exerciseNameSnapshot,
-                             equipment: workoutExercise.equipment,
-                             muscle: workoutExercise.muscle,
-                             size: 44,
-                             color: topID == nil ? SettColor.heroCyan : TimeChamber.scouterAmber)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(workoutExercise.exerciseNameSnapshot.uppercased())
-                        .font(.system(.callout, design: .monospaced).weight(.bold))
-                        .kerning(1.5)
-                        .foregroundStyle(SettColor.bone)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.6)
-                    Text(statLine(workoutExercise))
-                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                        .kerning(1)
-                        .foregroundStyle(SettColor.ash)
-                }
-                Spacer(minLength: 0)
-            }
-            VStack(spacing: 6) {
-                ForEach(workoutExercise.orderedSets, id: \.id) { set in
-                    setRow(set, in: workoutExercise, isTop: set.id == topID)
-                }
-            }
-            if workoutExercise.orderedSets.isEmpty {
-                Text("No sets logged")
-                    .font(.footnote)
-                    .foregroundStyle(SettColor.iron)
-            }
-            if editing { addSetRow(workoutExercise) }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .hudCard(tint: topID == nil ? SettColor.heroCyan : TimeChamber.scouterAmber)
-    }
-
-    private func setRow(_ set: SetEntry, in workoutExercise: WorkoutExercise,
-                        isTop: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 0) {
-                SetIndexBadge(label: badgeLabel(set, in: workoutExercise),
-                              charge: set.isWarmup ? .warmup : .earned(isTop ? .ascended : .base))
-                Spacer().frame(width: SetRowGrid.badgeGap)
-                setValueColumns(
-                    weightText: WeightFormat.compactWithUnit(grams: set.weightGrams,
-                                                             unit: services.settings.unit),
-                    repsText: "\(set.reps)",
-                    valueColor: editing ? SettColor.heroCyan : SettColor.bone,
-                    weight: .semibold)
-                Spacer(minLength: 0)
-                if !set.isWarmup {
-                    Text("PWR \(pwr(set, in: workoutExercise))")
-                        .font(.system(size: 11, weight: .bold, design: .monospaced))
-                        .monospacedDigit()
-                        .foregroundStyle(isTop ? TimeChamber.scouterAmber : TimeChamber.scouterGreen)
-                        .contentTransition(.numericText(value: Double(pwr(set, in: workoutExercise))))
-                }
-                if editing {
-                    Button(role: .destructive) {
-                        deletingSet = set
-                    } label: {
-                        Image(systemName: "trash")
-                            .font(.footnote)
-                            .foregroundStyle(SettColor.negative)
-                            .frame(width: 40, height: 32)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Delete set")
-                }
-            }
-            .frame(minHeight: 40)
-            .contentShape(Rectangle())
-            .onTapGesture {
-                guard editing else { return }
-                editingSet = set
-            }
-            // The in-session set grammar, so history corrections speak the same verbs.
-            .contextMenu {
-                if editing {
-                    Button { editingSet = set } label: {
-                        Label("Fix weight & reps", systemImage: "pencil")
-                    }
-                    Button { notingSet = set } label: {
-                        Label("Edit note", systemImage: "note.text")
-                    }
-                    Button {
-                        withAnimation(.snappy) {
-                            session.duplicateSet(set)
-                            recomputeAfterCorrection()
-                        }
-                    } label: {
-                        Label("Duplicate set", systemImage: "plus.square.on.square")
-                    }
-                    Button(role: .destructive) { deletingSet = set } label: {
-                        Label("Delete set", systemImage: "trash")
-                    }
-                }
-            }
-            .accessibilityAddTraits(editing ? [.isButton] : [])
-            .accessibilityHint(editing ? "Edits this set's values" : "")
-            // Per-set note, indented to the value columns.
-            if let setNotes = set.notes, !setNotes.isEmpty {
-                Text(setNotes)
-                    .font(.caption)
-                    .foregroundStyle(SettColor.ash)
-                    .padding(.leading, SetRowGrid.badge + SetRowGrid.badgeGap)
-                    .padding(.bottom, 8)
-            }
-        }
-        .padding(.horizontal, SetRowGrid.hPad)
-        // The SESSION list's slab grammar — void fill, tier accent bar, hairline rim —
-        // so a finished workout reads like the live one, not a bare stat sheet.
-        .background {
-            let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
-            ZStack {
-                shape.fill(TimeChamber.void.opacity(0.5))
-                HStack {
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(set.isWarmup ? SettColor.iron.opacity(0.6)
-                              : (isTop ? TimeChamber.scouterAmber : TimeChamber.scouterGreen))
-                        .frame(width: 3)
-                    Spacer()
-                }
-                shape.strokeBorder(SettColor.cardBorder, lineWidth: 1)
-            }
-        }
-    }
-
-    /// Dashed slot at the card's foot — appends one set after the last, ghosting its
-    /// numbers so the correction starts from something plausible instead of zero.
-    private func addSetRow(_ workoutExercise: WorkoutExercise) -> some View {
-        Button {
-            addSet(to: workoutExercise)
-        } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "plus")
-                    .font(.footnote.weight(.semibold))
-                Text("ADD SET")
-                    .font(.system(size: 11, weight: .bold, design: .monospaced))
-                    .kerning(1.5)
-            }
-            .foregroundStyle(SettColor.heroCyan)
-            .frame(maxWidth: .infinity, minHeight: 40)
-            .background {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .strokeBorder(SettColor.cardBorder,
-                                  style: StrokeStyle(lineWidth: 1, dash: [5, 4]))
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Add set")
-        .accessibilityHint("Appends a set copying the last set's weight and reps")
-    }
-
-    /// Insert AFTER the last set (a forgotten set, not a reorder), under the
-    /// standard sync rules; the new volume moves PWR now.
-    private func addSet(to workoutExercise: WorkoutExercise) {
-        let last = workoutExercise.orderedSets.last
-        let set = SetEntry(orderIndex: (last?.orderIndex ?? -1) + 1,
-                           weightGrams: last?.weightGrams ?? 0,
-                           entryUnit: services.settings.unit,
-                           reps: last?.reps ?? 0)
-        set.workoutExercise = workoutExercise
-        withAnimation(.snappy) {
-            modelContext.insert(set)
-            workout.updatedAt = .now
-            workout.needsPush = true
-            try? modelContext.save()
-            recomputeAfterCorrection()
-        }
-        Haptics.light()
-    }
-
-    // MARK: Per-set scoring (same effective-load PWR the session showed)
-
-    private func pwr(_ set: SetEntry, in workoutExercise: WorkoutExercise) -> Int {
-        let eff = LoadMath.effectiveWeightGrams(
-            addedGrams: set.weightGrams, equipment: workoutExercise.equipment,
-            bodyweightGrams: workout.bodyweightGrams)
-        return Int(Units.pounds(fromGrams: ProgressEngine.e1RMGrams(weightGrams: eff,
-                                                                    reps: set.reps)).rounded())
-    }
-
-    /// The set with the session's best e1RM — wears the amber crown.
-    private func topSetID(_ workoutExercise: WorkoutExercise) -> UUID? {
-        workoutExercise.orderedSets.filter { !$0.isWarmup }
-            .max { pwr($0, in: workoutExercise) < pwr($1, in: workoutExercise) }?.id
-    }
-
-    private func statLine(_ workoutExercise: WorkoutExercise) -> String {
-        let working = workoutExercise.orderedSets.filter { !$0.isWarmup }
-        var parts = ["\(working.count) SET\(working.count == 1 ? "" : "S")"]
-        if let top = working.map({ pwr($0, in: workoutExercise) }).max(), top > 0 {
-            parts.append("TOP \(top) PWR")
-        }
-        let volGrams = working.reduce(0) { $0 + $1.weightGrams * $1.reps }
-        if volGrams > 0 {
-            let vol = Int((Double(volGrams) / services.settings.unit.gramsPerUnit).rounded())
-            parts.append("\(vol.formatted()) \(services.settings.unit.symbol.uppercased())")
-        }
-        return parts.joined(separator: " · ")
-    }
-
-    /// Working-set ordinal, "W" for warm-ups — the overview's badge language.
-    private func badgeLabel(_ set: SetEntry, in workoutExercise: WorkoutExercise) -> String {
-        if set.isWarmup { return "W" }
-        var n = 0
-        for sibling in workoutExercise.orderedSets where !sibling.isWarmup {
-            n += 1
-            if sibling.id == set.id { return "\(n)" }
-        }
-        return "\(n)"
-    }
 
     // MARK: Notes
 
