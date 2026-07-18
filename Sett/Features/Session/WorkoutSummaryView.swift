@@ -832,7 +832,6 @@ private struct FormAscendedLine: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var scale: CGFloat = 0.8
-    @State private var glow: CGFloat = 4
 
     var body: some View {
         Text("FORM ASCENDED — \(title)")
@@ -840,19 +839,14 @@ private struct FormAscendedLine: View {
             .kerning(1.5)
             .foregroundStyle(SettColor.saiyanGold)
             .shadow(color: SettColor.saiyanGold.opacity(0.5), radius: 5)
-            .auraGlow(SettColor.saiyanGold, radius: glow)
+            // Steady glow, not a repeatForever shadow-radius pulse — animating a shadow
+            // radius on a loop re-rasterizes every frame (costly, and it runs away if the
+            // view is ever off-screen). The spring scale-in is what makes the beat land.
+            .auraGlow(SettColor.saiyanGold, radius: 9)
             .scaleEffect(scale)
             .task {
-                guard !reduceMotion else {
-                    scale = 1
-                    glow = 8
-                    return
-                }
+                guard !reduceMotion else { scale = 1; return }
                 withAnimation(.spring(response: 0.45, dampingFraction: 0.55)) { scale = 1 }
-                // A soft heartbeat, not a strobe — small amplitude, slow cadence.
-                withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) {
-                    glow = 10
-                }
             }
     }
 }

@@ -960,7 +960,6 @@ public struct LevelUpBanner: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var burst = false
-    @State private var glow = false
 
     public init(form: UserForm, onAcknowledge: @escaping () -> Void) {
         self.form = form
@@ -970,8 +969,13 @@ public struct LevelUpBanner: View {
     public var body: some View {
         Button(action: acknowledge) {
             HStack(spacing: 12) {
+                // Steady glow — NOT a repeatForever shadow-radius pulse. This banner is
+                // persistent and lives on a tab root; when that root is pushed under a
+                // nav destination, a repeating shadow animation runs away and pins a CPU
+                // core (SwiftUI keeps advancing an off-screen animation). The one-shot
+                // burst + materialize entrance already give it life on arrival.
                 SettSigil(size: 30, color: SettColor.saiyanGold)
-                    .auraGlow(SettColor.saiyanGold, radius: glow ? 13 : 6)
+                    .auraGlow(SettColor.saiyanGold, radius: 10)
                 VStack(alignment: .leading, spacing: 3) {
                     Text("FORM ASCENDED")
                         .font(.system(size: 10, weight: .bold, design: .monospaced))
@@ -1009,8 +1013,6 @@ public struct LevelUpBanner: View {
                 try? await Task.sleep(for: .milliseconds(900))
                 burst = false
             }
-            guard !reduceMotion else { return }
-            withAnimation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true)) { glow = true }
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Form ascended to \(form.title). Tap to dismiss.")
