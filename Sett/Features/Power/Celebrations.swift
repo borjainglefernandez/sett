@@ -43,6 +43,8 @@ struct AuraBurstView: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var startDate: Date = .now
+    /// Flips true once the burst is spent so the driving TimelineView unmounts (below).
+    @State private var finished = false
 
     private let particles: [Particle]
 
@@ -56,7 +58,12 @@ struct AuraBurstView: View {
     }
 
     var body: some View {
-        if reduceMotion {
+        // `finished` collapses the burst to nothing once it's spent. TimelineView(.animation)
+        // redraws every frame for as long as it is mounted and never stops on its own, so a
+        // burst left in the view tree pins a CPU core the entire time its surface is visible.
+        // Self-terminating here means every call site is safe by construction — no one has to
+        // remember to gate or remove the burst (this class of bug bit the app repeatedly).
+        if reduceMotion || finished {
             Color.clear
                 .allowsHitTesting(false)
         } else {
@@ -82,6 +89,10 @@ struct AuraBurstView: View {
             }
             .allowsHitTesting(false)
             .accessibilityHidden(true)
+            .task {
+                try? await Task.sleep(for: .seconds(Self.duration + 0.15))
+                finished = true
+            }
         }
     }
 
