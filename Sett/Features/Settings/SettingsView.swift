@@ -158,10 +158,21 @@ struct SettingsView: View {
                     Toggle("Force weekly reading on Home", isOn: Binding(
                         get: { UserDefaults.standard.bool(forKey: "sett.debug.forceReading") },
                         set: { UserDefaults.standard.set($0, forKey: "sett.debug.forceReading") }))
+                    // Surfaces the persistent level-up banner on Home/Power (anim #2) and
+                    // the Power-tab odometer roll (anim #1) without waiting for a real
+                    // crossing — visit Home / Power after tapping.
+                    Button("Show level-up banner (Home + Power)") {
+                        services.progression.debugForcePendingAscension()
+                        Haptics.success()
+                    }
+                    Button("Arm Power-tab roll (rewind viewed PL)") {
+                        services.progression.debugRewindLastViewedPowerLevel()
+                        Haptics.selection()
+                    }
                 } header: {
                     Eyebrow("DEBUG — CEREMONIES")
                 } footer: {
-                    Text("Weekly reading shows on Home once toggled on. Tap a ceremony to preview it; Done returns here.")
+                    Text("Weekly reading shows on Home once toggled on. Tap a ceremony to preview it; Done returns here. The level-up banner and Power roll appear when you next open Home / Power.")
                         .font(.system(size: 11, design: .monospaced))
                         .foregroundStyle(SettColor.ash)
                 }

@@ -22,6 +22,7 @@ public final class ProgressionStore {
         snapshot = try? ProgressionReconciler.reconcile(context: context, config: config)
         recordWeeklyPLSample()
         checkRivalRebirth()
+        seedFormBaselineIfNeeded()
     }
 
     /// The USER's transformation frame (cast collapse: per-character tiers are gone;
@@ -163,5 +164,95 @@ public final class ProgressionStore {
         guard let lastWeekPL = history[lastWeekKey] else { return nil }
         return snapshot.powerLevel - lastWeekPL
     }
+
+    // MARK: - Form ascension surfacing (level-up banner + Power-tab odometer)
+    //
+    // The USER's form is a pure function of PL (UserForm — the endless Forms ladder).
+    // Two app-side flags let the UI CELEBRATE a crossing OUTSIDE the finish screen —
+    // the level-up should always get its beat, whether it happened on a triggering set,
+    // via a recompute, or just by re-opening the app:
+    //   • lastSeenFormIndex — the highest form rung the user has acknowledged; a higher
+    //     current index means an unacknowledged ascension → the persistent banner shows.
+    //   • lastViewedPL — the PL the Power tab last rolled its odometer to; the roll's
+    //     START value on the next appearance, so re-opening after a gain animates from
+    //     where you left off instead of snapping.
+    // Both live in UserDefaults (mirroring the Rival-announce template) so the engine
+    // stays a pure function of history. Reads are made @Observable-safe via a version bump.
+
+    private enum FormKeys {
+        static let lastSeenFormIndex = "sett.form.lastSeenIndex"
+        static let lastViewedPL = "sett.power.lastViewedPL"
+    }
+
+    /// The user's current form on the endless ladder (pure function of PL). Unlike
+    /// `userFormTier`, this is NOT clamped to 0…4 — it reads Zenith II, III, … so a
+    /// crossing past Zenith is still detected.
+    public var userForm: UserForm { UserForm.form(forPL: snapshotPowerLevel) }
+
+    /// Progress through the current form, 0…1 — the Ki gauge's fill fraction.
+    public var formProgress: Double { userForm.progress(snapshotPowerLevel) }
+
+    /// Bumped when the ascension baseline is acknowledged, so @Observable views
+    /// re-read the UserDefaults-backed pending state.
+    private var formStateVersion = 0
+    private func bumpFormStateVersion() { formStateVersion += 1 }
+
+    /// Seed the ascension/odometer baselines to the CURRENT state the first time we
+    /// ever compute — so an existing install (already at, say, RADIANT) doesn't fire a
+    /// false "ascended" banner on first launch after this feature ships. Real crossings
+    /// after the baseline is set still fire.
+    private func seedFormBaselineIfNeeded() {
+        let defaults = UserDefaults.standard
+        if defaults.object(forKey: FormKeys.lastSeenFormIndex) == nil {
+            defaults.set(userForm.index, forKey: FormKeys.lastSeenFormIndex)
+        }
+        if defaults.object(forKey: FormKeys.lastViewedPL) == nil {
+            defaults.set(snapshotPowerLevel, forKey: FormKeys.lastViewedPL)
+        }
+    }
+
+    /// The form to celebrate if the user has crossed a threshold since last
+    /// acknowledged — nil once acknowledged (or before the baseline is seeded).
+    public var pendingAscension: UserForm? {
+        _ = formStateVersion   // observation hook
+        guard let lastSeen = UserDefaults.standard.object(forKey: FormKeys.lastSeenFormIndex) as? Int
+        else { return nil }
+        return userForm.index > lastSeen ? userForm : nil
+    }
+
+    /// The user has seen the ascension banner — bank the current form so it won't
+    /// show again until the next crossing.
+    public func acknowledgeAscension() {
+        UserDefaults.standard.set(userForm.index, forKey: FormKeys.lastSeenFormIndex)
+        bumpFormStateVersion()
+    }
+
+    /// The PL the Power tab last rolled the odometer to — the roll's START value on the
+    /// next appearance. Defaults to the current PL (so a first-ever view doesn't roll
+    /// from a stale/zero value).
+    public var lastViewedPowerLevel: Int {
+        UserDefaults.standard.object(forKey: FormKeys.lastViewedPL) as? Int ?? snapshotPowerLevel
+    }
+
+    /// Bank the current PL as "seen" on the Power tab (called once the roll kicks off).
+    public func markPowerLevelViewed() {
+        UserDefaults.standard.set(snapshotPowerLevel, forKey: FormKeys.lastViewedPL)
+    }
+
+    #if DEBUG
+    /// Force the next Home/Power appearance to show the ascension banner (Settings →
+    /// DEBUG): roll the acknowledged index back one rung so the current form reads as a
+    /// fresh crossing. No-op at BASE (nothing below to cross from).
+    public func debugForcePendingAscension() {
+        UserDefaults.standard.set(max(0, userForm.index - 1), forKey: FormKeys.lastSeenFormIndex)
+        bumpFormStateVersion()
+    }
+
+    /// Force the Power tab's odometer to roll on next appearance by pretending the last
+    /// viewed PL was 200 below the current one.
+    public func debugRewindLastViewedPowerLevel() {
+        UserDefaults.standard.set(max(0, snapshotPowerLevel - 200), forKey: FormKeys.lastViewedPL)
+    }
+    #endif
 }
 

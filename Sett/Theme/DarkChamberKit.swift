@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import SettCore
 
 // MARK: - The Dark Chamber component kit (design language v3)
 // No stock parts where power flows. Every component here has a Reduce Motion
@@ -822,4 +823,229 @@ public struct CrackOverlay: View {
         }
         return result
     }()
+}
+
+// MARK: - (13) CountUpNumber — the shared count-up idiom
+
+/// Rolls a number up to `value` on first appearance using the app's numeric-text
+/// idiom (a single digit-morph inside a timed easeOut — the same grammar the Weekly
+/// Reading ΔPL established, now shared so every earned number tallies consistently
+/// instead of popping). The caller supplies the string form via `format`, so a unit
+/// or sign suffix stays put while the digits roll. Reduce Motion: sets the value
+/// directly, no roll. If `value` changes after the first roll (re-computed stats),
+/// it re-tallies to the new target.
+public struct CountUpNumber: View {
+    let value: Int
+    var from: Int
+    var duration: Double
+    var format: (Int) -> String
+    let font: Font
+    let color: Color
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var shown: Int
+    @State private var started = false
+
+    public init(
+        value: Int,
+        from: Int = 0,
+        duration: Double = 0.9,
+        font: Font,
+        color: Color,
+        format: @escaping (Int) -> String = { $0.formatted() }
+    ) {
+        self.value = value
+        self.from = from
+        self.duration = duration
+        self.font = font
+        self.color = color
+        self.format = format
+        _shown = State(initialValue: from)
+    }
+
+    public var body: some View {
+        Text(format(shown))
+            .font(font)
+            .monospacedDigit()
+            .foregroundStyle(color)
+            .contentTransition(.numericText(value: Double(shown)))
+            .onAppear {
+                guard !started else { return }
+                started = true
+                guard !reduceMotion, from != value else { shown = value; return }
+                withAnimation(.easeOut(duration: duration)) { shown = value }
+            }
+            .onChange(of: value) { _, newValue in
+                guard started else { return }   // pre-appear changes are picked up by onAppear
+                if reduceMotion { shown = newValue }
+                else { withAnimation(.easeOut(duration: duration)) { shown = newValue } }
+            }
+            // The final value is the meaningful one for VoiceOver, not the rolling digits.
+            .accessibilityLabel(format(value))
+    }
+}
+
+// MARK: - (14) AnimatedKiGauge — the Ki gauge, filled on appear
+
+/// A `KiGauge` that FILLS from `from` to `target` on first appearance. The gauge is a
+/// Canvas that reads `filled` directly (it doesn't tween a Double), so the fill is
+/// stepped through intermediates on a short timer — the same approach `SacredNumberView`
+/// uses for its odometer — easing out over ~0.6s. Reduce Motion renders the target
+/// fill directly. Re-targets if `target` changes while mounted.
+public struct AnimatedKiGauge: View {
+    let target: Double
+    var from: Double
+    var segments: Int
+    var accent: Color
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var filled: Double
+    @State private var roll: Task<Void, Never>?
+
+    public init(
+        target: Double,
+        from: Double = 0,
+        segments: Int = 12,
+        accent: Color = SettColor.heroCyan
+    ) {
+        self.target = target
+        self.from = from
+        self.segments = segments
+        self.accent = accent
+        _filled = State(initialValue: from)
+    }
+
+    public var body: some View {
+        KiGauge(filled: filled, segments: segments, accent: accent)
+            .onAppear { animate(to: target) }
+            .onChange(of: target) { _, newValue in animate(to: newValue) }
+            .onDisappear { roll?.cancel() }
+    }
+
+    private func animate(to newTarget: Double) {
+        roll?.cancel()
+        let start = filled
+        let clamped = min(max(newTarget, 0), 1)
+        guard !reduceMotion, abs(clamped - start) > 0.001 else {
+            filled = clamped
+            return
+        }
+        roll = Task { @MainActor in
+            let steps = 26
+            for step in 1 ... steps {
+                guard !Task.isCancelled else { return }
+                let t = Double(step) / Double(steps)
+                let eased = 1 - pow(1 - t, 2)   // easeOut
+                filled = start + (clamped - start) * eased
+                try? await Task.sleep(for: .milliseconds(24))
+            }
+            guard !Task.isCancelled else { return }
+            filled = clamped
+        }
+    }
+}
+
+// MARK: - (15) LevelUpBanner — the persistent ascension beat
+
+/// The persistent "FORM ASCENDED" banner, shown on Home and the Power tab the first
+/// time the user opens after crossing a Form threshold — so a level-up that happened
+/// via a recompute or between sessions still gets its beat. Gold, because a form
+/// ascension is a reward. Tapping it (or the ×) acknowledges via a single source of
+/// truth in ProgressionStore, so dismissing on one surface clears both. A one-shot
+/// gold ember burst fires on appear; entrance rides the shared materialize grammar;
+/// the sigil glows on a slow loop. Reduce Motion: plain fade, no burst, static glow.
+public struct LevelUpBanner: View {
+    let form: UserForm
+    let onAcknowledge: () -> Void
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var burst = false
+    @State private var glow = false
+
+    public init(form: UserForm, onAcknowledge: @escaping () -> Void) {
+        self.form = form
+        self.onAcknowledge = onAcknowledge
+    }
+
+    public var body: some View {
+        Button(action: acknowledge) {
+            HStack(spacing: 12) {
+                SettSigil(size: 30, color: SettColor.saiyanGold)
+                    .auraGlow(SettColor.saiyanGold, radius: glow ? 13 : 6)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("FORM ASCENDED")
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .kerning(2)
+                        .foregroundStyle(SettColor.saiyanGold.opacity(0.9))
+                    Text(form.title)
+                        .font(.system(.title3, design: .rounded).weight(.heavy).smallCaps())
+                        .kerning(1)
+                        .foregroundStyle(SettColor.saiyanGold)
+                        .shadow(color: SettColor.saiyanGold.opacity(0.5), radius: 6)
+                }
+                Spacer(minLength: 8)
+                Image(systemName: "xmark")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(SettColor.ash)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .hudCard(tint: SettColor.saiyanGold)
+            .overlay {
+                if burst {
+                    AuraBurstView(gold: true).allowsHitTesting(false)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .materialize()
+        .onAppear {
+            Haptics.levelUp()
+            burst = true
+            guard !reduceMotion else { return }
+            withAnimation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true)) { glow = true }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Form ascended to \(form.title). Tap to dismiss.")
+        .accessibilityAddTraits(.isButton)
+    }
+
+    private func acknowledge() {
+        Haptics.selection()
+        onAcknowledge()
+    }
+}
+
+// MARK: - (16) PRShockwaveView — the all-time-PR gold shockwave
+
+/// A one-shot gold shockwave — a ring that expands from the center and fades over
+/// ~0.6s — fired when a set beats an all-time lift PR mid-session, so a record reads
+/// as bigger than an ordinary beat. Mount it keyed by a token (`.id(token)`) so each
+/// PR re-triggers it. Draws nothing under Reduce Motion (the PR haptic ramp still fires).
+public struct PRShockwaveView: View {
+    var color: Color
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var expand = false
+
+    public init(color: Color = SettColor.saiyanGold) { self.color = color }
+
+    public var body: some View {
+        GeometryReader { geo in
+            let maxDim = max(geo.size.width, geo.size.height)
+            Circle()
+                .stroke(color, lineWidth: expand ? 1 : 7)
+                .frame(width: expand ? maxDim * 1.5 : 12,
+                       height: expand ? maxDim * 1.5 : 12)
+                .opacity(expand ? 0 : 0.9)
+                .auraGlow(color, radius: 10)
+                .position(x: geo.size.width / 2, y: geo.size.height / 2)
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+        .onAppear {
+            guard !reduceMotion else { return }
+            withAnimation(.easeOut(duration: 0.6)) { expand = true }
+        }
+    }
 }
