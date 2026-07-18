@@ -108,7 +108,11 @@ struct WorkoutSummaryView: View {
             }
         }
         .contentShape(Rectangle())
-        .onTapGesture { skipToEnd() }
+        // SIMULTANEOUS, not .onTapGesture: a plain tap gesture on the ScrollView
+        // competed with the Done button (and rating stars / notes) and could swallow
+        // their taps — the "Done doesn't work" bug. Simultaneous lets tap-to-skip and
+        // the child controls both recognize; skipToEnd() is a no-op once at commentary.
+        .simultaneousGesture(TapGesture().onEnded { skipToEnd() })
         // The ritual owns the screen from frame one: full-height sheet, no grabber,
         // chamber-dark background (configured here, inside the presented content —
         // these propagate up to the enclosing sheet in RootView).

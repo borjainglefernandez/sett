@@ -49,9 +49,7 @@ struct RootView: View {
                 if flag == "finish" {
                     Task { @MainActor in
                         try? await Task.sleep(for: .milliseconds(800))
-                        session.finishWorkout()
-                        try? await Task.sleep(for: .seconds(3))
-                        session.completedSummary = nil   // same as tapping Done → dismiss()
+                        session.finishWorkout()   // summary presents and STAYS (tap Done to dismiss)
                     }
                 }
             }
@@ -93,11 +91,21 @@ struct DebugSurfaceHost: View {
     @Query private var allInsights: [AIInsight]
     @Query private var allRoutines: [Routine]
 
+    @State private var debugSummaryUp = true
+
     init(surface: String) {
         self.surface = surface
         let finishedFilter = #Predicate<Workout> { $0.endedAt != nil && $0.deletedAt == nil }
         _finished = Query(filter: finishedFilter,
                           sort: [SortDescriptor(\Workout.startedAt, order: .reverse)])
+    }
+
+    private var debugSummaryData: WorkoutSummaryData {
+        switch surface {
+        case "summaryascension": .debugMockAscension
+        case "summaryrewards": .debugMockRewards
+        default: .debugMock
+        }
     }
 
     var body: some View {
@@ -114,12 +122,12 @@ struct DebugSurfaceHost: View {
             SettingsView()
         case "howpower":
             HowPowerWorksView()
-        case "summary":
-            WorkoutSummaryView(summary: .debugMock)
-        case "summaryascension":
-            WorkoutSummaryView(summary: .debugMockAscension)
-        case "summaryrewards":
-            WorkoutSummaryView(summary: .debugMockRewards)
+        case "summary", "summaryascension", "summaryrewards":
+            // Present via a cover (not raw) so the summary's Done → dismiss() actually
+            // dismisses it here too, and tapping Done is testable off a real workout.
+            Color.clear.fullScreenCover(isPresented: $debugSummaryUp) {
+                WorkoutSummaryView(summary: debugSummaryData)
+            }
         case "onboarding":
             // The harness renders this as a raw overlay (no presentation), so
             // dismiss() is a no-op there — honor "Begin training" by dropping the
