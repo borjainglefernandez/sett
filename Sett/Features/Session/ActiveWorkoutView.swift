@@ -74,11 +74,13 @@ struct ActiveWorkoutView: View {
     @ScaledMetric(relativeTo: .largeTitle) private var endNumeralSize: CGFloat = 56
 
     var body: some View {
-        Group {
+        @Bindable var session = session
+        return Group {
             if let workout = session.activeWorkout {
                 player(workout)
             } else {
-                // Session ended elsewhere; the cover is on its way out.
+                // Finished: activeWorkout is nil but the cover stays up (cosmic ground)
+                // behind the summary sheet, so Home never flashes through.
                 Color.clear
             }
         }
@@ -87,6 +89,13 @@ struct ActiveWorkoutView: View {
         .overlay(TransformationBurst(tier: ambientTier, token: transformationToken).allowsHitTesting(false))
         .combatTextEmitter(combatText)
         .environment(combatText)
+        // The post-workout ritual rides UP over the still-present cover. onDismiss
+        // covers the swipe case; Done routes through session.dismissSummary() to drop
+        // sheet + cover together (no cosmic flash on the way to Home).
+        .sheet(item: $session.completedSummary,
+               onDismiss: { session.isPresentingWorkout = false }) { summary in
+            WorkoutSummaryView(summary: summary)
+        }
         // (The list-first default and the SETT_DEBUG_OVERVIEW override are both
         // honored via init state — nothing may flip the pane after the first frame.)
         .confirmationDialog("Finish workout?",

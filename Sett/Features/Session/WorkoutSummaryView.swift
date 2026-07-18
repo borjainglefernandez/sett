@@ -369,21 +369,13 @@ struct WorkoutSummaryView: View {
                     .foregroundStyle(SettColor.heroCyan)
             }
             if !summary.didQualify {
-                HStack(spacing: 4) {
-                    Text("NOT A QUALIFYING SCAN — NEEDS 3+ EFFECTIVE SETS · 10+ MIN")
-                        .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                        .kerning(1)
-                        .foregroundStyle(SettColor.ash)
-                        .multilineTextAlignment(.center)
-                    Button { isShowingHowPowerWorks = true } label: {
-                        Image(systemName: "info.circle")
-                            .font(.system(size: 10))
-                            .foregroundStyle(SettColor.ash)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Why this scan didn't qualify")
-                }
+                // The POWER LEVEL header already carries the (i) → Scouter Manual; a
+                // second info icon on this line just doubled it. Copy is self-explaining.
+                Text("NOT A QUALIFYING SCAN — NEEDS 3+ EFFECTIVE SETS · 10+ MIN")
+                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                    .kerning(1)
+                    .foregroundStyle(SettColor.ash)
+                    .multilineTextAlignment(.center)
             }
             if form.index > formBefore.index {
                 Text("FORM ASCENDED — \(form.title)")
@@ -598,7 +590,9 @@ struct WorkoutSummaryView: View {
                         .foregroundStyle(SettColor.heroCyan)
                 }
             }
-            ChamberCTAButton("Done") { dismiss() }
+            // Drops the summary sheet AND the workout cover in one transaction, so Done
+            // lands on Home without a cosmic-background flash between them.
+            ChamberCTAButton("Done") { session.dismissSummary() }
         }
     }
 
@@ -606,10 +600,11 @@ struct WorkoutSummaryView: View {
     /// feel" is still fresh. Persists straight onto the workout via the store.
     private var sessionNotesRow: some View {
         Button { isEditingSessionNotes = true } label: {
-            HStack(spacing: 10) {
+            HStack(alignment: .center, spacing: 10) {
                 Image(systemName: "text.alignleft")
                     .font(.footnote)
                     .foregroundStyle(SettColor.ash)
+                    .frame(width: 18)
                 VStack(alignment: .leading, spacing: 2) {
                     Eyebrow("SESSION NOTES")
                     if let sessionNotes, !sessionNotes.isEmpty {
@@ -625,9 +620,13 @@ struct WorkoutSummaryView: View {
                     }
                 }
                 Spacer(minLength: 4)
-                Image(systemName: "square.and.pencil")
-                    .font(.caption)
+                // Was square.and.pencil — its glyph sits high in a tall box, which
+                // pulled the whole row up and left a gap at the slab's bottom. The
+                // chevron matches the app's other tappable rows and centers cleanly.
+                Image(systemName: "chevron.right")
+                    .font(.caption2.weight(.semibold))
                     .foregroundStyle(SettColor.iron)
+                    .frame(width: 18)
             }
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)

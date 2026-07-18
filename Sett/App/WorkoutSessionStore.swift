@@ -884,11 +884,21 @@ public final class WorkoutSessionStore {
             phase: workout.phase
         )
         activeWorkout = nil
-        isPresentingWorkout = false
+        // Keep the workout cover PRESENTED — the summary sheet slides up over it
+        // (presented from ActiveWorkoutView), so Home never flashes in the gap between
+        // the cover dismissing and the sheet appearing. dismissSummary() closes the
+        // cover once the ritual's Done.
         restEndsAt = nil
         RestNotifier.cancelRestComplete()
         endRestActivity()
         Haptics.success()
+    }
+
+    /// End the post-workout ritual: drop the summary sheet AND the workout cover in one
+    /// transaction, so Done goes straight to Home without a cosmic-background flash.
+    public func dismissSummary() {
+        completedSummary = nil
+        isPresentingWorkout = false
     }
 
     // MARK: Receipt inputs (qualification + goal completion)

@@ -28,10 +28,10 @@ struct RootView: View {
                 .tag(Tab.power)
         }
         .fullScreenCover(isPresented: $session.isPresentingWorkout) {
+            // The post-workout summary is presented from INSIDE the cover (not here), so
+            // finishing slides the ritual up over the session instead of dismissing to
+            // Home first and flashing it behind the sheet.
             ActiveWorkoutView(startsInOverview: services.settings.startsInList)
-        }
-        .sheet(item: $session.completedSummary) { summary in
-            WorkoutSummaryView(summary: summary)
         }
         .onAppear {
             #if DEBUG
@@ -44,6 +44,10 @@ struct RootView: View {
             // "1" → demo workout + overview sheet; "player" → demo workout, scouter only.
             if let flag = ProcessInfo.processInfo.environment["SETT_DEBUG_OVERVIEW"], !flag.isEmpty {
                 session.debugStartOverviewDemo()
+            }
+            // Force the routine scheduling mode for screenshots (weekday shows day chips).
+            if let s = ProcessInfo.processInfo.environment["SETT_DEBUG_SCHEDULE"] {
+                services.settings.scheduleMode = (s == "rotation") ? .rotation : .weekday
             }
             #endif
         }
@@ -100,6 +104,8 @@ struct DebugSurfaceHost: View {
             SettingsView()
         case "howpower":
             HowPowerWorksView()
+        case "summary":
+            WorkoutSummaryView(summary: .debugMock)
         case "onboarding":
             // The harness renders this as a raw overlay (no presentation), so
             // dismiss() is a no-op there — honor "Begin training" by dropping the
@@ -154,6 +160,25 @@ struct DebugSurfaceHost: View {
         }
         guard let topID = counts.max(by: { $0.value < $1.value })?.key else { return allExercises.first }
         return allExercises.first { $0.id == topID }
+    }
+}
+
+extension WorkoutSummaryData {
+    /// A qualifying scan with a real PL climb — drives the SETT_DEBUG_SURFACE=summary
+    /// harness so the power-level roll + receipt can be screenshotted/recorded.
+    static var debugMock: WorkoutSummaryData {
+        WorkoutSummaryData(
+            id: UUID(), title: "Push Day", durationSeconds: 3_180,
+            powerLevelBefore: 7_000, powerLevelAfter: 7_049,
+            tierBefore: 6, tierAfter: 6,
+            netReps: 12, netVolumeGrams: 555_600, netIsNew: false,
+            newBadgeKeys: [], xpEarned: [:],
+            commentary: "Solid push. Flat bench held its ceiling; incline crept up two.",
+            commentarySource: .onDevice,
+            strengthScoreBefore: 980, strengthScoreAfter: 999,
+            weeklyVolumeLbBefore: 30_000, weeklyVolumeLbAfter: 31_725,
+            consistencyBefore: 1.25, consistencyAfter: 1.30,
+            didQualify: true, surgeActive: true, phase: .bulking)
     }
 }
 #endif

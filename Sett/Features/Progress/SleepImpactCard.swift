@@ -12,6 +12,9 @@ struct SleepImpactCard: View {
     let unit: WeightUnit
     let calendar: Calendar
 
+    /// Scrub position (a sleep score on the X axis) — snaps to the nearest workout dot.
+    @State private var selectedScore: Double?
+
     private struct PairedPoint: Identifiable {
         let id: UUID          // workout id
         let sleepScore: Int
@@ -59,11 +62,16 @@ struct SleepImpactCard: View {
 
     var body: some View {
         let points = points
+        let scrubbed = nearest(to: selectedScore, in: points)
         VStack(alignment: .leading, spacing: 12) {
-            CardTitle("Sleep × Lifts", icon: "bed.double.fill")
+            HStack {
+                CardTitle("Sleep × Lifts", icon: "bed.double.fill")
+                Spacer(minLength: 8)
+                if let scrubbed { readout(scrubbed) }
+            }
             if points.count >= 10 {
-                chart(points: points)
-                Text("Each dot is a workout: last night's sleep score against session volume.")
+                chart(points: points, scrubbed: scrubbed)
+                Text("Each dot is a workout: last night's sleep score against session volume. Drag to inspect.")
                     .font(.caption)
                     .foregroundStyle(SettColor.ash)
             } else {
@@ -74,6 +82,28 @@ struct SleepImpactCard: View {
         .settCard()
     }
 
+    /// The workout dot nearest the scrubbed sleep score — snaps the readout + rule to a
+    /// real session rather than floating between dots. nil when not scrubbing.
+    private func nearest(to score: Double?, in points: [PairedPoint]) -> PairedPoint? {
+        guard let score, !points.isEmpty else { return nil }
+        return points.min {
+            abs(Double($0.sleepScore) - score) < abs(Double($1.sleepScore) - score)
+        }
+    }
+
+    /// The scrubbed dot's sleep score + session volume, shown beside the title.
+    private func readout(_ point: PairedPoint) -> some View {
+        HStack(spacing: 6) {
+            Text("sleep \(point.sleepScore)")
+                .foregroundStyle(SettColor.ash)
+            Text("\(Int(point.volume.rounded()).formatted()) \(unit.symbol)")
+                .foregroundStyle(SettColor.bone)
+                .monospacedDigit()
+        }
+        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+        .transition(.opacity)
+    }
+
     private func teaser(pairedCount: Int) -> some View {
         Text(sleepDays.isEmpty
              ? "Connect Oura in Settings to see how sleep moves your lifts."
@@ -82,13 +112,15 @@ struct SleepImpactCard: View {
             .foregroundStyle(SettColor.ash)
     }
 
-    private func chart(points: [PairedPoint]) -> some View {
+    private func chart(points: [PairedPoint], scrubbed: PairedPoint?) -> some View {
         Chart {
             ForEach(points) { point in
+                let isPicked = scrubbed?.id == point.id
                 PointMark(x: .value("Sleep score", Double(point.sleepScore)),
                           y: .value("Volume", point.volume))
-                    .foregroundStyle(SettColor.heroCyan.opacity(0.65))
-                    .symbolSize(46)
+                    .foregroundStyle(SettColor.heroCyan.opacity(
+                        isPicked ? 1 : (scrubbed == nil ? 0.65 : 0.28)))
+                    .symbolSize(isPicked ? 130 : 46)
             }
             if let fit = fitLine(for: points) {
                 ForEach(Array(fit.enumerated()), id: \.offset) { entry in
@@ -98,7 +130,13 @@ struct SleepImpactCard: View {
                         .lineStyle(StrokeStyle(lineWidth: 2, dash: [6, 4]))
                 }
             }
+            if let scrubbed {
+                RuleMark(x: .value("Sleep score", Double(scrubbed.sleepScore)))
+                    .foregroundStyle(SettColor.ash.opacity(0.5))
+                    .lineStyle(StrokeStyle(lineWidth: 1))
+            }
         }
+        .chartXSelection(value: $selectedScore)
         .chartXScale(domain: .automatic(includesZero: false))
         .chartXAxisLabel("sleep score")
         .chartYAxisLabel(unit.symbol)
