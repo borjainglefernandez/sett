@@ -45,6 +45,13 @@ struct HistoryListView: View {
     /// Extracted once per appearance/delete; workoutNet is pure over these.
     @State private var samples: [SetSample] = []
 
+    /// Per-workout volume/sets/reps/top-e1RM, traversed ONCE (refreshMetrics) rather than
+    /// re-summed over every workout's orderedExercises → orderedSets on each render — that
+    /// per-frame relationship walk (via the tonnage total + metric sorts) pinned a CPU core
+    /// when a navigation push kept this list re-rendering. Finished workouts are immutable.
+    private struct WorkoutMetrics { var volume = 0; var sets = 0; var reps = 0; var topE1RM = 0 }
+    @State private var metrics: [UUID: WorkoutMetrics] = [:]
+
     var body: some View {
         List {
             if sort == .date {
@@ -129,37 +136,43 @@ struct HistoryListView: View {
         return ascending ? ranked.reversed() : ranked
     }
 
-    private func workoutRepCount(_ w: Workout) -> Int {
-        workingSets(w).reduce(0) { $0 + $1.reps }
-    }
-
     /// Distinct gyms present in history — one filter chip each.
     private var presentGyms: [String] {
         Array(Set(workouts.compactMap(\.gymNameSnapshot))).sorted()
     }
 
-    // MARK: Per-workout metrics (computed for sorting; history is small)
+    // MARK: Per-workout metrics — read from the `metrics` cache (never the DB, per render)
 
-    private func workingSets(_ w: Workout) -> [SetEntry] {
-        w.orderedExercises.flatMap { $0.orderedSets }.filter { !$0.isWarmup }
-    }
-    private func workoutVolumeGrams(_ w: Workout) -> Int {
-        workingSets(w).reduce(0) { $0 + $1.weightGrams * $1.reps }
-    }
-    private func workoutSetCount(_ w: Workout) -> Int { workingSets(w).count }
-    private func workoutTopE1RM(_ w: Workout) -> Int {
-        // Score power on EFFECTIVE load (bodyweight equipment adds the lifter's
-        // weight), matching ExerciseCard.e1RM — added weight alone sinks
-        // pull-up/dip sessions below their true e1RM.
-        w.orderedExercises.flatMap { ex in
-            ex.orderedSets.filter { !$0.isWarmup }.map { set in
-                ProgressEngine.e1RMGrams(
-                    weightGrams: LoadMath.effectiveWeightGrams(
-                        addedGrams: set.weightGrams, equipment: ex.equipment,
-                        bodyweightGrams: w.bodyweightGrams),
-                    reps: set.reps)
+    private func workoutVolumeGrams(_ w: Workout) -> Int { metrics[w.id]?.volume ?? 0 }
+    private func workoutSetCount(_ w: Workout) -> Int { metrics[w.id]?.sets ?? 0 }
+    private func workoutRepCount(_ w: Workout) -> Int { metrics[w.id]?.reps ?? 0 }
+    private func workoutTopE1RM(_ w: Workout) -> Int { metrics[w.id]?.topE1RM ?? 0 }
+
+    /// Traverse every finished workout's sets ONCE into `metrics`. Score power on
+    /// EFFECTIVE load (bodyweight equipment adds the lifter's weight), matching
+    /// ExerciseCard.e1RM. Called on appear and after a delete — never during body.
+    private func refreshMetrics() {
+        var next: [UUID: WorkoutMetrics] = [:]
+        for workout in workouts {
+            var m = WorkoutMetrics()
+            var top = 0
+            for exercise in workout.orderedExercises {
+                for set in exercise.orderedSets where !set.isWarmup {
+                    m.volume += set.weightGrams * set.reps
+                    m.sets += 1
+                    m.reps += set.reps
+                    let e1rm = ProgressEngine.e1RMGrams(
+                        weightGrams: LoadMath.effectiveWeightGrams(
+                            addedGrams: set.weightGrams, equipment: exercise.equipment,
+                            bodyweightGrams: workout.bodyweightGrams),
+                        reps: set.reps)
+                    if e1rm > top { top = e1rm }
+                }
             }
-        }.max() ?? 0
+            m.topE1RM = top
+            next[workout.id] = m
+        }
+        metrics = next
     }
 
     private var monthGroups: [(key: Date, workouts: [Workout])] {
@@ -364,6 +377,7 @@ struct HistoryListView: View {
 
     private func refreshSamples() {
         samples = SampleExtractor.setSamples(context: modelContext)
+        refreshMetrics()
     }
 
     private func delete(_ workout: Workout) {
