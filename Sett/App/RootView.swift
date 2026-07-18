@@ -5,6 +5,7 @@ import SettCore
 struct RootView: View {
     @Environment(WorkoutSessionStore.self) private var session
     @Environment(AppServices.self) private var services
+    @Environment(\.modelContext) private var modelContext
     @State private var selectedTab: Tab = .home
 
     enum Tab: Hashable {
@@ -56,6 +57,20 @@ struct RootView: View {
             // Force the routine scheduling mode for screenshots (weekday shows day chips).
             if let s = ProcessInfo.processInfo.environment["SETT_DEBUG_SCHEDULE"] {
                 services.settings.scheduleMode = (s == "rotation") ? .rotation : .weekday
+            }
+            // Preview the animation surfaces that need engine state: the persistent
+            // level-up banner (anim #2) and the Power-tab odometer roll (anim #1).
+            // Recompute first (SettApp's launch recompute is async and may not have
+            // landed yet), then rock the acknowledged baselines back so the current
+            // state reads as freshly crossed / freshly gained.
+            let env = ProcessInfo.processInfo.environment
+            if env["SETT_DEBUG_ASCEND"] == "1" || env["SETT_DEBUG_ROLL"] == "1" {
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(350))
+                    services.progression.recompute(context: modelContext)
+                    if env["SETT_DEBUG_ROLL"] == "1" { services.progression.debugRewindLastViewedPowerLevel() }
+                    if env["SETT_DEBUG_ASCEND"] == "1" { services.progression.debugForcePendingAscension() }
+                }
             }
             #endif
         }
