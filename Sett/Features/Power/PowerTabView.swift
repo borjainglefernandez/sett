@@ -19,6 +19,9 @@ struct PowerTabView: View {
     @State private var radarShares = [Double](repeating: 0, count: PowerTabView.radarMuscles.count)
     /// Non-nil after a roster swap — keys a one-shot cyan burst on the new avatar.
     @State private var rosterBurstID: UUID?
+    /// nil until the tab's .task seeds it to the live PL — the Sacred Number starts
+    /// at lastViewedPowerLevel and rolls up only when this catches it up to a change.
+    @State private var rolledPL: Int?
 
     init() {
         let badgeAwardFilter = #Predicate<BadgeAward> { $0.deletedAt == nil }
@@ -29,6 +32,11 @@ struct PowerTabView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
+                    // Pinned above the hero, mirroring Home's rotationSealBanner —
+                    // acknowledgeAscension clears it on both tabs (single source of truth).
+                    if let form = progression.pendingAscension {
+                        LevelUpBanner(form: form) { withAnimation(.snappy) { progression.acknowledgeAscension() } }
+                    }
                     hero
                     characterSheetCard
                     RivalCard(rivalPL: rivalPL,
@@ -64,6 +72,16 @@ struct PowerTabView: View {
             .task {
                 withAnimation(.snappy) { progression.recompute(context: modelContext) }
                 recomputeRadar()
+                // Seed the odometer from last-viewed → live PL: SacredNumberView's own
+                // roll fires on this value change (quiet when the PL is unchanged).
+                rolledPL = progression.snapshotPowerLevel
+                progression.markPowerLevelViewed()
+            }
+            // TabView keeps this tab mounted, so .task won't re-run on later PL changes —
+            // track the snapshot so the number never goes stale (and rolls live if a
+            // recompute lands while you're watching).
+            .onChange(of: progression.snapshotPowerLevel) { _, newValue in
+                rolledPL = newValue
             }
         }
     }
@@ -144,7 +162,9 @@ struct PowerTabView: View {
             VStack(spacing: 6) {
                 // The sacred eyebrow — same mono voice as Home's crest and the receipt.
                 Eyebrow("POWER LEVEL")
-                SacredNumberView(value: progression.snapshotPowerLevel)
+                // Starts at last-viewed PL; the .task bumps rolledPL to the live PL so
+                // SacredNumberView's built-in odometer rolls only on a real change.
+                SacredNumberView(value: rolledPL ?? progression.lastViewedPowerLevel)
                 if progression.snapshotPowerLevel == 0 {
                     Text("Everyone starts somewhere.")
                         .font(.footnote)
@@ -168,7 +188,14 @@ struct PowerTabView: View {
                         .foregroundStyle(SettColor.ash)
                     // Ki Gauge, not a stock bar — its fused n/12 numeral counts cells,
                     // the caption above counts PL, so the two never double-report.
-                    KiGauge(filled: form.progress(progression.snapshotPowerLevel))
+                    // Fill from empty if the user crossed INTO this form, else from
+                    // where they left off — AnimatedKiGauge owns the onAppear motion.
+                    let startFraction = progression.lastViewedPowerLevel <= form.floorPL
+                        ? 0
+                        : form.progress(progression.lastViewedPowerLevel)
+                    AnimatedKiGauge(target: form.progress(progression.snapshotPowerLevel),
+                                    from: startFraction,
+                                    accent: SettColor.heroCyan)
                         .frame(width: 180)
                 }
             }

@@ -40,16 +40,29 @@ struct NetGlanceStrip: View {
         WeightFormat.compactTonnage(grams: week.tonnageGrams, unit: services.settings.unit)
     }
 
+    /// The count-up target: this week's tonnage as a whole number of display units.
+    private var tonnageDisplayValue: Int {
+        Int((Double(week.tonnageGrams) / services.settings.unit.gramsPerUnit).rounded())
+    }
+
+    /// Mirrors `WeightFormat.compactTonnage` on the display-unit integer the roll
+    /// counts through (compactTonnage takes grams — the count-up counts display
+    /// units): exact until 10k, then "12.4k".
+    private func compactTonnage(_ display: Int) -> String {
+        display >= 10_000
+            ? "\((Double(display) / 1000).formatted(.number.precision(.fractionLength(1))))k"
+            : display.formatted()
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             // Absolute totals — three quiet counters for the week so far.
             HStack(spacing: 0) {
-                counter(value: "\(week.workouts)", numeric: Double(week.workouts), caption: "SESSIONS")
+                counter(value: week.workouts, caption: "SESSIONS")
                 counterDivider
-                counter(value: "\(week.sets)", numeric: Double(week.sets), caption: "SETS")
+                counter(value: week.sets, caption: "SETS")
                 counterDivider
-                counter(value: tonnageDisplay,
-                        numeric: Double(week.tonnageGrams) / services.settings.unit.gramsPerUnit,
+                counter(value: tonnageDisplayValue, format: compactTonnage,
                         caption: "TONNAGE \(services.settings.unit.symbol.uppercased())")
             }
             .padding(.vertical, 10)
@@ -94,15 +107,16 @@ struct NetGlanceStrip: View {
 
     // MARK: Counters (absolute) & stats (net)
 
-    /// `numeric` feeds the numeric-text roll — the display-unit value, so the
-    /// digits slot-machine instead of crossfading when the week's totals move.
-    private func counter(value: String, numeric: Double, caption: String) -> some View {
+    /// Each stat COUNTS UP from 0 on appear via the shared idiom: `week` lands as
+    /// zero, then reload() fills it, so CountUpNumber's onChange rolls 0→total. RM
+    /// is handled inside CountUpNumber (it direct-sets the final value).
+    private func counter(value: Int, format: @escaping (Int) -> String = { $0.formatted() },
+                         caption: String) -> some View {
         VStack(spacing: 2) {
-            Text(value)
-                .font(.system(size: 17, weight: .heavy, design: .monospaced))
-                .monospacedDigit()
-                .foregroundStyle(SettColor.bone)
-                .contentTransition(.numericText(value: numeric))
+            CountUpNumber(value: value, from: 0,
+                          font: .system(size: 17, weight: .heavy, design: .monospaced),
+                          color: SettColor.bone,
+                          format: format)
             Text(caption)
                 .font(.system(size: 10, weight: .bold, design: .monospaced))
                 .kerning(0.5)

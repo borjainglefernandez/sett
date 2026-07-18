@@ -60,6 +60,9 @@ struct ActiveWorkoutView: View {
     /// then eases back. Bumped `transformationToken` fires the full-screen burst.
     @State private var ambientTier: AuraTier = .base
     @State private var transformationToken = 0
+    /// Bumped ONLY on a personal best — re-triggers the PR-exclusive gold shockwave
+    /// so a PR reads bigger than the transformation burst a normal win gets.
+    @State private var prShockToken = 0
     @State private var ambientDecayTask: Task<Void, Never>?
 
     @State private var isShowingOverview = false
@@ -87,6 +90,17 @@ struct ActiveWorkoutView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(TimeChamberBackground(tier: ambientTier, assetName: sessionDomainAsset).animation(.easeInOut(duration: 0.6), value: ambientTier).allowsHitTesting(false))
         .overlay(TransformationBurst(tier: ambientTier, token: transformationToken).allowsHitTesting(false))
+        // PR-exclusive: each new token re-triggers the one-shot expanding gold ring
+        // (defaults to saiyanGold, RM-safe). The shell holds REST ~650 ms on gold logs,
+        // which covers the 0.6 s shockwave, so no extra timing is needed.
+        .overlay {
+            if prShockToken > 0 {
+                PRShockwaveView()
+                    .id(prShockToken)
+                    .ignoresSafeArea()
+                    .allowsHitTesting(false)
+            }
+        }
         .combatTextEmitter(combatText)
         .environment(combatText)
         // The post-workout ritual rides UP over the still-present cover. onDismiss
@@ -566,6 +580,8 @@ struct ActiveWorkoutView: View {
         let tier = outcome.auraTier
         ambientTier = tier
         if tier.isTransformation { transformationToken += 1 }
+        // A personal best fires its own gold shockwave ON TOP of the normal burst.
+        if outcome.isCrit { prShockToken += 1 }
         ambientDecayTask?.cancel()
         ambientDecayTask = Task { @MainActor in
             try? await Task.sleep(for: .seconds(8))

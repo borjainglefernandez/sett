@@ -26,6 +26,8 @@ struct StreakSheet: View {
     /// False until the This Week card appears — flips true to charge the banked
     /// day-dots up in a staggered spring (instant under Reduce Motion).
     @State private var chargedLit = false
+    /// Same idea for the Shields card — the earned shields charge up on appear.
+    @State private var shieldsLit = false
 
     var body: some View {
         NavigationStack {
@@ -186,13 +188,21 @@ struct StreakSheet: View {
             }
             HStack(spacing: 12) {
                 ForEach(0..<state.shieldCap, id: \.self) { index in
-                    Image(systemName: index < state.shields ? "shield.fill" : "shield")
+                    let earned = index < state.shields
+                    Image(systemName: earned ? "shield.fill" : "shield")
                         .font(.system(size: 24))
-                        .foregroundStyle(index < state.shields
+                        .foregroundStyle(earned
                                          ? SettColor.heroCyan
                                          : SettColor.iron.opacity(0.6))
-                        .shadow(color: index < state.shields ? SettColor.heroCyan.opacity(0.4) : .clear,
+                        .shadow(color: earned ? SettColor.heroCyan.opacity(0.4) : .clear,
                                 radius: 3)
+                        // Earned shields charge UP on open, one after another; empty
+                        // slots stay put. Mirrors the This Week day-dots one card up.
+                        .scaleEffect(earned ? (shieldsLit ? 1 : 0.6) : 1)
+                        .animation(reduceMotion ? nil
+                                   : .spring(response: 0.4, dampingFraction: 0.6)
+                                       .delay(Double(index) * 0.06),
+                                   value: shieldsLit)
                 }
                 Spacer()
                 if state.weeksToNextShield > 0 {
@@ -209,6 +219,7 @@ struct StreakSheet: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .hudCard()
         .accessibilityElement(children: .combine)
+        .onAppear { shieldsLit = true }
     }
 
     // MARK: The rule, spelled out

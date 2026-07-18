@@ -359,11 +359,10 @@ struct WorkoutSummaryView: View {
         let formBefore = UserForm.form(forPL: summary.powerLevelBefore)
         VStack(spacing: 5) {
             if ssDelta != 0 || wvlDelta != 0 || streakMoved {
-                HStack(spacing: 14) {
-                    receiptLever("STRENGTH", delta: ssDelta)
-                    receiptLever("VOLUME", delta: wvlDelta)
-                    if streakMoved { streakLever }
-                }
+                ReceiptLeversRow(ssDelta: ssDelta, wvlDelta: wvlDelta,
+                                 streakMoved: streakMoved,
+                                 consistencyBefore: summary.consistencyBefore,
+                                 consistencyAfter: summary.consistencyAfter)
             }
             if summary.surgeActive {
                 // Gold-free by design: the surge is banked rest (action), not a reward.
@@ -382,11 +381,7 @@ struct WorkoutSummaryView: View {
                     .multilineTextAlignment(.center)
             }
             if form.index > formBefore.index {
-                Text("FORM ASCENDED — \(form.title)")
-                    .font(.system(size: 11, weight: .heavy, design: .monospaced))
-                    .kerning(1.5)
-                    .foregroundStyle(SettColor.saiyanGold)
-                    .shadow(color: SettColor.saiyanGold.opacity(0.5), radius: 5)
+                FormAscendedLine(title: form.title)
             } else {
                 Text("\(form.title) · \((form.nextPL - summary.powerLevelAfter).formatted()) PL TO NEXT FORM")
                     .font(.system(size: 9, weight: .semibold, design: .monospaced))
@@ -395,40 +390,6 @@ struct WorkoutSummaryView: View {
             }
         }
         .padding(.top, 2)
-    }
-
-    private func receiptLever(_ label: String, delta: Int) -> some View {
-        HStack(spacing: 4) {
-            Text(label)
-                .font(.system(size: 9, weight: .bold, design: .monospaced))
-                .kerning(1)
-                .foregroundStyle(SettColor.ash)
-            Text(delta == 0 ? "—" : "\(delta > 0 ? "+" : "")\(delta.formatted())")
-                .font(.system(size: 10, weight: .heavy, design: .monospaced))
-                .monospacedDigit()
-                .foregroundStyle(delta > 0 ? SettColor.positive
-                                 : delta < 0 ? SettColor.ash : SettColor.iron)
-        }
-    }
-
-    /// The third lever: the consistency multiplier's move this scan, shown as the
-    /// full ×before → ×after so the streak's compounding is legible, not implied.
-    private var streakLever: some View {
-        HStack(spacing: 4) {
-            Text("STREAK")
-                .font(.system(size: 9, weight: .bold, design: .monospaced))
-                .kerning(1)
-                .foregroundStyle(SettColor.ash)
-            Text("\(multiplierText(summary.consistencyBefore)) → \(multiplierText(summary.consistencyAfter))")
-                .font(.system(size: 10, weight: .heavy, design: .monospaced))
-                .monospacedDigit()
-                .foregroundStyle(summary.consistencyAfter > summary.consistencyBefore
-                                 ? SettColor.positive : SettColor.ash)
-        }
-    }
-
-    private func multiplierText(_ value: Double) -> String {
-        "×" + value.formatted(.number.precision(.fractionLength(2)))
     }
 
     private var deltaChip: some View {
@@ -484,11 +445,17 @@ struct WorkoutSummaryView: View {
                     .font(.footnote)
                     .foregroundStyle(SettColor.ash)
             } else {
+                let unit = services.settings.unit
+                let netWeightTarget = Int((Double(summary.netVolumeGrams) / unit.gramsPerUnit).rounded())
                 HStack(spacing: 24) {
-                    netStat(value: netWeightText, caption: "net weight",
-                            positive: summary.netVolumeGrams >= 0)
-                    netStat(value: netRepsText, caption: "net reps",
-                            positive: summary.netReps >= 0)
+                    netStat(value: netWeightTarget, caption: "net weight",
+                            positive: summary.netVolumeGrams >= 0) {
+                        "\($0 >= 0 ? "+" : "")\($0) \(unit.symbol)"
+                    }
+                    netStat(value: summary.netReps, caption: "net reps",
+                            positive: summary.netReps >= 0) {
+                        "\($0 >= 0 ? "+" : "")\($0)"
+                    }
                 }
             }
         }
@@ -496,29 +463,22 @@ struct WorkoutSummaryView: View {
         .settCard()
     }
 
-    private func netStat(value: String, caption: String, positive: Bool) -> some View {
+    /// The net-progress numbers roll up from 0 when the net card reveals (stage ≥ .net
+    /// mounts this, so CountUpNumber's own onAppear drives the tally; RM-safe inside).
+    /// `format` keeps the sign + unit put while the digits roll.
+    private func netStat(value target: Int, caption: String, positive: Bool,
+                         format: @escaping (Int) -> String) -> some View {
         // A negative net while CUTTING is the expected trade, not an alarm — ash,
         // not red. Bulk/maintain keep the red so a real slide still reads as one.
         let negative = summary.phase == .cutting ? SettColor.ash : SettColor.negative
         return VStack(alignment: .leading, spacing: 2) {
-            Text(value)
-                .font(PowerFont.m())
-                .monospacedDigit()
-                .foregroundStyle(positive ? SettColor.positive : negative)
+            CountUpNumber(value: target, from: 0, font: PowerFont.m(),
+                          color: positive ? SettColor.positive : negative,
+                          format: format)
             Text(caption)
                 .font(.footnote)
                 .foregroundStyle(SettColor.ash)
         }
-    }
-
-    private var netWeightText: String {
-        let unit = services.settings.unit
-        let value = Int((Double(summary.netVolumeGrams) / unit.gramsPerUnit).rounded())
-        return "\(value >= 0 ? "+" : "")\(value) \(unit.symbol)"
-    }
-
-    private var netRepsText: String {
-        "\(summary.netReps >= 0 ? "+" : "")\(summary.netReps)"
     }
 
     // MARK: Stage 3 — badges earned
@@ -778,6 +738,122 @@ private struct BadgePremiereMedallion: View {
             showBurst = true
             withAnimation(.spring(response: 0.4, dampingFraction: 0.55)) { scale = 1 }
         }
+    }
+}
+
+// MARK: - Receipt levers row (Stage 1, staggered)
+
+/// The three receipt levers (STRENGTH / VOLUME / STREAK) ticked in one at a time
+/// (~100 ms apart) so the delta's sources read as a sequence, not a block — the same
+/// stagger grammar as BadgePremiereMedallion. Reduce Motion: all levers revealed at
+/// once. Which levers show and their values are unchanged; only the reveal is new.
+private struct ReceiptLeversRow: View {
+    let ssDelta: Int
+    let wvlDelta: Int
+    let streakMoved: Bool
+    let consistencyBefore: Double
+    let consistencyAfter: Double
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// How many levers have ticked in so far; walks 0 → 3 to drive the stagger.
+    @State private var revealed = 0
+
+    var body: some View {
+        HStack(spacing: 14) {
+            lever("STRENGTH", delta: ssDelta, index: 0)
+            lever("VOLUME", delta: wvlDelta, index: 1)
+            if streakMoved { streakLever(index: 2) }
+        }
+        .task {
+            guard !reduceMotion else { revealed = 3; return }
+            for step in 1 ... 3 {
+                try? await Task.sleep(for: .milliseconds(100))
+                withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) { revealed = step }
+            }
+        }
+    }
+
+    private func shown(_ index: Int) -> Bool { index < revealed }
+
+    private func lever(_ label: String, delta: Int, index: Int) -> some View {
+        HStack(spacing: 4) {
+            Text(label)
+                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .kerning(1)
+                .foregroundStyle(SettColor.ash)
+            Text(delta == 0 ? "—" : "\(delta > 0 ? "+" : "")\(delta.formatted())")
+                .font(.system(size: 10, weight: .heavy, design: .monospaced))
+                .monospacedDigit()
+                .foregroundStyle(delta > 0 ? SettColor.positive
+                                 : delta < 0 ? SettColor.ash : SettColor.iron)
+        }
+        .staggerReveal(shown(index))
+    }
+
+    /// The third lever: the consistency multiplier's move this scan, shown as the
+    /// full ×before → ×after so the streak's compounding is legible, not implied.
+    private func streakLever(index: Int) -> some View {
+        HStack(spacing: 4) {
+            Text("STREAK")
+                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .kerning(1)
+                .foregroundStyle(SettColor.ash)
+            Text("\(multiplierText(consistencyBefore)) → \(multiplierText(consistencyAfter))")
+                .font(.system(size: 10, weight: .heavy, design: .monospaced))
+                .monospacedDigit()
+                .foregroundStyle(consistencyAfter > consistencyBefore
+                                 ? SettColor.positive : SettColor.ash)
+        }
+        .staggerReveal(shown(index))
+    }
+
+    private func multiplierText(_ value: Double) -> String {
+        "×" + value.formatted(.number.precision(.fractionLength(2)))
+    }
+}
+
+private extension View {
+    /// A lever's staggered entrance: fade + a small rise/scale, gated by `shown`.
+    func staggerReveal(_ shown: Bool) -> some View {
+        opacity(shown ? 1 : 0)
+            .scaleEffect(shown ? 1 : 0.9)
+            .offset(y: shown ? 0 : 4)
+    }
+}
+
+// MARK: - Form-ascended line (Stage 1)
+
+/// The gold FORM ASCENDED beat, given weight: a spring scale-in (0.8 → 1) plus a
+/// gentle auraGlow pulse so the level-up registers on the receipt. No haptic here —
+/// the odometer ceremony already fires Haptics.levelUp; a second would double it.
+/// Reduce Motion: static final state (full scale, steady glow), no pulse.
+private struct FormAscendedLine: View {
+    let title: String
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var scale: CGFloat = 0.8
+    @State private var glow: CGFloat = 4
+
+    var body: some View {
+        Text("FORM ASCENDED — \(title)")
+            .font(.system(size: 11, weight: .heavy, design: .monospaced))
+            .kerning(1.5)
+            .foregroundStyle(SettColor.saiyanGold)
+            .shadow(color: SettColor.saiyanGold.opacity(0.5), radius: 5)
+            .auraGlow(SettColor.saiyanGold, radius: glow)
+            .scaleEffect(scale)
+            .task {
+                guard !reduceMotion else {
+                    scale = 1
+                    glow = 8
+                    return
+                }
+                withAnimation(.spring(response: 0.45, dampingFraction: 0.55)) { scale = 1 }
+                // A soft heartbeat, not a strobe — small amplitude, slow cadence.
+                withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) {
+                    glow = 10
+                }
+            }
     }
 }
 

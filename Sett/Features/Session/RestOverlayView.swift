@@ -16,6 +16,7 @@ struct RestOverlayView: View {
 
     @Environment(WorkoutSessionStore.self) private var session
     @Environment(AppServices.self) private var services
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var firedCompletion = false
     @State private var lastTickSecond = Int.max
@@ -98,7 +99,13 @@ struct RestOverlayView: View {
     }
 
     private func ring(remaining: Int, fraction: Double) -> some View {
-        ZStack {
+        // Final-3s emphasis: the last three seconds brighten the ring's halo and give
+        // it a per-second bump, both re-fired by the same `remaining` Int that rolls
+        // the numeral and drives Haptics.light(). Under Reduce Motion the ring stays
+        // static — no bump, no brighter glow.
+        let isFinal = remaining <= 3 && remaining > 0 && !reduceMotion
+        let bumpPeak: CGFloat = isFinal ? 1.07 : 1.0
+        return ZStack {
             Circle()
                 .stroke(tier.color.opacity(0.18), lineWidth: 3)
             Circle()
@@ -123,6 +130,19 @@ struct RestOverlayView: View {
                 .padding(28)
         }
         .frame(width: 264, height: 264)
+        // Halo brightens over the last three seconds (fades cleanly at 3→off and 0).
+        .shadow(color: tier.color.opacity(isFinal ? 0.85 : 0), radius: isFinal ? 16 : 0)
+        .animation(.easeInOut(duration: 0.25), value: isFinal)
+        // One-shot bump-and-settle each second; bumpPeak is 1.0 outside the final 3 s
+        // (and under Reduce Motion), so the keyframe runs invisibly then.
+        .keyframeAnimator(initialValue: 1.0 as CGFloat, trigger: remaining) { view, scale in
+            view.scaleEffect(scale)
+        } keyframes: { _ in
+            KeyframeTrack {
+                CubicKeyframe(bumpPeak, duration: 0.14)
+                CubicKeyframe(1.0, duration: 0.22)
+            }
+        }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Rest, \(timeText(remaining)) remaining")
     }

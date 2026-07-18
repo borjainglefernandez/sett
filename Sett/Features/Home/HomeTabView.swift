@@ -55,6 +55,14 @@ struct HomeTabView: View {
                     VStack(alignment: .leading, spacing: 16) {
                         header
                         powerCrest
+                        // Persistent ascension beat — a Form crossing that landed via a
+                        // recompute or between sessions still gets its banner here. The store
+                        // is the single source of truth, so acknowledging clears Power too.
+                        if let form = services.progression.pendingAscension {
+                            LevelUpBanner(form: form) {
+                                withAnimation(.snappy) { services.progression.acknowledgeAscension() }
+                            }
+                        }
                         if finishedWorkouts.isEmpty {
                             firstRunCard
                         } else {
@@ -699,11 +707,15 @@ struct HomeTabView: View {
                         .foregroundStyle(.white.opacity(0.75))
                 }
             } accessory: {
+                // The empty chamber reads as an ember waiting to be lit — a soft ki
+                // bloom breathes behind the play disc, not a dead control.
                 playDisc
+                    .background { IgnitionBloom() }
             }
             .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
         .buttonStyle(PressableSlabStyle(haptic: .light))
+        .materialize()
         .accessibilityLabel("Start your first workout")
     }
 
@@ -813,5 +825,30 @@ struct HomeTabView: View {
                 if !isPresented { services.settings.hasOnboarded = true }
             }
         )
+    }
+}
+
+/// A soft heroCyan bloom that breathes behind the first-run play disc — the empty
+/// Home reads as an ember waiting to be lit rather than dead. Cyan, not gold: this
+/// is ki/action, not a reward. Reduce Motion holds a fixed static glow (no pulse).
+private struct IgnitionBloom: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var lit = false
+
+    var body: some View {
+        Circle()
+            .fill(RadialGradient(colors: [SettColor.heroCyan.opacity(0.55), .clear],
+                                 center: .center, startRadius: 0, endRadius: 58))
+            .frame(width: 116, height: 116)
+            .scaleEffect(reduceMotion ? 1 : (lit ? 1.1 : 0.82))
+            .opacity(reduceMotion ? 0.5 : (lit ? 0.85 : 0.4))
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+            .onAppear {
+                guard !reduceMotion else { return }
+                withAnimation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true)) {
+                    lit = true
+                }
+            }
     }
 }

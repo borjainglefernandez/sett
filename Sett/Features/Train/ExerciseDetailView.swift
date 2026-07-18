@@ -51,6 +51,9 @@ struct ExerciseDetailView: View {
     /// strength climb — so it draws, rather than snapping in fully formed.
     @State private var chartsDrawn = false
     @State private var prDotPopped = false
+    /// Once the crown has landed, it breathes a slow gold glow — a record that's still
+    /// alive, not a dead marker. Stays false (static) under Reduce Motion.
+    @State private var prPulsing = false
     /// Touch-scrub position on each chart — a RuleMark + callout reads the exact
     /// session under the finger. nil when not scrubbing.
     @State private var e1rmScrubDate: Date?
@@ -284,6 +287,8 @@ struct ExerciseDetailView: View {
                                 .auraGlow(SettColor.saiyanGold, radius: 8)
                                 // The crown lands only once the cyan line has swept up to it.
                                 .scaleEffect(prDotPopped ? 1 : 0.2)
+                                // A separate breathe so it never collides with the landing pop.
+                                .scaleEffect(prPulsing ? 1.18 : 1)
                                 .opacity(prDotPopped ? 1 : 0)
                         }
                     }
@@ -330,6 +335,9 @@ struct ExerciseDetailView: View {
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(600))
             withAnimation(.spring(response: 0.3, dampingFraction: 0.5)) { prDotPopped = true }
+            // Let the pop settle, then the crown breathes a slow gold glow forever.
+            try? await Task.sleep(for: .milliseconds(400))
+            withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true)) { prPulsing = true }
         }
     }
 

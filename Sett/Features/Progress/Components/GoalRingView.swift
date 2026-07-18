@@ -11,6 +11,8 @@ struct GoalRingView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Drives the on-appear sweep from zero to the real fraction.
     @State private var sweep = false
+    /// Near-complete only: a slow cyan halo breathe that starts once the sweep lands.
+    @State private var pulse = false
 
     var body: some View {
         VStack(spacing: 8) {
@@ -22,6 +24,14 @@ struct GoalRingView: View {
                     .stroke(ringStyle, style: StrokeStyle(lineWidth: 12, lineCap: .round))
                     .rotationEffect(.degrees(-90))
                     .animation(.snappy, value: progress.fraction)
+                // Within striking distance: a soft cyan halo breathes on the ring to
+                // pull the eye. Cyan = action, not the gold reserved for the finish.
+                if isAlmostThere && !reduceMotion {
+                    Circle()
+                        .stroke(SettColor.heroCyan, lineWidth: 12)
+                        .opacity(pulse ? 0 : 0.4)
+                        .scaleEffect(pulse ? 1.1 : 1)
+                }
                 VStack(spacing: 2) {
                     if progress.isComplete {
                         Image(systemName: "checkmark")
@@ -52,12 +62,23 @@ struct GoalRingView: View {
                 sweep = true
             } else {
                 withAnimation(.snappy(duration: 0.5)) { sweep = true }
+                // Almost done? Breathe the halo forever, delayed until the sweep settles.
+                if isAlmostThere {
+                    withAnimation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true).delay(0.5)) {
+                        pulse = true
+                    }
+                }
             }
         }
     }
 
     private var ringStyle: AnyShapeStyle {
         progress.isComplete ? AnyShapeStyle(Aura.gold) : AnyShapeStyle(Aura.cyan)
+    }
+
+    /// Within striking distance but not done — earns the attention pulse.
+    private var isAlmostThere: Bool {
+        progress.fraction >= 0.85 && !progress.isComplete
     }
 
     private var accessibilityText: String {
