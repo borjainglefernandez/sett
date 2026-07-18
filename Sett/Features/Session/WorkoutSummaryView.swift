@@ -590,9 +590,10 @@ struct WorkoutSummaryView: View {
                         .foregroundStyle(SettColor.heroCyan)
                 }
             }
-            // Drops the summary sheet AND the workout cover in one transaction, so Done
-            // lands on Home without a cosmic-background flash between them.
-            ChamberCTAButton("Done") { session.dismissSummary() }
+            // Dismiss THIS sheet only; the cover it rode up over closes in the sheet's
+            // onDismiss (ActiveWorkoutView). Doing both at once — tearing down the cover
+            // that hosts this sheet in the same transaction — left the tap dead.
+            ChamberCTAButton("Done") { dismiss() }
         }
     }
 

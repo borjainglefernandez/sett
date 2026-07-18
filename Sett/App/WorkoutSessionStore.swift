@@ -894,13 +894,6 @@ public final class WorkoutSessionStore {
         Haptics.success()
     }
 
-    /// End the post-workout ritual: drop the summary sheet AND the workout cover in one
-    /// transaction, so Done goes straight to Home without a cosmic-background flash.
-    public func dismissSummary() {
-        completedSummary = nil
-        isPresentingWorkout = false
-    }
-
     // MARK: Receipt inputs (qualification + goal completion)
 
     /// Whether this workout clears the qualifying bar the scanner advertises

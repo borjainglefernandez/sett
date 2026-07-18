@@ -41,9 +41,19 @@ struct RootView: View {
             case "power": selectedTab = .power
             default: break
             }
-            // "1" → demo workout + overview sheet; "player" → demo workout, scouter only.
+            // "1" → demo workout + overview sheet; "player" → demo workout, scouter only;
+            // "finish" → start the demo, finish it (real summary over the cover), then
+            // auto-dismiss the summary — verifies the whole end-of-workout → Home cycle.
             if let flag = ProcessInfo.processInfo.environment["SETT_DEBUG_OVERVIEW"], !flag.isEmpty {
                 session.debugStartOverviewDemo()
+                if flag == "finish" {
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .milliseconds(800))
+                        session.finishWorkout()
+                        try? await Task.sleep(for: .seconds(3))
+                        session.completedSummary = nil   // same as tapping Done → dismiss()
+                    }
+                }
             }
             // Force the routine scheduling mode for screenshots (weekday shows day chips).
             if let s = ProcessInfo.processInfo.environment["SETT_DEBUG_SCHEDULE"] {
