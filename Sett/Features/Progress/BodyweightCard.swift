@@ -65,7 +65,7 @@ struct BodyweightCard: View {
                 }
                 .chartYScale(domain: yDomain(recent))
                 .frame(height: 140)
-                .scouterChart()
+                .scouterChart(xCount: 4, yCount: 4)
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel("Bodyweight, last 90 days")
                 .accessibilityValue(accessibilitySummary(recent, latest: latest))

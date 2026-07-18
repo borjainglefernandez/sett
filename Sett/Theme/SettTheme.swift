@@ -504,12 +504,21 @@ public struct ChamberStepper: View {
 }
 
 /// One axis voice for every chart — mono ash labels on iron hairlines, so Swift
-/// Charts stops shipping its stock chrome into the chamber.
+/// Charts stops shipping its stock chrome into the chamber. `xCount`/`yCount` set a
+/// target tick count (`.automatic(desiredCount:)`): without them Charts picks its own,
+/// which on a date axis collapses to a sparse, uneven 3 labels — pass e.g. 4 for evenly
+/// spaced ticks. nil keeps the automatic behavior (right for categorical axes).
 public struct ScouterChartStyle: ViewModifier {
+    var xCount: Int? = nil
+    var yCount: Int? = nil
+
+    private var xValues: AxisMarkValues { xCount.map { .automatic(desiredCount: $0) } ?? .automatic }
+    private var yValues: AxisMarkValues { yCount.map { .automatic(desiredCount: $0) } ?? .automatic }
+
     public func body(content: Content) -> some View {
         content
             .chartXAxis {
-                AxisMarks { _ in
+                AxisMarks(values: xValues) { _ in
                     AxisGridLine().foregroundStyle(SettColor.iron.opacity(0.35))
                     AxisValueLabel()
                         .font(.system(size: 9, weight: .semibold, design: .monospaced))
@@ -517,7 +526,7 @@ public struct ScouterChartStyle: ViewModifier {
                 }
             }
             .chartYAxis {
-                AxisMarks { _ in
+                AxisMarks(values: yValues) { _ in
                     AxisGridLine().foregroundStyle(SettColor.iron.opacity(0.35))
                     AxisValueLabel()
                         .font(.system(size: 9, weight: .semibold, design: .monospaced))
@@ -528,7 +537,9 @@ public struct ScouterChartStyle: ViewModifier {
 }
 
 public extension View {
-    func scouterChart() -> some View { modifier(ScouterChartStyle()) }
+    func scouterChart(xCount: Int? = nil, yCount: Int? = nil) -> some View {
+        modifier(ScouterChartStyle(xCount: xCount, yCount: yCount))
+    }
 }
 
 /// The themed empty state — replaces stock `ContentUnavailableView` so an empty screen

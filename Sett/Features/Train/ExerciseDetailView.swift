@@ -51,6 +51,10 @@ struct ExerciseDetailView: View {
     /// strength climb — so it draws, rather than snapping in fully formed.
     @State private var chartsDrawn = false
     @State private var prDotPopped = false
+    /// Touch-scrub position on each chart — a RuleMark + callout reads the exact
+    /// session under the finger. nil when not scrubbing.
+    @State private var e1rmScrubDate: Date?
+    @State private var volumeScrubDate: Date?
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -249,35 +253,55 @@ struct ExerciseDetailView: View {
     // MARK: e1RM trend (cyan line, gold dot on the all-time max ONLY)
 
     private var e1rmChartCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            CardTitle("e1RM trend (\(services.settings.unit.symbol))")
-            Chart(e1rmSeries) { point in
-                LineMark(
-                    x: .value("Date", point.date),
-                    y: .value("e1RM", displayDouble(point.grams))
-                )
-                .foregroundStyle(SettColor.heroCyan)
-                if point.id == prPoint?.id {
-                    PointMark(
+        let scrub = nearestE1RM(to: e1rmScrubDate)
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                CardTitle("e1RM trend (\(services.settings.unit.symbol))")
+                Spacer(minLength: 8)
+                if let scrub {
+                    chartReadout(date: scrub.date,
+                                 value: "\(displayInt(scrub.grams)) \(services.settings.unit.symbol)")
+                }
+            }
+            Chart {
+                ForEach(e1rmSeries) { point in
+                    LineMark(
                         x: .value("Date", point.date),
                         y: .value("e1RM", displayDouble(point.grams))
                     )
-                    .foregroundStyle(SettColor.saiyanGold)
-                    .symbolSize(90)
-                    .annotation(position: .overlay, overflowResolution: .init(x: .fit, y: .fit)) {
-                        Circle()
-                            .fill(Aura.gold)
-                            .frame(width: 11, height: 11)
-                            .auraGlow(SettColor.saiyanGold, radius: 8)
-                            // The crown lands only once the cyan line has swept up to it.
-                            .scaleEffect(prDotPopped ? 1 : 0.2)
-                            .opacity(prDotPopped ? 1 : 0)
+                    .foregroundStyle(SettColor.heroCyan)
+                    if point.id == prPoint?.id {
+                        PointMark(
+                            x: .value("Date", point.date),
+                            y: .value("e1RM", displayDouble(point.grams))
+                        )
+                        .foregroundStyle(SettColor.saiyanGold)
+                        .symbolSize(90)
+                        .annotation(position: .overlay, overflowResolution: .init(x: .fit, y: .fit)) {
+                            Circle()
+                                .fill(Aura.gold)
+                                .frame(width: 11, height: 11)
+                                .auraGlow(SettColor.saiyanGold, radius: 8)
+                                // The crown lands only once the cyan line has swept up to it.
+                                .scaleEffect(prDotPopped ? 1 : 0.2)
+                                .opacity(prDotPopped ? 1 : 0)
+                        }
                     }
                 }
+                if let scrub {
+                    RuleMark(x: .value("Date", scrub.date))
+                        .foregroundStyle(SettColor.ash.opacity(0.6))
+                        .lineStyle(StrokeStyle(lineWidth: 1))
+                    PointMark(x: .value("Date", scrub.date),
+                              y: .value("e1RM", displayDouble(scrub.grams)))
+                        .foregroundStyle(SettColor.heroCyan)
+                        .symbolSize(80)
+                }
             }
-            .chartYScale(domain: .automatic(includesZero: false))
+            .chartYScale(domain: e1rmYDomain)
             .chartXScale(domain: e1rmXDomain)
-            .scouterChart()
+            .scouterChart(xCount: 4, yCount: 4)
+            .chartXSelection(value: $e1rmScrubDate)
             .frame(height: 180)
             .mask(chartWipe)
         }
@@ -312,46 +336,68 @@ struct ExerciseDetailView: View {
     // MARK: Session volume (second chart beneath)
 
     private var volumeChartCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            CardTitle("Session volume (\(services.settings.unit.symbol)·reps)")
-            Chart(volumePoints) { point in
-                BarMark(
-                    x: .value("Date", point.date, unit: .day),
-                    y: .value("Volume", volumeDisplay(point.volumeGrams))
-                )
-                .foregroundStyle(SettColor.heroCyan)
+        let scrub = nearestVolume(to: volumeScrubDate)
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                CardTitle("Session volume (\(services.settings.unit.symbol)·reps)")
+                Spacer(minLength: 8)
+                if let scrub {
+                    chartReadout(date: scrub.date,
+                                 value: Int(volumeDisplay(scrub.volumeGrams).rounded()).formatted())
+                }
+            }
+            Chart {
+                ForEach(volumePoints) { point in
+                    BarMark(
+                        x: .value("Date", point.date, unit: .day),
+                        y: .value("Volume", volumeDisplay(point.volumeGrams))
+                    )
+                    .foregroundStyle(scrub?.id == point.id
+                                     ? SettColor.heroCyan
+                                     : SettColor.heroCyan.opacity(scrub == nil ? 1 : 0.4))
+                }
             }
             .chartXScale(domain: volumeXDomain)
-            .scouterChart()
+            .chartYScale(domain: volumeYDomain)
+            .scouterChart(xCount: 4, yCount: 4)
+            .chartXSelection(value: $volumeScrubDate)
             .frame(height: 120)
             .mask(chartWipe)
         }
         .settCard()
     }
 
-    // MARK: Recent sets (grouped by session, newest first, 10 groups max)
+    /// The date + value pill that reads out the scrubbed session, shown beside the
+    /// chart title while a finger is down.
+    private func chartReadout(date: Date, value: String) -> some View {
+        HStack(spacing: 6) {
+            Text(date.formatted(date: .abbreviated, time: .omitted))
+                .foregroundStyle(SettColor.ash)
+            Text(value)
+                .foregroundStyle(SettColor.bone)
+                .monospacedDigit()
+        }
+        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+        .transition(.opacity)
+    }
+
+    // MARK: Recent sets (grouped by session, newest first, last 5 — tap into the workout)
 
     private var recentSetsCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             CardTitle("Recent sets")
             ForEach(recentGroups) { group in
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(group.date.formatted(date: .abbreviated, time: .omitted))
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(SettColor.heroCyan)
-                    ForEach(Array(group.sets.enumerated()), id: \.offset) { _, sample in
-                        HStack(spacing: 8) {
-                            Text("\(services.settings.displayWeight(sample.weightGrams)) × \(sample.reps)")
-                                .font(.subheadline)
-                                .foregroundStyle(SettColor.bone)
-                                .monospacedDigit()
-                            if sample.isWarmup {
-                                StatusChip("warmup")
-                            }
-                            Spacer()
-                        }
+                NavigationLink {
+                    if let workout = workout(id: group.id) {
+                        WorkoutDetailView(workout: workout)
+                    } else {
+                        EmptyChamber(title: "Workout unavailable",
+                                     message: "This session is no longer on record.")
                     }
+                } label: {
+                    recentGroupRow(group)
                 }
+                .buttonStyle(.plain)
                 if group.id != recentGroups.last?.id {
                     Rectangle()
                         .fill(SettColor.cardBorder)
@@ -360,6 +406,35 @@ struct ExerciseDetailView: View {
             }
         }
         .settCard()
+    }
+
+    private func recentGroupRow(_ group: SessionGroup) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Text(group.date.formatted(date: .abbreviated, time: .omitted))
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(SettColor.heroCyan)
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(SettColor.iron)
+            }
+            ForEach(Array(group.sets.enumerated()), id: \.offset) { _, sample in
+                HStack(spacing: 8) {
+                    Text("\(services.settings.displayWeight(sample.weightGrams)) × \(sample.reps)")
+                        .font(.subheadline)
+                        .foregroundStyle(SettColor.bone)
+                        .monospacedDigit()
+                    if sample.isWarmup {
+                        StatusChip("warmup")
+                    }
+                    Spacer()
+                }
+            }
+        }
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+        .accessibilityHint("Opens this workout")
     }
 
     // MARK: Archive (isArchived + updatedAt + needsPush; history survives)
@@ -425,6 +500,49 @@ struct ExerciseDetailView: View {
     private var e1rmXDomain: ClosedRange<Date> { Self.paddedDateDomain(e1rmSeries.map(\.date)) }
     private var volumeXDomain: ClosedRange<Date> { Self.paddedDateDomain(volumePoints.map(\.date)) }
 
+    /// Y domain with headroom above the peak (and a little below the floor) so the top
+    /// tick label isn't flush at the plot's top edge, where it clipped ("22|0"). Also
+    /// stops the PR peak from jamming into the ceiling.
+    private var e1rmYDomain: ClosedRange<Double> {
+        let values = e1rmSeries.map { displayDouble($0.grams) }
+        guard let lo = values.min(), let hi = values.max(), lo < hi else {
+            let v = values.first ?? 0
+            return (v - 1) ... (v + 1)
+        }
+        let pad = (hi - lo) * 0.12
+        return (lo - pad) ... (hi + pad)
+    }
+
+    /// Bars sit on zero; just add top headroom so the top volume tick label has room.
+    private var volumeYDomain: ClosedRange<Double> {
+        let hi = volumePoints.map { volumeDisplay($0.volumeGrams) }.max() ?? 0
+        return 0 ... max(hi * 1.12, 1)
+    }
+
+    /// The series point nearest the scrub date — snaps the RuleMark + readout to a real
+    /// session rather than floating between them. nil when not scrubbing.
+    private func nearestE1RM(to date: Date?) -> E1RMPoint? {
+        guard let date, !e1rmSeries.isEmpty else { return nil }
+        return e1rmSeries.min {
+            abs($0.date.timeIntervalSince(date)) < abs($1.date.timeIntervalSince(date))
+        }
+    }
+
+    private func nearestVolume(to date: Date?) -> VolumePoint? {
+        guard let date, !volumePoints.isEmpty else { return nil }
+        return volumePoints.min {
+            abs($0.date.timeIntervalSince(date)) < abs($1.date.timeIntervalSince(date))
+        }
+    }
+
+    /// The finished workout behind a recent-sets group, fetched by its loose id — the
+    /// same resolver the PR feed uses to open a session.
+    private func workout(id: UUID) -> Workout? {
+        var descriptor = FetchDescriptor<Workout>(predicate: #Predicate { $0.id == id })
+        descriptor.fetchLimit = 1
+        return (try? modelContext.fetch(descriptor))?.first
+    }
+
     /// A date range padded on both ends so edge points/bars (esp. the most recent
     /// session) aren't clipped at the plot boundary — the "last month cut off" bug.
     private static func paddedDateDomain(_ dates: [Date]) -> ClosedRange<Date> {
@@ -488,7 +606,7 @@ struct ExerciseDetailView: View {
                                         sets: sets.sorted { $0.completedAt < $1.completedAt })
                 }
                 .sorted { $0.date > $1.date }
-                .prefix(10)
+                .prefix(5)
         )
 
         // The committed PR target for this lift, if any — surfaces distance-to-goal.

@@ -145,7 +145,7 @@ struct ChartDetailView: View {
             }
         }
         .chartXSelection(value: $selectedDate)
-        .scouterChart()
+        .scouterChart(xCount: 4, yCount: 4)
         .chartYScale(domain: .automatic(includesZero: false))
         .frame(height: 260)
     }

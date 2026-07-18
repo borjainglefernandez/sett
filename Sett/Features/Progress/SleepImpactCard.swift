@@ -102,6 +102,8 @@ struct SleepImpactCard: View {
         .chartXScale(domain: .automatic(includesZero: false))
         .chartXAxisLabel("sleep score")
         .chartYAxisLabel(unit.symbol)
+        // Was shipping Charts' stock axis chrome — bring it into the chamber voice.
+        .scouterChart(xCount: 4, yCount: 4)
         .frame(height: 220)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Sleep versus lifts")

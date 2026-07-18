@@ -45,7 +45,8 @@ struct VolumeChartCard: View {
             }
             .chartXScale(domain: points.map(\.label))
             .chartYAxisLabel("×1,000 \(unit.symbol)")
-            .scouterChart()
+            // Categorical X shows every period; cap Y at ~4 even ticks.
+            .scouterChart(yCount: 4)
             .frame(height: 180)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Volume, last 8 \(period.rawValue)s")
