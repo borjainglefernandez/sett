@@ -273,6 +273,7 @@ struct HomeTabView: View {
     private var shouldShowWeeklyReading: Bool {
         #if DEBUG
         if !(ProcessInfo.processInfo.environment["SETT_DEBUG_READING"] ?? "").isEmpty { return true }
+        if UserDefaults.standard.bool(forKey: "sett.debug.forceReading") { return true }
         #endif
         let isoWeekday = (Calendar.current.component(.weekday, from: .now) + 5) % 7 // 0 = Monday
         let weekKey = ProgressionStore.isoWeekKey(.now)
@@ -347,7 +348,8 @@ struct HomeTabView: View {
         #if DEBUG
         // Screenshot harness: the demo has no weekly PL snapshots, so seed two so the
         // ΔPL count-up has a real number to tally to.
-        if !(ProcessInfo.processInfo.environment["SETT_DEBUG_READING"] ?? "").isEmpty {
+        if !(ProcessInfo.processInfo.environment["SETT_DEBUG_READING"] ?? "").isEmpty
+            || UserDefaults.standard.bool(forKey: "sett.debug.forceReading") {
             let cal = Calendar.current
             let lw = ProgressionStore.isoWeekKey(cal.date(byAdding: .day, value: -7, to: .now) ?? .now)
             let wb = ProgressionStore.isoWeekKey(cal.date(byAdding: .day, value: -14, to: .now) ?? .now)

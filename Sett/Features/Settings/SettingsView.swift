@@ -11,6 +11,9 @@ struct SettingsView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
+    /// DEBUG ceremony preview — presents a WorkoutSummaryView with a tailored mock.
+    @State private var demoCeremony: WorkoutSummaryData?
+
     /// 1.25 lb / 2.5 lb / 5 lb expressed in canonical grams.
     private static let standardIncrementsGrams = [567, 1134, 2268]
 
@@ -144,6 +147,26 @@ struct SettingsView: View {
                 }
                 .listRowBackground(SettColor.card)
                 .listRowSeparatorTint(SettColor.cardBorder)
+
+                // Fire the ceremonies that only happen at rare moments (form ascension,
+                // big-reward finishes) or on a fixed day (the weekly reading), so they
+                // can be seen on demand without waiting for the real trigger.
+                Section {
+                    Button("Power gain") { demoCeremony = .debugMock }
+                    Button("Form ascension (ceiling break)") { demoCeremony = .debugMockAscension }
+                    Button("Badges + goal complete") { demoCeremony = .debugMockRewards }
+                    Toggle("Force weekly reading on Home", isOn: Binding(
+                        get: { UserDefaults.standard.bool(forKey: "sett.debug.forceReading") },
+                        set: { UserDefaults.standard.set($0, forKey: "sett.debug.forceReading") }))
+                } header: {
+                    Eyebrow("DEBUG — CEREMONIES")
+                } footer: {
+                    Text("Weekly reading shows on Home once toggled on. Tap a ceremony to preview it; Done returns here.")
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(SettColor.ash)
+                }
+                .listRowBackground(SettColor.card)
+                .listRowSeparatorTint(SettColor.cardBorder)
                 #endif
 
                 Section {
@@ -170,6 +193,7 @@ struct SettingsView: View {
                 // ChamberSegments already fires the selection haptic on tap.
                 settings.incrementGrams = newUnit.defaultIncrementGrams
             }
+            .sheet(item: $demoCeremony) { WorkoutSummaryView(summary: $0) }
         }
     }
 

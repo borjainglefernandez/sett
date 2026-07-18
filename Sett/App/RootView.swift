@@ -116,6 +116,10 @@ struct DebugSurfaceHost: View {
             HowPowerWorksView()
         case "summary":
             WorkoutSummaryView(summary: .debugMock)
+        case "summaryascension":
+            WorkoutSummaryView(summary: .debugMockAscension)
+        case "summaryrewards":
+            WorkoutSummaryView(summary: .debugMockRewards)
         case "onboarding":
             // The harness renders this as a raw overlay (no presentation), so
             // dismiss() is a no-op there — honor "Begin training" by dropping the
@@ -189,6 +193,41 @@ extension WorkoutSummaryData {
             weeklyVolumeLbBefore: 30_000, weeklyVolumeLbAfter: 31_725,
             consistencyBefore: 1.25, consistencyAfter: 1.30,
             didQualify: true, surgeActive: true, phase: .bulking)
+    }
+
+    /// Crosses a Form threshold (ASCENDANT → RADIANT) with a tier bump, so the summary
+    /// runs the full CEILING BROKEN ceremony: screen-wide crack + FORM ASCENDED.
+    static var debugMockAscension: WorkoutSummaryData {
+        WorkoutSummaryData(
+            id: UUID(), title: "Leg Day", durationSeconds: 4_020,
+            powerLevelBefore: 8_930, powerLevelAfter: 9_090,
+            tierBefore: 2, tierAfter: 3,
+            netReps: 24, netVolumeGrams: 1_200_000, netIsNew: false,
+            newBadgeKeys: [], xpEarned: [:],
+            commentary: "The ceiling gave. New form.",
+            commentarySource: .onDevice,
+            strengthScoreBefore: 940, strengthScoreAfter: 999,
+            weeklyVolumeLbBefore: 28_000, weeklyVolumeLbAfter: 31_000,
+            consistencyBefore: 1.30, consistencyAfter: 1.30,
+            didQualify: true, surgeActive: false, phase: .bulking)
+    }
+
+    /// A big-reward scan: a ceiling-class badge (crack), a goal crossing the line
+    /// (GOAL COMPLETE + gold burst), and premiere medallions.
+    static var debugMockRewards: WorkoutSummaryData {
+        WorkoutSummaryData(
+            id: UUID(), title: "Pull Day", durationSeconds: 3_600,
+            powerLevelBefore: 9_100, powerLevelAfter: 9_260,
+            tierBefore: 3, tierAfter: 3,
+            netReps: 18, netVolumeGrams: 800_000, netIsNew: false,
+            newBadgeKeys: ["new_ceiling", "walking_legend"], xpEarned: [:],
+            commentary: "Records fell. Vexeth felt that one.",
+            commentarySource: .onDevice,
+            strengthScoreBefore: 970, strengthScoreAfter: 999,
+            weeklyVolumeLbBefore: 29_000, weeklyVolumeLbAfter: 31_400,
+            consistencyBefore: 1.25, consistencyAfter: 1.30,
+            didQualify: true, surgeActive: true,
+            completedGoalTitles: ["Deadlift — 405 lb 1RM"], phase: .bulking)
     }
 }
 #endif
