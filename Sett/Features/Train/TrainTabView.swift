@@ -11,6 +11,7 @@ struct TrainTabView: View {
     }
 
     @State private var segment: Segment = .routines
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         NavigationStack {
@@ -20,12 +21,17 @@ struct TrainTabView: View {
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
 
-                switch segment {
-                case .routines:
-                    RoutineListView()
-                case .exercises:
-                    ExerciseLibraryView()
+                // The two panes cross-dissolve instead of hard-cutting — the segmented
+                // pill already glides, so the content it drives shouldn't snap.
+                ZStack {
+                    switch segment {
+                    case .routines:
+                        RoutineListView().transition(.opacity)
+                    case .exercises:
+                        ExerciseLibraryView().transition(.opacity)
+                    }
                 }
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: segment)
             }
             .dungeonBackground()
             .navigationTitle("Train")
