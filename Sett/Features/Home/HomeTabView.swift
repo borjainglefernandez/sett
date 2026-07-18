@@ -8,6 +8,8 @@ import SettCore
 struct HomeTabView: View {
     @Environment(AppServices.self) private var services
     @Environment(WorkoutSessionStore.self) private var session
+    @Environment(\.modelContext) private var modelContext
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @Query private var finishedWorkouts: [Workout]
     @Query private var routines: [Routine]
@@ -18,6 +20,10 @@ struct HomeTabView: View {
     @State private var isShowingStreak = false
     @State private var isShowingHowPowerWorks = false
     @State private var readingDismissedKey = UserDefaults.standard.string(forKey: "sett.reading.dismissed") ?? ""
+    /// Last completed week's net vs the week before — reps + volume for the reading.
+    @State private var weeklyReadingNet: NetSummary?
+    /// The ΔPL headline counts up from 0 on appear (the "power gained" tally).
+    @State private var readingDeltaShown = 0
 
     init() {
         let finishedFilter = #Predicate<Workout> { $0.endedAt != nil && $0.deletedAt == nil }
@@ -265,6 +271,9 @@ struct HomeTabView: View {
     /// Monday-only, dismissible per ISO week — the week opens with a reading, not a
     /// guilt trip: last week's ΔPL, the form target, the rival gap, the fire.
     private var shouldShowWeeklyReading: Bool {
+        #if DEBUG
+        if !(ProcessInfo.processInfo.environment["SETT_DEBUG_READING"] ?? "").isEmpty { return true }
+        #endif
         let isoWeekday = (Calendar.current.component(.weekday, from: .now) + 5) % 7 // 0 = Monday
         let weekKey = ProgressionStore.isoWeekKey(.now)
         return isoWeekday == 0 && readingDismissedKey != weekKey
@@ -296,9 +305,26 @@ struct HomeTabView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Dismiss this week's reading")
             }
-            readingRow("ΔPL LAST WEEK",
-                       delta.map { "\($0 >= 0 ? "+" : "")\($0.formatted())" } ?? "—",
-                       tint: (delta ?? 0) >= 0 ? SettColor.positive : SettColor.ash)
+            // ΔPL headline — the power banked last week, tallying up from 0 on appear.
+            HStack(spacing: 10) {
+                Text("ΔPL LAST WEEK")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .kerning(1)
+                    .foregroundStyle(SettColor.ash)
+                    .frame(width: 118, alignment: .leading)
+                Text(delta == nil ? "—" : "\(readingDeltaShown >= 0 ? "+" : "")\(readingDeltaShown.formatted())")
+                    .font(.system(size: 11, weight: .heavy, design: .monospaced))
+                    .monospacedDigit()
+                    .foregroundStyle(delta.map { $0 >= 0 ? SettColor.positive : SettColor.ash } ?? SettColor.ash)
+                    .contentTransition(.numericText(value: Double(readingDeltaShown)))
+                Spacer(minLength: 0)
+            }
+            .accessibilityLabel("Power gained last week: \(delta.map(String.init) ?? "not enough data")")
+            if let net = weeklyReadingNet, !net.isNew {
+                // Down weeks read ash, not alarm-red — the reading opens the week, not a scolding.
+                readingRow("NET VS PRIOR WK", weeklyNetText(net),
+                           tint: net.volumeGrams >= 0 && net.reps >= 0 ? SettColor.positive : SettColor.ash)
+            }
             readingRow("FORM", "\(form.title) · \((form.nextPL - pl).formatted()) PL TO NEXT",
                        tint: SettColor.heroCyan)
             readingRow("VEXETH",
@@ -311,7 +337,45 @@ struct HomeTabView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .hudCard()
         .materialize()
+        .onAppear(perform: loadWeeklyReading)
         .accessibilityElement(children: .combine)
+    }
+
+    /// Last completed week's net vs the week before + the ΔPL count-up, computed once
+    /// when the Monday reading appears (SampleExtractor is O(all sets) — not per-frame).
+    private func loadWeeklyReading() {
+        #if DEBUG
+        // Screenshot harness: the demo has no weekly PL snapshots, so seed two so the
+        // ΔPL count-up has a real number to tally to.
+        if !(ProcessInfo.processInfo.environment["SETT_DEBUG_READING"] ?? "").isEmpty {
+            let cal = Calendar.current
+            let lw = ProgressionStore.isoWeekKey(cal.date(byAdding: .day, value: -7, to: .now) ?? .now)
+            let wb = ProgressionStore.isoWeekKey(cal.date(byAdding: .day, value: -14, to: .now) ?? .now)
+            var h = UserDefaults.standard.dictionary(forKey: "sett.plHistory") as? [String: Int] ?? [:]
+            if h[lw] == nil || h[wb] == nil {
+                h[lw] = 6809; h[wb] = 6560
+                UserDefaults.standard.set(h, forKey: "sett.plHistory")
+            }
+        }
+        #endif
+        let samples = SampleExtractor.setSamples(context: modelContext)
+        let lastWeek = Calendar.current.date(byAdding: .day, value: -7, to: .now) ?? .now
+        weeklyReadingNet = ProgressEngine.netSummary(samples: samples, exerciseID: nil,
+                                                     period: .week, containing: lastWeek,
+                                                     calendar: Self.isoCalendar)
+        guard let delta = services.progression.weeklyReadingDelta else { return }
+        if reduceMotion {
+            readingDeltaShown = delta
+        } else {
+            readingDeltaShown = 0
+            withAnimation(.easeOut(duration: 0.9)) { readingDeltaShown = delta }
+        }
+    }
+
+    private func weeklyNetText(_ net: NetSummary) -> String {
+        let unit = services.settings.unit
+        let vol = Int((Double(net.volumeGrams) / unit.gramsPerUnit).rounded())
+        return "\(vol >= 0 ? "+" : "")\(vol.formatted()) \(unit.symbol) · \(net.reps >= 0 ? "+" : "")\(net.reps) reps"
     }
 
     private func readingRow(_ label: String, _ value: String, tint: Color) -> some View {
