@@ -137,6 +137,7 @@ struct BodyweightLogSheet: View {
             modelContext.insert(BodyweightEntry(weightGrams: grams))
         }
         try? modelContext.save()
-        Haptics.success()
+        // ChamberSheet's commit button already fires the confirm haptic before
+        // calling onCommit — a second success() here read as a double-buzz stutter.
     }
 }

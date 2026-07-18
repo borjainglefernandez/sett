@@ -367,6 +367,9 @@ struct HistoryListView: View {
     }
 
     private func delete(_ workout: Workout) {
+        // Destroying a session is the weightiest row action here, yet it was the one
+        // commit in the app with no tactile confirmation. Match the gym-delete's weight.
+        Haptics.medium()
         // Route through the store so the workout's child exercises + sets are tombstoned
         // too (not left live under a deleted parent).
         services.session.deleteWorkout(workout)

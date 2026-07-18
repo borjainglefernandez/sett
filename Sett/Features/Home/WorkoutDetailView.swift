@@ -128,6 +128,10 @@ struct WorkoutDetailView: View {
                                    icon: "medal.fill")
                     }
                 }
+                // The one celebratory element on the screen assembles in against the
+                // otherwise-static header, drawing the eye to the reward you relived
+                // this session for. (materialize fades only under Reduce Motion.)
+                .materialize()
             }
             HStack(alignment: .top, spacing: 24) {
                 stat(WorkoutFormat.duration(workout.durationSeconds), caption: "duration")

@@ -29,6 +29,10 @@ struct InsightDetailView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .settCard()
+            // The screen that IS the AI voice assembles in like the System Voice
+            // speaks elsewhere, instead of popping in flat. (materialize collapses
+            // to a plain fade under Reduce Motion.)
+            .materialize()
             .padding(16)
         }
         .dungeonBackground()

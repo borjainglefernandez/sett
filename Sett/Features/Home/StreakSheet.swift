@@ -23,6 +23,9 @@ struct StreakSheet: View {
     /// A separate idle loop so the repeatForever breath never collides with the
     /// one-shot extend spring on flameScale — the two scaleEffects multiply.
     @State private var flameBreath: CGFloat = 1
+    /// False until the This Week card appears — flips true to charge the banked
+    /// day-dots up in a staggered spring (instant under Reduce Motion).
+    @State private var chargedLit = false
 
     var body: some View {
         NavigationStack {
@@ -135,6 +138,14 @@ struct StreakSheet: View {
                     }
                     .frame(width: 28, height: 28)
                     .shadow(color: charged ? SettColor.heroCyan.opacity(0.45) : .clear, radius: 3)
+                    // The days you banked charge UP on open, one after another, instead
+                    // of appearing pre-lit — you feel the fire you fed. Uncharged dots
+                    // stay put. The L137 glow scales with the shape, so no extra driver.
+                    .scaleEffect(charged ? (chargedLit ? 1 : 0.6) : 1)
+                    .animation(reduceMotion ? nil
+                               : .spring(response: 0.4, dampingFraction: 0.6)
+                                   .delay(Double(index) * 0.06),
+                               value: chargedLit)
                 }
                 Spacer()
             }
@@ -145,6 +156,7 @@ struct StreakSheet: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .hudCard()
         .accessibilityElement(children: .combine)
+        .onAppear { chargedLit = true }
     }
 
     private var modeCaption: String {

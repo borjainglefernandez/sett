@@ -46,6 +46,13 @@ struct ExerciseDetailView: View {
     @State private var isEditingSetup = false
     /// Custom lifts only: the shared forge sheet in edit mode.
     @State private var isEditingExercise = false
+    /// Chart reveal: the plot masks in left-to-right on first appear, then the gold
+    /// all-time-PR dot pops after the line reaches it. This screen is about watching
+    /// strength climb — so it draws, rather than snapping in fully formed.
+    @State private var chartsDrawn = false
+    @State private var prDotPopped = false
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ScrollView {
@@ -262,6 +269,9 @@ struct ExerciseDetailView: View {
                             .fill(Aura.gold)
                             .frame(width: 11, height: 11)
                             .auraGlow(SettColor.saiyanGold, radius: 8)
+                            // The crown lands only once the cyan line has swept up to it.
+                            .scaleEffect(prDotPopped ? 1 : 0.2)
+                            .opacity(prDotPopped ? 1 : 0)
                     }
                 }
             }
@@ -269,8 +279,34 @@ struct ExerciseDetailView: View {
             .chartXScale(domain: e1rmXDomain)
             .scouterChart()
             .frame(height: 180)
+            .mask(chartWipe)
         }
         .settCard()
+        // Both charts are in the tree together once samples load, so one trigger drives
+        // the shared reveal. (loadIfNeeded's onAppear runs while samples is still empty,
+        // before these cards mount — this is where the plot actually exists.)
+        .onAppear(perform: revealCharts)
+    }
+
+    /// Left-anchored wipe that grows from 0 to full width as `chartsDrawn` flips.
+    private var chartWipe: some View {
+        GeometryReader { geo in
+            Rectangle().frame(width: chartsDrawn ? geo.size.width : 0)
+        }
+    }
+
+    private func revealCharts() {
+        guard !chartsDrawn else { return }
+        if reduceMotion {
+            chartsDrawn = true
+            prDotPopped = true
+            return
+        }
+        withAnimation(.easeOut(duration: 0.6)) { chartsDrawn = true }
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(600))
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.5)) { prDotPopped = true }
+        }
     }
 
     // MARK: Session volume (second chart beneath)
@@ -288,6 +324,7 @@ struct ExerciseDetailView: View {
             .chartXScale(domain: volumeXDomain)
             .scouterChart()
             .frame(height: 120)
+            .mask(chartWipe)
         }
         .settCard()
     }
