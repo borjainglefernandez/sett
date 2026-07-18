@@ -19,9 +19,17 @@ struct PowerTabView: View {
     @State private var radarShares = [Double](repeating: 0, count: PowerTabView.radarMuscles.count)
     /// Non-nil after a roster swap — keys a one-shot cyan burst on the new avatar.
     @State private var rosterBurstID: UUID?
-    /// nil until the tab's .task seeds it to the live PL — the Sacred Number starts
-    /// at lastViewedPowerLevel and rolls up only when this catches it up to a change.
+    /// The Sacred Number's displayed value: starts at lastViewedPowerLevel, then the
+    /// on-appear roll flips it to the live PL. nil = show lastViewedPowerLevel.
     @State private var rolledPL: Int?
+    /// The Ki gauge's animated fill: `gaugeStart` seeds it, `gaugeTarget` is what it
+    /// fills to. `heroRoll` re-mounts the number + gauge so the odometer/fill replay
+    /// on EVERY appearance with a delta (a plain @State can't re-trigger their internal
+    /// roll after the first time; TabView also keeps this tab mounted).
+    @State private var gaugeStart: Double = 0
+    @State private var gaugeTarget: Double = 0
+    @State private var heroRoll = 0
+    @State private var heroRollTask: Task<Void, Never>?
 
     init() {
         let badgeAwardFilter = #Predicate<BadgeAward> { $0.deletedAt == nil }
@@ -72,17 +80,12 @@ struct PowerTabView: View {
             .task {
                 withAnimation(.snappy) { progression.recompute(context: modelContext) }
                 recomputeRadar()
-                // Seed the odometer from last-viewed → live PL: SacredNumberView's own
-                // roll fires on this value change (quiet when the PL is unchanged).
-                rolledPL = progression.snapshotPowerLevel
-                progression.markPowerLevelViewed()
             }
-            // TabView keeps this tab mounted, so .task won't re-run on later PL changes —
-            // track the snapshot so the number never goes stale (and rolls live if a
-            // recompute lands while you're watching).
-            .onChange(of: progression.snapshotPowerLevel) { _, newValue in
-                rolledPL = newValue
-            }
+            // onAppear fires on EVERY tab selection (unlike .task, which runs once while
+            // TabView keeps the tab mounted) — so the odometer + gauge replay each time
+            // you open Power with an unviewed PL gain (and the debug "arm roll" works).
+            .onAppear { animateHero() }
+            .onDisappear { heroRollTask?.cancel() }
         }
     }
 
@@ -162,9 +165,11 @@ struct PowerTabView: View {
             VStack(spacing: 6) {
                 // The sacred eyebrow — same mono voice as Home's crest and the receipt.
                 Eyebrow("POWER LEVEL")
-                // Starts at last-viewed PL; the .task bumps rolledPL to the live PL so
-                // SacredNumberView's built-in odometer rolls only on a real change.
+                // Starts at last-viewed PL; animateHero() (on appear) flips rolledPL to
+                // the live PL so the built-in odometer rolls. `.id(heroRoll)` re-mounts it
+                // per roll so a repeat visit with a delta replays instead of sitting still.
                 SacredNumberView(value: rolledPL ?? progression.lastViewedPowerLevel)
+                    .id(heroRoll)
                 if progression.snapshotPowerLevel == 0 {
                     Text("Everyone starts somewhere.")
                         .font(.footnote)
@@ -188,15 +193,11 @@ struct PowerTabView: View {
                         .foregroundStyle(SettColor.ash)
                     // Ki Gauge, not a stock bar — its fused n/12 numeral counts cells,
                     // the caption above counts PL, so the two never double-report.
-                    // Fill from empty if the user crossed INTO this form, else from
-                    // where they left off — AnimatedKiGauge owns the onAppear motion.
-                    let startFraction = progression.lastViewedPowerLevel <= form.floorPL
-                        ? 0
-                        : form.progress(progression.lastViewedPowerLevel)
-                    AnimatedKiGauge(target: form.progress(progression.snapshotPowerLevel),
-                                    from: startFraction,
-                                    accent: SettColor.heroCyan)
+                    // gaugeStart/gaugeTarget are driven by animateHero(); .id(heroRoll)
+                    // re-mounts it so the fill replays alongside the number's odometer.
+                    AnimatedKiGauge(target: gaugeTarget, from: gaugeStart, accent: SettColor.heroCyan)
                         .frame(width: 180)
+                        .id(heroRoll)
                 }
             }
         }
@@ -285,6 +286,41 @@ struct PowerTabView: View {
             return
         }
         radarShares = volumes.map { $0 / peak }
+    }
+
+    /// Roll the Sacred Number + fill the Ki gauge from the last-viewed PL up to the live
+    /// PL whenever the tab appears and they differ (a real gain since last look, or the
+    /// debug "arm roll"). Bumping `heroRoll` re-mounts both so their internal odometer/
+    /// fill physics replay from the start value; `markPowerLevelViewed` then banks the
+    /// live PL so it stays quiet until the next gain. Reduce Motion: the kit direct-sets.
+    private func animateHero() {
+        heroRollTask?.cancel()
+        let current = progression.snapshotPowerLevel
+        let lastViewed = progression.lastViewedPowerLevel
+        let form = UserForm.form(forPL: current)
+        let currentFraction = form.progress(current)
+        // Crossed INTO this form ⇒ fill from empty, else from where they left off.
+        let startFraction = lastViewed <= form.floorPL ? 0 : form.progress(lastViewed)
+
+        guard lastViewed != current else {
+            rolledPL = current
+            gaugeStart = currentFraction
+            gaugeTarget = currentFraction
+            return
+        }
+        // Re-mount the number + gauge showing the START state, then flip to live so the
+        // odometer rolls and the gauge fills up to it.
+        rolledPL = lastViewed
+        gaugeStart = startFraction
+        gaugeTarget = startFraction
+        heroRoll += 1
+        heroRollTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(400))
+            guard !Task.isCancelled else { return }
+            rolledPL = current
+            gaugeTarget = currentFraction
+            progression.markPowerLevelViewed()
+        }
     }
 
     // MARK: (5) Badge case preview

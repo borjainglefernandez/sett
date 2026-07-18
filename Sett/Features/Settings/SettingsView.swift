@@ -162,12 +162,22 @@ struct SettingsView: View {
                     // the Power-tab odometer roll (anim #1) without waiting for a real
                     // crossing — visit Home / Power after tapping.
                     Button("Show level-up banner (Home + Power)") {
-                        services.progression.debugForcePendingAscension()
-                        Haptics.success()
+                        // Close Settings FIRST, then arm the banner a beat later, so it
+                        // mounts on the now-visible Home and its entrance animation +
+                        // ember burst actually play on screen (not behind this sheet).
+                        dismiss()
+                        Task { @MainActor in
+                            try? await Task.sleep(for: .milliseconds(450))
+                            services.progression.debugForcePendingAscension()
+                            Haptics.success()
+                        }
                     }
                     Button("Arm Power-tab roll (rewind viewed PL)") {
+                        // Rewind the viewed PL, then close Settings — open the Power tab
+                        // and its odometer rolls from the rewound value up to the live PL.
                         services.progression.debugRewindLastViewedPowerLevel()
                         Haptics.selection()
+                        dismiss()
                     }
                 } header: {
                     Eyebrow("DEBUG — CEREMONIES")
