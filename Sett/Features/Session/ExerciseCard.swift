@@ -59,6 +59,13 @@ struct ExerciseCard: View {
     @State private var isConfirmingRemove = false
     /// Review only: deleting from a sealed workout rewrites its power numbers, so it asks.
     @State private var deletingSet: SetEntry?
+    /// The previous session's sets — a full-history DB fetch, resolved ONCE and cached.
+    /// Running that fetch from a body-read computed property re-triggered SwiftData
+    /// observation on every render (a fetch inside `body`), and setPairs/topTier read it
+    /// several times per render — together that pinned a CPU core and froze the workout
+    /// detail. Cached because the reference is PRIOR sessions' work, stable for this card.
+    @State private var referenceCache: [SetEntry] = []
+    @State private var referenceResolved = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -111,6 +118,7 @@ struct ExerciseCard: View {
             if exercise == nil {
                 exercise = session.fetchExercise(id: workoutExercise.exerciseID)
             }
+            resolveReferencesIfNeeded()
         }
         .sheet(item: $editingSet) { set in
             SetNoteSheet(initialText: set.notes ?? "") { saveNote($0, on: set) }
@@ -171,10 +179,34 @@ struct ExerciseCard: View {
     /// excluded), paired to THIS session's working sets by working-set ordinal so a
     /// warm-up never shifts a set onto the wrong reference. Reviewing an old workout
     /// compares against what came before IT, not against sessions logged since.
-    private var referenceSets: [SetEntry] {
-        session.previousSets(exerciseID: workoutExercise.exerciseID,
-                             excluding: workoutExercise.workout?.id,
-                             before: mode.isLive ? nil : workoutExercise.workout?.startedAt)
+    private var referenceSets: [SetEntry] { referenceCache }
+
+    /// Resolve the reference sets ONCE (on appear), never during body. The reference is
+    /// the previous session's work — independent of edits to THIS workout — so it's
+    /// stable for the card's lifetime and safe to cache.
+    private func resolveReferencesIfNeeded() {
+        guard !referenceResolved else { return }
+        referenceResolved = true
+        referenceCache = session.previousSets(
+            exerciseID: workoutExercise.exerciseID,
+            excluding: workoutExercise.workout?.id,
+            before: mode.isLive ? nil : workoutExercise.workout?.startedAt)
+    }
+
+    /// Ghost autofill for a planned slot, computed from the CACHED references (mirrors
+    /// `WorkoutSessionStore.ghostValues`) so a planned row never re-runs the full-history
+    /// fetch during body — the same fetch-in-body trap `referenceCache` closes.
+    private func ghostValues(slot: Int) -> (weightGrams: Int, reps: Int) {
+        if slot >= 0 && slot < referenceCache.count {
+            return (referenceCache[slot].weightGrams, referenceCache[slot].reps)
+        }
+        if let last = workoutExercise.orderedSets.last {
+            return (last.weightGrams, last.reps)
+        }
+        if let reference = referenceCache.last {
+            return (reference.weightGrams, reference.reps)
+        }
+        return (0, 10)
     }
 
     /// Each logged set paired with last week's set at the same working-set ordinal,
@@ -600,7 +632,7 @@ struct ExerciseCard: View {
     /// A dimmed planned set. `canBegin` marks the FIRST row of an unstarted exercise —
     /// it reads "START" and tapping it reveals the active input (go-in-order nudge).
     private func plannedRow(number: Int, slot: Int, canBegin: Bool) -> some View {
-        let ghost = session.ghostValues(for: workoutExercise, slot: slot)
+        let ghost = ghostValues(slot: slot)
         let weightText = hasTarget ? WeightFormat.compactWithUnit(grams: ghost.weightGrams, unit: unit) : "—"
         let repsText = hasTarget ? "\(ghost.reps)" : "—"
         let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
