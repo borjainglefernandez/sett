@@ -1002,6 +1002,13 @@ public struct LevelUpBanner: View {
         .onAppear {
             Haptics.levelUp()
             burst = true
+            // Unmount the burst once it's spent: a live AuraBurstView keeps its
+            // TimelineView(.animation) redrawing EVERY frame forever (it never stops
+            // on its own), which pins a CPU core while this persistent banner is up.
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(900))
+                burst = false
+            }
             guard !reduceMotion else { return }
             withAnimation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true)) { glow = true }
         }
