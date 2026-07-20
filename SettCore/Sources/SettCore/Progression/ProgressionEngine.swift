@@ -20,6 +20,20 @@ public struct BadgeGrant: Sendable, Hashable {
     }
 }
 
+/// One point on the power-level trajectory: the PL as it stood at the end of a
+/// training day (the last qualifying workout of that day), plus a final "now"
+/// point. Derived from the same per-session evals that already drive the peak,
+/// so the history is free and always consistent with the live number.
+public struct PLPoint: Sendable, Hashable {
+    public let date: Date
+    public let pl: Int
+
+    public init(date: Date, pl: Int) {
+        self.date = date
+        self.pl = pl
+    }
+}
+
 /// The full derived progression state at a moment in time.
 public struct ProgressionSnapshot: Sendable {
     public let powerLevel: Int
@@ -39,12 +53,17 @@ public struct ProgressionSnapshot: Sendable {
     /// stamps a xN pin instead of the badge going dead after one earn).
     /// Key -> how many times the threshold has been cleared (>=1 once earned).
     public let badgeCounts: [String: Int]
+    /// The power-level trajectory, one point per training day, oldest first,
+    /// ending at "now". Empty until the first qualifying workout. Defaulted so
+    /// existing call sites (DEBUG mocks, tests) keep compiling.
+    public let powerLevelHistory: [PLPoint]
 
     public init(powerLevel: Int, allTimePeakPL: Int, strengthScore: Int, weeklyVolumeLb: Int,
                 consistencyMultiplier: Double, streakWeeks: Int,
                 badges: [BadgeGrant],
                 rivalPL: Int, rivalForm: Int, restedBonusActive: Bool = false,
-                badgeCounts: [String: Int] = [:]) {
+                badgeCounts: [String: Int] = [:],
+                powerLevelHistory: [PLPoint] = []) {
         self.powerLevel = powerLevel
         self.allTimePeakPL = allTimePeakPL
         self.strengthScore = strengthScore
@@ -56,6 +75,7 @@ public struct ProgressionSnapshot: Sendable {
         self.rivalForm = rivalForm
         self.restedBonusActive = restedBonusActive
         self.badgeCounts = badgeCounts
+        self.powerLevelHistory = powerLevelHistory
     }
 }
 
@@ -118,6 +138,23 @@ public enum ProgressionEngine {
         let current = plBreakdown(at: asOf, analysis: analysis, config: config, calendar: calendar)
         plEvals.append((asOf, current.pl))
 
+        // The displayable history: collapse the per-session evals to one point
+        // per calendar day (the last PL reached that day), so multiple sessions
+        // in a day read as one step, not a vertical smear. The trailing asOf
+        // eval anchors "now" even on a rest day. Only meaningful once the user
+        // has qualified at least once (qualifying non-empty).
+        let powerLevelHistory: [PLPoint] = qualifying.isEmpty ? [] : {
+            var lastPLByDay: [Int: (date: Date, pl: Int)] = [:]
+            for eval in plEvals {
+                let key = calendar.dateKey(for: eval.date)
+                if let existing = lastPLByDay[key], existing.date >= eval.date { continue }
+                lastPLByDay[key] = eval
+            }
+            return lastPLByDay.values
+                .sorted { $0.date < $1.date }
+                .map { PLPoint(date: $0.date, pl: $0.pl) }
+        }()
+
         let evaluator = BadgeEvaluator(analysis: analysis, qualifying: qualifying,
                                        plEvals: plEvals, netPositive: netPositive,
                                        input: input, config: config,
@@ -174,7 +211,8 @@ public enum ProgressionEngine {
             rivalPL: rivalPL,
             rivalForm: rivalForm,
             restedBonusActive: restedActive,
-            badgeCounts: badgeCounts
+            badgeCounts: badgeCounts,
+            powerLevelHistory: powerLevelHistory
         )
     }
 

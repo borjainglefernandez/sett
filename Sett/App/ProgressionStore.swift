@@ -13,6 +13,11 @@ public final class ProgressionStore {
 
     public var snapshotPowerLevel: Int { snapshot?.powerLevel ?? 0 }
 
+    /// The power-level trajectory (one point per training day, oldest → now).
+    /// Derived fresh every recompute — no persisted time series, so it stays a
+    /// pure function of history and backfills retroactively.
+    public var powerLevelHistory: [PLPoint] { snapshot?.powerLevelHistory ?? [] }
+
     public init() {
         self.config = try? ProgressionConfig.load()
     }

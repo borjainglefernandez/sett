@@ -57,6 +57,8 @@ struct ProgressTabView: View {
                     if workoutSamples.count < 2 {
                         chartsLockedCard
                     } else {
+                        PowerHistoryCard(history: services.progression.powerLevelHistory,
+                                         peakPL: services.progression.snapshot?.allTimePeakPL ?? 0)
                         NetSummaryCard(samples: setSamples, period: period,
                                        unit: unit, calendar: Self.isoCalendar,
                                        phase: services.settings.phase)
@@ -142,6 +144,9 @@ struct ProgressTabView: View {
     }
 
     private func applySamples() {
+        // Progress can be the first tab shown (deep link / debug) — recompute so
+        // the PL trajectory is populated even if Home/Power haven't run their .task.
+        services.progression.recompute(context: modelContext)
         setSamples = SampleExtractor.setSamples(context: modelContext)
         workoutSamples = SampleExtractor.workoutSamples(context: modelContext)
 

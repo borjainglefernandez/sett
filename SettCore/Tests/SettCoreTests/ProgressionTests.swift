@@ -116,6 +116,43 @@ struct PowerLevelTests {
         #expect(snapshot.badges.isEmpty)
         #expect(snapshot.rivalPL == 3000)
         #expect(snapshot.rivalForm == 1)
+        // No training days -> nothing to plot.
+        #expect(snapshot.powerLevelHistory.isEmpty)
+    }
+
+    @Test("powerLevelHistory: one point per training day, date-ordered, ends at live PL")
+    func powerLevelHistoryShape() throws {
+        let config = try loadConfig()
+        let cal = madridCalendar()
+
+        // Three qualifying days, TWO of them on the same calendar day (Monday) —
+        // the same-day pair must collapse to one point, not two.
+        let wMonAM = workout(UUID(), start: date(2025, 6, 2, 9))
+        let wMonPM = workout(UUID(), start: date(2025, 6, 2, 18))
+        let wWed = workout(UUID(), start: date(2025, 6, 4, 18))
+        let wMon2 = workout(UUID(), start: date(2025, 6, 9, 18))   // next Monday
+        let allSets =
+            sets(benchID, muscle: .chest, grams: 85_049, reps: 6, count: 4, workout: wMonAM)
+            + sets(rowID, muscle: .back, grams: 97_198, reps: 5, count: 6, workout: wMonPM)
+            + sets(benchID, muscle: .chest, grams: 90_000, reps: 6, count: 4, workout: wWed)
+            + sets(rowID, muscle: .back, grams: 100_000, reps: 5, count: 6, workout: wMon2)
+        let asOf = date(2025, 6, 11, 20)
+
+        let snapshot = ProgressionEngine.compute(
+            input: input(workouts: [wMonAM, wMonPM, wWed, wMon2], sets: allSets),
+            config: config, calendar: cal, asOf: asOf)
+
+        let history = snapshot.powerLevelHistory
+        // 3 distinct training days (Mon 6/2, Wed 6/4, Mon 6/9) collapse to 3 points;
+        // the trailing asOf (6/11, no session) is its own day -> at most one extra.
+        let dayKeys = history.map { cal.dateKey(for: $0.date) }
+        #expect(Set(dayKeys).count == dayKeys.count)           // no duplicate days
+        #expect(history.count >= 3)                            // the three training days survive
+        // Chronological, oldest first.
+        #expect(history.map(\.date) == history.map(\.date).sorted())
+        // The last point is the live PL, and the series never exceeds the peak.
+        #expect(history.last?.pl == snapshot.powerLevel)
+        #expect(history.map(\.pl).max()! <= snapshot.allTimePeakPL)
     }
 }
 
