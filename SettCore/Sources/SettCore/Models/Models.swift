@@ -462,7 +462,9 @@ public final class SaiyanState {
     }
 }
 
-// MARK: - SleepDay (server-owned cache, pull-only)
+// MARK: - SleepDay (server cache + hand-logged lab readings)
+// Oura sync (when it lands) upserts by dateKey and simply overwrites any
+// manual reading for the same night — measured beats remembered.
 
 @Model
 public final class SleepDay {

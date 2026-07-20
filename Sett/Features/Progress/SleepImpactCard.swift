@@ -14,6 +14,8 @@ struct SleepImpactCard: View {
 
     /// Scrub position (a sleep score on the X axis) — snaps to the nearest workout dot.
     @State private var selectedScore: Double?
+    /// Manual lab reading — the no-ring path to sleep data (and to Luma).
+    @State private var isLoggingSleep = false
 
     private struct PairedPoint: Identifiable {
         let id: UUID          // workout id
@@ -67,7 +69,11 @@ struct SleepImpactCard: View {
             HStack {
                 CardTitle("Sleep × Lifts", icon: "bed.double.fill")
                 Spacer(minLength: 8)
-                if let scrubbed { readout(scrubbed) }
+                if let scrubbed {
+                    readout(scrubbed)
+                } else {
+                    logButton
+                }
             }
             if points.count >= 10 {
                 chart(points: points, scrubbed: scrubbed)
@@ -80,6 +86,24 @@ struct SleepImpactCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .settCard()
+        .sheet(isPresented: $isLoggingSleep) { SleepLogSheet() }
+    }
+
+    /// Hand-log a night — same capsule voice as ChamberSheet's chrome.
+    private var logButton: some View {
+        Button {
+            isLoggingSleep = true
+        } label: {
+            Text("LOG")
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .kerning(1)
+                .foregroundStyle(SettColor.heroCyan)
+                .frame(minWidth: 44, minHeight: 28)
+                .background { Capsule().strokeBorder(SettColor.heroCyan.opacity(0.4), lineWidth: 1) }
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Log sleep")
     }
 
     /// The workout dot nearest the scrubbed sleep score — snaps the readout + rule to a
@@ -105,8 +129,9 @@ struct SleepImpactCard: View {
     }
 
     private func teaser(pairedCount: Int) -> some View {
+        // No ring required: the LOG button writes the same nights a sync would.
         Text(sleepDays.isEmpty
-             ? "Connect Oura in Settings to see how sleep moves your lifts."
+             ? "Log last night by hand — or connect Oura later — to see how sleep moves your lifts."
              : "\(pairedCount) of 10 paired nights logged — the correlation chart unlocks at 10.")
             .font(.subheadline)
             .foregroundStyle(SettColor.ash)
