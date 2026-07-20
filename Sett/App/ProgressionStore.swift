@@ -18,6 +18,33 @@ public final class ProgressionStore {
     /// pure function of history and backfills retroactively.
     public var powerLevelHistory: [PLPoint] { snapshot?.powerLevelHistory ?? [] }
 
+    /// What the CURRENT power level is made of — its strength / volume / streak-bonus
+    /// pieces. nil until there's a real PL to decompose (or before config loads).
+    public var powerLevelComposition: PLComposition? {
+        guard let snapshot, snapshot.powerLevel > 0, let config else { return nil }
+        return PowerLevelBreakdown.composition(
+            strengthScore: snapshot.strengthScore,
+            weeklyVolumeLb: snapshot.weeklyVolumeLb,
+            consistencyMultiplier: snapshot.consistencyMultiplier,
+            config: config)
+    }
+
+    /// What MOVED the power level over the trailing `days` window — a signed split
+    /// across strength / volume / consistency that sums exactly to the delta. The
+    /// baseline is the last trajectory point at or before the window's start (else the
+    /// earliest point we have); nil until two distinct-day points exist, or when the
+    /// baseline is already the latest point (nothing to attribute).
+    public func powerLevelAttribution(overDays days: Int) -> PLAttribution? {
+        guard let config else { return nil }
+        let history = powerLevelHistory
+        guard history.count >= 2, let latest = history.last else { return nil }
+        let cal = Calendar.current
+        let cutoff = cal.date(byAdding: .day, value: -days, to: cal.startOfDay(for: .now)) ?? .now
+        let baseline = history.last { $0.date <= cutoff } ?? history[0]
+        guard baseline.date != latest.date else { return nil }
+        return PowerLevelBreakdown.attribution(from: baseline, to: latest, config: config)
+    }
+
     public init() {
         self.config = try? ProgressionConfig.load()
     }

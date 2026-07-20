@@ -539,3 +539,100 @@ private func surgeDate(_ year: Int, _ month: Int, _ day: Int, _ hour: Int = 12) 
 private func loadConfigForSurge() throws -> ProgressionConfig {
     try ProgressionConfig.load()
 }
+
+// MARK: - Power Level breakdown (composition + Shapley attribution)
+
+@Suite("PowerLevelBreakdown — decomposition")
+struct PowerLevelBreakdownTests {
+
+    /// The two halves reconstruct the PL (within a rounding step), and the streak
+    /// bonus is exactly pl − round(raw/cm) — with no streak (cm = 1) it's zero.
+    @Test("Composition: strength + volume ≈ pl; streak bonus is pl − round(raw/cm)")
+    func compositionReconstructs() throws {
+        let config = try loadConfig()
+        let plc = config.powerLevel
+        let ss = 475, vol = 2732
+        let cm = 1.05
+
+        func raw(_ ss: Int, _ vol: Int, _ cm: Double) -> Double {
+            (plc.strengthWeight * Double(ss) + plc.volumeWeight * Double(vol).squareRoot()) * cm
+        }
+
+        let comp = PowerLevelBreakdown.composition(strengthScore: ss, weeklyVolumeLb: vol,
+                                                   consistencyMultiplier: cm, config: config)
+        let pl = Int(raw(ss, vol, cm).rounded())
+        // round(a) + round(b) is within 1 of round(a + b).
+        #expect(abs((comp.strengthPL + comp.volumePL) - pl) <= 1)
+        // Streak bonus is exactly the definition, and positive while cm > 1.
+        #expect(comp.streakBonusPL == pl - Int((raw(ss, vol, cm) / cm).rounded()))
+        #expect(comp.streakBonusPL > 0)
+        // Shares split the base and sum to 1.
+        #expect(abs(comp.strengthShare + comp.volumeShare - 1) < 1e-9)
+
+        // No streak (cm = 1): raw/cm == raw, so the bonus vanishes.
+        let flat = PowerLevelBreakdown.composition(strengthScore: ss, weeklyVolumeLb: vol,
+                                                   consistencyMultiplier: 1.0, config: config)
+        #expect(flat.streakBonusPL == 0)
+    }
+
+    /// Built from a real computed snapshot's rounded levers, the two halves land within
+    /// a couple of PL of the live number — the receipt the user sees still balances.
+    @Test("Composition rebuilds a computed snapshot's live PL")
+    func compositionFromSnapshot() throws {
+        let config = try loadConfig()
+        let cal = madridCalendar()
+        let wA = workout(UUID(), start: date(2025, 6, 2, 18))
+        let wB = workout(UUID(), start: date(2025, 6, 4, 18))
+        let allSets = sets(benchID, muscle: .chest, grams: 85_049, reps: 6, count: 4, workout: wA)
+            + sets(rowID, muscle: .back, grams: 97_198, reps: 5, count: 6, workout: wB)
+        let snapshot = ProgressionEngine.compute(
+            input: input(workouts: [wA, wB], sets: allSets),
+            config: config, calendar: cal, asOf: date(2025, 6, 5, 20))
+
+        let comp = PowerLevelBreakdown.composition(
+            strengthScore: snapshot.strengthScore, weeklyVolumeLb: snapshot.weeklyVolumeLb,
+            consistencyMultiplier: snapshot.consistencyMultiplier, config: config)
+        #expect(abs((comp.strengthPL + comp.volumePL) - snapshot.powerLevel) <= 3)
+        #expect(comp.strengthPL > 0 && comp.volumePL > 0)
+    }
+
+    /// Shapley shares round (largest-remainder) to ints that sum EXACTLY to deltaPL,
+    /// and deltaPL is measured on the rounded raw endpoints.
+    @Test("Attribution: the three levers sum exactly to deltaPL")
+    func attributionSumsExactly() throws {
+        let config = try loadConfig()
+        let plc = config.powerLevel
+        let from = PLPoint(date: date(2025, 6, 2), pl: 2000, strengthScore: 400,
+                           weeklyVolumeLb: 2000, consistencyMultiplier: 1.0)
+        let to = PLPoint(date: date(2025, 6, 30), pl: 2600, strengthScore: 520,
+                         weeklyVolumeLb: 2600, consistencyMultiplier: 1.10)
+
+        let attr = PowerLevelBreakdown.attribution(from: from, to: to, config: config)
+        #expect(attr.strength + attr.volume + attr.consistency == attr.deltaPL)
+        #expect(attr.fromDate == from.date && attr.toDate == to.date)
+
+        func raw(_ ss: Int, _ vol: Int, _ cm: Double) -> Double {
+            (plc.strengthWeight * Double(ss) + plc.volumeWeight * Double(vol).squareRoot()) * cm
+        }
+        let expected = Int(raw(520, 2600, 1.10).rounded()) - Int(raw(400, 2000, 1.0).rounded())
+        #expect(attr.deltaPL == expected)
+    }
+
+    /// Only volume grows: strength and consistency have exactly-zero marginals in every
+    /// coalition, so volume carries the whole (positive) delta.
+    @Test("Attribution: volume dominates when only volume grew")
+    func volumeDominant() throws {
+        let config = try loadConfig()
+        let from = PLPoint(date: date(2025, 6, 1), pl: 0, strengthScore: 500,
+                           weeklyVolumeLb: 1000, consistencyMultiplier: 1.05)
+        let to = PLPoint(date: date(2025, 6, 28), pl: 0, strengthScore: 500,
+                         weeklyVolumeLb: 3000, consistencyMultiplier: 1.05)
+
+        let attr = PowerLevelBreakdown.attribution(from: from, to: to, config: config)
+        #expect(attr.strength == 0)            // ss unchanged -> zero marginal
+        #expect(attr.consistency == 0)         // cm unchanged -> zero marginal
+        #expect(attr.volume == attr.deltaPL)   // volume carries the whole delta
+        #expect(attr.volume > 0)
+        #expect(attr.strength + attr.volume + attr.consistency == attr.deltaPL)
+    }
+}

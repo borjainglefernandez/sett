@@ -27,10 +27,21 @@ public struct BadgeGrant: Sendable, Hashable {
 public struct PLPoint: Sendable, Hashable {
     public let date: Date
     public let pl: Int
+    /// The three PL levers as they stood at this point — carried so a later
+    /// consumer (the breakdown UI) can attribute a change between any two points
+    /// without re-deriving from raw history. Rounded to match the live snapshot's
+    /// `strengthScore` / `weeklyVolumeLb` (the numbers the user actually sees).
+    public let strengthScore: Int
+    public let weeklyVolumeLb: Int
+    public let consistencyMultiplier: Double
 
-    public init(date: Date, pl: Int) {
+    public init(date: Date, pl: Int, strengthScore: Int, weeklyVolumeLb: Int,
+                consistencyMultiplier: Double) {
         self.date = date
         self.pl = pl
+        self.strengthScore = strengthScore
+        self.weeklyVolumeLb = weeklyVolumeLb
+        self.consistencyMultiplier = consistencyMultiplier
     }
 }
 
@@ -130,29 +141,40 @@ public enum ProgressionEngine {
         // PL at every recomputation point (after each qualifying workout + now) —
         // drives scanner_breaker's "at any recomputation" clause and the peak.
         var plEvals: [(date: Date, pl: Int)] = []
+        // Full breakdowns run in lockstep with plEvals — same moments, richer payload.
+        // Kept parallel (rather than folded into plEvals) so scanner_breaker and the
+        // peak keep reading the lean (date, pl) tuples they already depend on.
+        var plBreakdowns: [(date: Date, b: PLBreakdown)] = []
         for session in qualifying {
             let breakdown = plBreakdown(at: session.endedAt, analysis: analysis,
                                         config: config, calendar: calendar)
             plEvals.append((session.endedAt, breakdown.pl))
+            plBreakdowns.append((session.endedAt, breakdown))
         }
         let current = plBreakdown(at: asOf, analysis: analysis, config: config, calendar: calendar)
         plEvals.append((asOf, current.pl))
+        plBreakdowns.append((asOf, current))
 
         // The displayable history: collapse the per-session evals to one point
-        // per calendar day (the last PL reached that day), so multiple sessions
-        // in a day read as one step, not a vertical smear. The trailing asOf
-        // eval anchors "now" even on a rest day. Only meaningful once the user
-        // has qualified at least once (qualifying non-empty).
+        // per calendar day (the last breakdown reached that day), so multiple
+        // sessions in a day read as one step, not a vertical smear. The trailing
+        // asOf eval anchors "now" even on a rest day. Each point carries its three
+        // levers (rounded like the live snapshot) so the breakdown UI can attribute
+        // a change between any two days. Only meaningful once the user has qualified
+        // at least once (qualifying non-empty).
         let powerLevelHistory: [PLPoint] = qualifying.isEmpty ? [] : {
-            var lastPLByDay: [Int: (date: Date, pl: Int)] = [:]
-            for eval in plEvals {
+            var lastByDay: [Int: (date: Date, b: PLBreakdown)] = [:]
+            for eval in plBreakdowns {
                 let key = calendar.dateKey(for: eval.date)
-                if let existing = lastPLByDay[key], existing.date >= eval.date { continue }
-                lastPLByDay[key] = eval
+                if let existing = lastByDay[key], existing.date >= eval.date { continue }
+                lastByDay[key] = eval
             }
-            return lastPLByDay.values
+            return lastByDay.values
                 .sorted { $0.date < $1.date }
-                .map { PLPoint(date: $0.date, pl: $0.pl) }
+                .map { PLPoint(date: $0.date, pl: $0.b.pl,
+                               strengthScore: Int($0.b.ssLb.rounded()),
+                               weeklyVolumeLb: Int($0.b.wvlLb.rounded()),
+                               consistencyMultiplier: $0.b.cm) }
         }()
 
         let evaluator = BadgeEvaluator(analysis: analysis, qualifying: qualifying,
