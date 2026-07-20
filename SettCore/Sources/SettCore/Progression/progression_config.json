@@ -64,7 +64,7 @@
     "recovery_protocol": {
       "name": "Recovery Protocol",
       "rarity": "gold",
-      "character": "zia",
+      "character": "luma",
       "sleepHours": 7,
       "daysPerWeek": 3
     },

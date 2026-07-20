@@ -18,7 +18,7 @@ struct PatronUnlocksTests {
         "ignition", "steady_flame", "chamber_regular", "chamber_resident", "unbroken_year",
         // torren — goals
         "goal_getter", "marksman", "serial_achiever", "by_the_book", "planners_pride",
-        // zia — sleep & recovery
+        // luma — sleep & recovery
         "lab_partner", "well_rested", "recovery_protocol",
         // gosi — variety & dawn
         "explorer", "full_arsenal", "dawn_patrol",
@@ -38,7 +38,7 @@ struct PatronUnlocksTests {
             ("twenty_ton_day", .barok),
             ("ignition", .nyra),
             ("goal_getter", .torren),
-            ("lab_partner", .zia),
+            ("lab_partner", .luma),
             ("explorer", .gosi),
             ("momentum", .zyn),
         ]

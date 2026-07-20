@@ -798,7 +798,7 @@ private struct BadgeEvaluator {
         return nil
     }
 
-    // MARK: Zia — sleep
+    // MARK: Luma — sleep
 
     private func labPartner(_ def: ProgressionConfig.BadgeDef) -> BadgeGrant? {
         let threshold = def.params["threshold"] ?? 7

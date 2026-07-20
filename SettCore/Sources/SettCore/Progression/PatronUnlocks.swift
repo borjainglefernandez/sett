@@ -22,7 +22,7 @@ public enum PatronUnlocks {
                   "chamber_resident", "unbroken_year"],
         .torren: ["goal_getter", "marksman", "serial_achiever",
                   "by_the_book", "planners_pride"],
-        .zia:    ["lab_partner", "well_rested", "recovery_protocol"],
+        .luma:    ["lab_partner", "well_rested", "recovery_protocol"],
         .gosi:   ["explorer", "full_arsenal", "dawn_patrol"],
         .zyn:    ["momentum", "midnight_oil", "return_to_form", "reforged"],
     ]
@@ -65,7 +65,7 @@ public enum PatronUnlocks {
         case .barok:  "Move real tonnage — your first tonnage badge wakes the Mountain."
         case .nyra:   "String the weeks together — your first streak badge wakes Nyra."
         case .torren: "Set a goal and hit it — your first goal badge wakes Torren."
-        case .zia:    "Let recovery power a lift — your first sleep badge wakes Zia."
+        case .luma:    "Let recovery power a lift — your first sleep badge wakes Luma."
         case .zyn:    "Come back stronger — your first comeback badge wakes Zyn."
         }
     }

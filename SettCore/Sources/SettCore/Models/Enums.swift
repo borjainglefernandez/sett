@@ -105,7 +105,7 @@ public enum CharacterKey: String, Codable, Sendable, CaseIterable {
     case barok     // the Mountain (the Legendary Giant) — volume & tonnage
     case nyra      // Nyra Voss (the Tireless Android) — streaks & consistency
     case torren    // Torren Vex (the Stern Mentor) — goals & adherence
-    case zia       // Zia Q. (the Genius Engineer) — sleep & recovery
+    case luma      // Luma Q. (the Genius Engineer) — sleep & recovery
     case zyn       // the Hidden-Power Kid — comebacks, night training, momentum
 
     public var displayName: String {
@@ -115,7 +115,7 @@ public enum CharacterKey: String, Codable, Sendable, CaseIterable {
         case .barok: "Barok the Mountain"
         case .nyra: "Nyra Voss"
         case .torren: "Torren Vex"
-        case .zia: "Zia Q."
+        case .luma: "Luma Q."
         case .zyn: "Zyn"
         }
     }

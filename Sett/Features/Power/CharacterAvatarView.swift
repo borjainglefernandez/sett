@@ -81,7 +81,7 @@ extension CharacterKey {
                 accent: Color(dynamicLight: 0xFFB820, dark: 0xFFB820),
                 motif: .scar
             )
-        case .zia:
+        case .luma:
             CharacterIconTheme(
                 primary: Color(dynamicLight: 0x00E5DB, dark: 0x00E5DB),
                 highlight: Color(dynamicLight: 0xC5FFFC, dark: 0xC5FFFC),
@@ -105,7 +105,7 @@ extension CharacterKey {
         case .barok: "CharacterBarok"
         case .nyra: "CharacterNyra"
         case .torren: "CharacterTorren"
-        case .zia: "CharacterZia"
+        case .luma: "CharacterLuma"
         case .zyn: "CharacterZyn"
         }
     }

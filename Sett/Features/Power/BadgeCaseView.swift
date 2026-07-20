@@ -276,7 +276,7 @@ func criteriaText(for key: String) -> String {
     case "serial_achiever": "Complete 10 goals"
     case "by_the_book": "Log 12 workouts on their planned routine day"
     case "planners_pride": "Hit every planned routine day for 4 straight weeks"
-    // Zia — sleep & recovery
+    // Luma — sleep & recovery
     case "lab_partner": "Connect Oura and sync 7 nights"
     case "well_rested": "5 workouts after 80+ sleep scores within 30 days"
     case "recovery_protocol": "Sleep 7+ hours all week and train 3 days in it"
