@@ -318,9 +318,10 @@ struct CharacterAvatarView: View {
                 .resizable()
                 .scaledToFit()
                 .padding(size * 0.025)
-                .saturation(locked ? 0 : 1)
-                .brightness(locked ? -0.35 : 0)
-                .opacity(locked ? 0.55 : 1)
+                // Crushed to a true silhouette (same multiply as the lineup's
+                // sealed veil) — outline and aura shape only, no readable detail.
+                .colorMultiply(locked ? Color(white: 0.12) : .white)
+                .opacity(locked ? 0.9 : 1)
         }
         .frame(width: size, height: size)
         .clipShape(Circle())
@@ -397,30 +398,30 @@ struct CharacterLineupView: View {
         GridItem(.flexible(), spacing: 12),
     ]
 
-    /// How much of a card's art the user has earned. `.sealed` keeps a faint
-    /// ghost of the figure — a patron reads as someone waiting, not a blank —
-    /// while `.unrevealed` goes near-black so a future rival form gives away
-    /// nothing about its design.
+    /// How much of a card's art the user has earned. Veiled art is crushed to a
+    /// true silhouette via colorMultiply — the multiply zeroes every channel
+    /// toward black so internal detail (faces, armor, motifs) cannot be read,
+    /// leaving only the outline and a breath of the aura. `.sealed` keeps a
+    /// cold grey whisper (a patron is someone waiting); `.unrevealed` sinks to
+    /// blood-dark so a future rival form gives away nothing but its menace.
     private enum CardVeil {
         case none
         case sealed
         case unrevealed
 
-        var saturation: Double { self == .sealed ? 0 : 1 }
-
-        var brightness: Double {
+        var multiply: Color {
             switch self {
-            case .none: 0
-            case .sealed: -0.35
-            case .unrevealed: -0.5
+            case .none: .white   // multiply identity — untouched art
+            case .sealed: Color(white: 0.12)
+            case .unrevealed: Color(red: 0.10, green: 0.02, blue: 0.02)
             }
         }
 
         var opacity: Double {
             switch self {
             case .none: 1
-            case .sealed: 0.55
-            case .unrevealed: 0.4
+            case .sealed: 0.9
+            case .unrevealed: 0.8
             }
         }
     }
@@ -502,8 +503,7 @@ struct CharacterLineupView: View {
                 .resizable()
                 .scaledToFit()
                 .frame(height: 150)
-                .saturation(veil.saturation)
-                .brightness(veil.brightness)
+                .colorMultiply(veil.multiply)
                 .opacity(veil.opacity)
                 .accessibilityHidden(true)
             Text(title)
@@ -512,11 +512,14 @@ struct CharacterLineupView: View {
                 .foregroundStyle(tint)
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
+            // Unclamped: the awakening requirements are full sentences and a
+            // clipped hint is worse than a taller card. minHeight keeps short
+            // rows (plain display names) from collapsing the grid rhythm.
             Text(subtitle)
                 .font(.caption2)
                 .foregroundStyle(SettColor.ash)
                 .multilineTextAlignment(.center)
-                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
                 .frame(minHeight: 28, alignment: .top)
         }
         .frame(maxWidth: .infinity)

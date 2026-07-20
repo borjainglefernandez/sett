@@ -233,8 +233,11 @@ struct HomeTabView: View {
             Text(greeting)
                 .font(.largeTitle.bold())
                 .foregroundStyle(SettColor.bone)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
+                // Two lines, not one: "The chamber's warm — Push Day waits." was
+                // clipping the routine name even at 0.7 scale. Wrap instead of shrink.
+                .lineLimit(2)
+                .minimumScaleFactor(0.85)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.top, 8)
     }
