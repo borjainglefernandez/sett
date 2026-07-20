@@ -12,7 +12,8 @@ import SettCore
 ///    ceiling-class badge landed): full-screen CrackOverlay reveals 0 → 1 over
 ///    0.8 s with `CEILING BROKEN` beneath the scan card;
 /// 3. net progress vs previous same-exercise sessions;
-/// 4. badges earned (gold medallions, only when non-empty);
+/// 4. badges earned (gold medallions, only when non-empty) — plus the patron
+///    awakening row when a first-domain badge just woke one;
 /// 5. AI commentary + star rating + Done.
 /// Tap anywhere skips straight to the final stage. Reduce Motion direct-sets the
 /// final state: no scanline, no scramble, no roll, no cracks.
@@ -46,6 +47,11 @@ struct WorkoutSummaryView: View {
     /// Post-session note staged/persisted from the wrap-up row.
     @State private var sessionNotes: String?
     @State private var isEditingSessionNotes = false
+    /// The awakening row actually rendered this pass. Gates the acknowledge on
+    /// dismiss: this view is also presented from DEBUG surfaces (Settings demo
+    /// ceremonies, SETT_DEBUG_SURFACE), and a demo run must never consume a real
+    /// pending awakening the user hasn't seen.
+    @State private var showedAwakening = false
 
     // Scan Ritual v3 choreography.
     @State private var scrambling = false
@@ -132,6 +138,12 @@ struct WorkoutSummaryView: View {
         }
         .task { await runStages() }
         .task { renderShareCard() }
+        // Only acknowledge what this ceremony actually delivered: if the row never
+        // rendered (skipped badges stage, no pending awakening, DEBUG presentation),
+        // the Power tab's banner keeps its right to announce it later.
+        .onDisappear {
+            if showedAwakening { services.progression.acknowledgePatronAwakening() }
+        }
     }
 
     @MainActor private func renderShareCard() {
@@ -501,6 +513,13 @@ struct WorkoutSummaryView: View {
             }
             // Bursts spill past the ScrollView's bounds — don't clip the premiere.
             .scrollClipDisabled()
+            if let patron = services.progression.pendingPatronAwakening {
+                // The cast beat: a first badge in this patron's domain just landed,
+                // so the patron steps out of the dark inside the same ceremony —
+                // the Power tab's banner then has nothing left to announce.
+                PatronAwakeningRow(patron: patron, index: summary.newBadgeKeys.count)
+                    .onAppear { showedAwakening = true }
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .settCard()
@@ -737,6 +756,53 @@ private struct BadgePremiereMedallion: View {
             try? await Task.sleep(for: .milliseconds(150 * index))
             showBurst = true
             withAnimation(.spring(response: 0.4, dampingFraction: 0.55)) { scale = 1 }
+        }
+    }
+}
+
+// MARK: - Patron awakening row (Stage 3)
+
+/// A patron's first-domain badge just landed, so they awaken here, inside the
+/// ceremony — the volley's closing shot, on the medallions' stagger clock
+/// (`index` = badge count puts the row 150 ms after the last medallion) and
+/// their materialize grammar (spring scale-in, 0.6 → 1). Gold eyebrow: an
+/// awakening is a reward moment, not an action. No AuraBurstView — the
+/// medallions already carried the gold fireworks; the face IS the beat.
+/// Reduce Motion: plain fade, no stagger, no spring.
+private struct PatronAwakeningRow: View {
+    let patron: CharacterKey
+    let index: Int
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var scale: CGFloat = 0.6
+    @State private var opacity: Double = 0
+
+    var body: some View {
+        HStack(spacing: 12) {
+            CharacterAvatarView(character: patron, tier: .base, size: 56, locked: false)
+            VStack(alignment: .leading, spacing: 2) {
+                Eyebrow("PATRON AWAKENED", tint: SettColor.saiyanGold)
+                Text(patron.displayName)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(SettColor.bone)
+            }
+            Spacer(minLength: 0)
+        }
+        .scaleEffect(scale)
+        .opacity(opacity)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Patron awakened: \(patron.displayName)")
+        .task {
+            guard !reduceMotion else {
+                scale = 1
+                withAnimation(.easeOut(duration: 0.3)) { opacity = 1 }
+                return
+            }
+            try? await Task.sleep(for: .milliseconds(150 * index))
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.55)) {
+                scale = 1
+                opacity = 1
+            }
         }
     }
 }

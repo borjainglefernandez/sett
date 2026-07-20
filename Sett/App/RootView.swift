@@ -6,6 +6,7 @@ struct RootView: View {
     @Environment(WorkoutSessionStore.self) private var session
     @Environment(AppServices.self) private var services
     @Environment(\.modelContext) private var modelContext
+    @Query private var characterStates: [SaiyanState]
     @State private var selectedTab: Tab = .home
 
     enum Tab: Hashable {
@@ -77,6 +78,20 @@ struct RootView: View {
         #if DEBUG
         .overlay { debugOverlays }
         #endif
+        // Keep the patron identity outside every presentation modifier so exercise
+        // and muscle art stays in sync in tabs, sheets, the active workout, and QA
+        // surfaces—not just the immediate TabView descendants.
+        .environment(\.activeSettCharacter, activeIconCharacter)
+    }
+
+    private var activeIconCharacter: CharacterKey {
+        #if DEBUG
+        if let raw = ProcessInfo.processInfo.environment["SETT_DEBUG_CHARACTER"],
+           let character = CharacterKey(rawValue: raw) {
+            return character
+        }
+        #endif
+        return characterStates.first?.characterKey ?? .vego
     }
 
     #if DEBUG
@@ -137,6 +152,8 @@ struct DebugSurfaceHost: View {
             SettingsView()
         case "howpower":
             HowPowerWorksView()
+        case "characters", "lineup":
+            NavigationStack { CharacterLineupView() }
         case "summary", "summaryascension", "summaryrewards":
             // Present via a cover (not raw) so the summary's Done → dismiss() actually
             // dismisses it here too, and tapping Done is testable off a real workout.
@@ -243,7 +260,9 @@ extension WorkoutSummaryData {
             powerLevelBefore: 9_100, powerLevelAfter: 9_260,
             tierBefore: 3, tierAfter: 3,
             netReps: 18, netVolumeGrams: 800_000, netIsNew: false,
-            newBadgeKeys: ["new_ceiling", "walking_legend"], xpEarned: [:],
+            // Both keys must exist in the live 10-badge config or the medallion
+            // label falls back to the raw key (walking_legend was pruned).
+            newBadgeKeys: ["new_ceiling", "limit_break"], xpEarned: [:],
             commentary: "Records fell. Vexeth felt that one.",
             commentarySource: .onDevice,
             strengthScoreBefore: 970, strengthScoreAfter: 999,

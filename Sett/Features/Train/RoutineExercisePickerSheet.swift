@@ -44,15 +44,7 @@ struct RoutineExercisePickerSheet: View {
                 Button {
                     isCreating = true
                 } label: {
-                    HStack(spacing: 12) {
-                        ExerciseGlyphView(muscle: .other)
-                            .frame(width: 40, height: 40)
-                        Text("Create custom exercise")
-                            .foregroundStyle(SettColor.heroCyan)
-                        Spacer()
-                    }
-                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                    .contentShape(Rectangle())
+                    CreateExerciseRowLabel()
                 }
                 .buttonStyle(.borderless)
             }

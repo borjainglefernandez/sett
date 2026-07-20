@@ -20,8 +20,10 @@ public final class ProgressionStore {
     public func recompute(context: ModelContext) {
         guard let config else { return }
         snapshot = try? ProgressionReconciler.reconcile(context: context, config: config)
+        refreshUnlockedPatrons(context: context)
         recordWeeklyPLSample()
         checkRivalRebirth()
+        recordHighestSeenRivalForm()
         seedFormBaselineIfNeeded()
     }
 
@@ -44,6 +46,7 @@ public final class ProgressionStore {
         static let weeklyGrowth = "sett.rival.weeklyGrowth"
         static let cycleStart = "sett.rival.cycleStart"
         static let announce = "sett.rival.announce"
+        static let highestSeenForm = "sett.rival.highestSeenForm"
         static let plHistory = "sett.plHistory"   // [isoWeekKey: PL], trailing 8
     }
 
@@ -112,6 +115,9 @@ public final class ProgressionStore {
         // Rebirth fires only when the FINAL form has been beaten.
         guard rival.form >= 3, snapshot.powerLevel > rival.pl else { return }
         let defaults = UserDefaults.standard
+        // The user just BEAT form 3 — stamp the high-water mark before the new
+        // cycle resets him to form 1, or the witness record would lose it.
+        defaults.set(3, forKey: RivalKeys.highestSeenForm)
         let newStart = Int((Double(snapshot.powerLevel) * 1.10 / 100).rounded(.up)) * 100
         let pace = trailingWeeklyPace
         let configGrowth = (config?.rival["weeklyGrowth"] as? Int) ?? 350
@@ -127,6 +133,25 @@ public final class ProgressionStore {
         defaults.set(Date.now, forKey: RivalKeys.cycleStart)
         defaults.set(true, forKey: RivalKeys.announce)
         bumpRivalStateVersion()
+    }
+
+    /// The deepest Vexeth form the user has ever witnessed (1…3) — a high-water
+    /// mark, so a rebirth resetting him to form 1 never re-hides a form that has
+    /// already been revealed. Bumps happen only in the recompute/rebirth paths;
+    /// this getter is side-effect free.
+    public var highestSeenRivalForm: Int {
+        _ = rivalStateVersion   // observation hook
+        return max(1, UserDefaults.standard.integer(forKey: RivalKeys.highestSeenForm))
+    }
+
+    /// Raise the high-water mark to the rival's current form (never regresses).
+    private func recordHighestSeenRivalForm() {
+        let defaults = UserDefaults.standard
+        let form = effectiveRival.form
+        if form > defaults.integer(forKey: RivalKeys.highestSeenForm) {
+            defaults.set(form, forKey: RivalKeys.highestSeenForm)
+            bumpRivalStateVersion()
+        }
     }
 
     static func isoWeekKey(_ date: Date) -> String {
@@ -237,6 +262,72 @@ public final class ProgressionStore {
     /// Bank the current PL as "seen" on the Power tab (called once the roll kicks off).
     public func markPowerLevelViewed() {
         UserDefaults.standard.set(snapshotPowerLevel, forKey: FormKeys.lastViewedPL)
+    }
+
+    // MARK: - Patron awakenings (the cast assembles)
+    //
+    // Patrons are voices, not parallel ladders: each awakens when the user earns
+    // their FIRST badge in that patron's domain (Vego, the starter, was always
+    // here). Unlocks are DERIVED from the live BadgeAward ledger on every
+    // recompute — no new SwiftData model, fully retroactive, self-healing when
+    // history changes. Acks are app-side (UserDefaults), mirroring the
+    // Rival-announce template, and deliberately sticky: if the earning badge is
+    // later hard-deleted the patron may re-lock, but replaying the awakening
+    // ceremony on a re-earn would cheapen it — so the ack set is never pruned.
+
+    private enum PatronKeys {
+        static let acknowledged = "sett.patrons.acknowledged"   // [CharacterKey rawValue]
+    }
+
+    /// Patrons whose voices have awakened — refreshed from the badge ledger
+    /// inside recompute(). Always contains Vego.
+    public private(set) var unlockedPatrons: Set<CharacterKey> = [.vego]
+
+    /// Bumped when an awakening is acknowledged so @Observable views re-read the
+    /// UserDefaults-backed pending state.
+    private var patronStateVersion = 0
+    private func bumpPatronStateVersion() { patronStateVersion += 1 }
+
+    #if DEBUG
+    /// Settings → DEBUG: force a specific patron's awakening ceremony on next
+    /// appearance without earning the badge. Cleared by acknowledging it.
+    public var debugForcedAwakening: CharacterKey?
+    #endif
+
+    /// Re-derive the unlocked set from the freshly reconciled badge ledger —
+    /// same fetch-then-filter shape ProgressionReconciler uses for the same rows.
+    private func refreshUnlockedPatrons(context: ModelContext) {
+        let awards = (try? context.fetch(FetchDescriptor<BadgeAward>())) ?? []
+        let liveKeys = awards.lazy.filter { $0.deletedAt == nil }.map(\.badgeKey)
+        unlockedPatrons = PatronUnlocks.unlockedPatrons(badgeKeys: liveKeys)
+    }
+
+    /// The awakening to celebrate, if any: the first patron in cast order that is
+    /// unlocked but not yet acknowledged. Vego never announces — he starts unlocked.
+    public var pendingPatronAwakening: CharacterKey? {
+        _ = patronStateVersion   // observation hook
+        #if DEBUG
+        if let forced = debugForcedAwakening { return forced }
+        #endif
+        let acknowledged = Set(UserDefaults.standard.stringArray(forKey: PatronKeys.acknowledged) ?? [])
+        return CharacterKey.allCases.first {
+            $0 != .vego && unlockedPatrons.contains($0) && !acknowledged.contains($0.rawValue)
+        }
+    }
+
+    /// The user has seen the awakening — bank it so it never announces again.
+    public func acknowledgePatronAwakening() {
+        #if DEBUG
+        if debugForcedAwakening != nil {
+            debugForcedAwakening = nil
+            return
+        }
+        #endif
+        guard let pending = pendingPatronAwakening else { return }
+        var acknowledged = UserDefaults.standard.stringArray(forKey: PatronKeys.acknowledged) ?? []
+        if !acknowledged.contains(pending.rawValue) { acknowledged.append(pending.rawValue) }
+        UserDefaults.standard.set(acknowledged, forKey: PatronKeys.acknowledged)
+        bumpPatronStateVersion()
     }
 
     #if DEBUG

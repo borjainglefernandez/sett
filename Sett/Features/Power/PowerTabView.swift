@@ -1,13 +1,17 @@
 import SwiftUI
 import SwiftData
 import SettCore
+import UIKit
 
 /// Tab 4 — the character sheet (Flow 5, Dark Chamber v3):
 /// (1) hero — the active character card (tier-material frame) with the Sacred
 ///     Number, its ember halo, and Forms-ladder progress on a Ki Gauge,
 /// (2) character sheet — monospaced stat rows + a muscle-balance radar,
 /// (3) Emperor Vexeth's rival card (the app's ONLY red surface),
-/// (4) badge case preview, (5) character roster strip.
+/// (4) badge case preview, (5) character roster strip — awakened patrons are
+///     selectable, sealed ones knock back with their awakening requirement,
+///     and a gold "patron awakened" slab lands above the strip when a badge
+///     wakes someone new.
 struct PowerTabView: View {
     @Environment(ProgressionStore.self) private var progression
     @Environment(\.modelContext) private var modelContext
@@ -30,6 +34,11 @@ struct PowerTabView: View {
     @State private var gaugeTarget: Double = 0
     @State private var heroRoll = 0
     @State private var heroRollTask: Task<Void, Never>?
+    /// Requirement copy for the last sealed patron tapped — shown under the
+    /// roster strip, self-clearing after ~4s. The clear task is cancelled and
+    /// restarted on every knock so the copy never vanishes mid-read.
+    @State private var lockedHint: String?
+    @State private var lockedHintTask: Task<Void, Never>?
 
     init() {
         let badgeAwardFilter = #Predicate<BadgeAward> { $0.deletedAt == nil }
@@ -56,6 +65,12 @@ struct PowerTabView: View {
                               rebirthAnnounce: progression.rivalRebirthAnnounce,
                               onAcknowledgeRebirth: { withAnimation(.snappy) { progression.acknowledgeRivalRebirth() } })
                     badgeCasePreview
+                    // Sits directly above the roster (not pinned at the top like
+                    // the ascension banner) — the beat points at the strip where
+                    // the new card just unsealed.
+                    if let awakened = progression.pendingPatronAwakening {
+                        patronAwakeningSlab(awakened)
+                    }
                     rosterCard
                 }
                 .padding(.horizontal, 16)
@@ -85,14 +100,22 @@ struct PowerTabView: View {
             // TabView keeps the tab mounted) — so the odometer + gauge replay each time
             // you open Power with an unviewed PL gain (and the debug "arm roll" works).
             .onAppear { animateHero() }
-            .onDisappear { heroRollTask?.cancel() }
+            .onDisappear {
+                heroRollTask?.cancel()
+                lockedHintTask?.cancel()
+                lockedHint = nil   // off-screen: drop silently so a stale hint can't greet the return
+            }
         }
     }
 
     // MARK: Derived state
 
     private var activeCharacter: CharacterKey {
-        saiyanStates.first?.characterKey ?? .vego
+        let stored = saiyanStates.first?.characterKey ?? .vego
+        // A fresh DB or a stale characterKeyRaw can point at a patron the badge
+        // table hasn't awakened — fall back to the starter rather than crowning
+        // (and highlighting) a sealed card.
+        return progression.unlockedPatrons.contains(stored) ? stored : .vego
     }
 
     /// Cast collapse: the frame follows the USER's transformation form (pure
@@ -147,7 +170,7 @@ struct PowerTabView: View {
                 BreathingAura(gradient: activeTier == .zenith ? Aura.zenith : Aura.cyan)
                     .frame(width: 118, height: 118)
                     .opacity(0.55)   // the gold PL below is the lead; the aura is ambience
-                CharacterAvatarView(character: activeCharacter, tier: activeTier)
+                CharacterAvatarView(character: activeCharacter, tier: activeTier, size: 132)
                 if let rosterBurstID {
                     // Roster swap only — never fires on plain appearance (clear under RM).
                     AuraBurstView(gold: false)
@@ -401,28 +424,76 @@ struct PowerTabView: View {
                     }
                 }
             }
+            if let lockedHint {
+                // The knock's answer — story copy in sentence case, never a modal.
+                Text(lockedHint)
+                    .font(.footnote)
+                    .foregroundStyle(SettColor.ash)
+                    .transition(.opacity)
+            }
+            NavigationLink {
+                CharacterLineupView(unlockedPatrons: progression.unlockedPatrons,
+                                    highestSeenRivalForm: progression.highestSeenRivalForm)
+            } label: {
+                HStack {
+                    Text("VIEW FULL LINEUP")
+                        .font(.system(size: 11, weight: .heavy, design: .monospaced))
+                        .kerning(1.4)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.bold))
+                }
+                .foregroundStyle(SettColor.heroCyan)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .nestedSlab(radius: 10)
+            }
+            .buttonStyle(.plain)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .settCard()
     }
 
-    /// Cast collapse: every patron is available from day one — they are voices and
-    /// badge domains now, not locked ladders. The avatar is a cosmetic identity.
+    /// Patrons awaken through badges now: the whole cast stays visible so every
+    /// seal reads as a target, but a sealed patron can't take the active slot —
+    /// tapping one knocks (warning haptic) and surfaces the awakening requirement
+    /// under the strip instead of swapping identity. Still voices, not ladders.
     private func rosterEntry(_ character: CharacterKey) -> some View {
         let isActive = character == activeCharacter
+        let isLocked = !progression.unlockedPatrons.contains(character)
         return Button {
-            activate(character)
+            if isLocked {
+                showLockedHint(for: character)
+            } else {
+                activate(character)
+            }
         } label: {
             VStack(spacing: 6) {
                 CharacterAvatarView(character: character,
-                                    tier: isActive ? activeTier : .base)
+                                    tier: isActive ? activeTier : .base,
+                                    locked: isLocked)
                 Text(shortName(character))
                     .font(.caption2.weight(isActive ? .bold : .regular))
-                    .foregroundStyle(isActive ? SettColor.heroCyan : SettColor.bone)
+                    .foregroundStyle(isActive ? SettColor.heroCyan
+                                     : isLocked ? SettColor.ash : SettColor.bone)
             }
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(rosterAccessibilityLabel(character, isActive: isActive))
+        .accessibilityLabel(rosterAccessibilityLabel(character, isActive: isActive, isLocked: isLocked))
+    }
+
+    /// The knock on a sealed card: warning haptic + the patron's requirement
+    /// line under the strip. Re-tapping (same seal or another) cancels the
+    /// pending clear and restarts the ~4s window; onDisappear cancels outright.
+    private func showLockedHint(for character: CharacterKey) {
+        lockedHintTask?.cancel()
+        Haptics.warning()
+        withAnimation(.snappy) { lockedHint = PatronUnlocks.requirement(for: character) }
+        lockedHintTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(4))
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeOut(duration: 0.25)) { lockedHint = nil }
+        }
     }
 
     private func shortName(_ character: CharacterKey) -> String {
@@ -455,9 +526,67 @@ struct PowerTabView: View {
         }
     }
 
-    private func rosterAccessibilityLabel(_ character: CharacterKey, isActive: Bool) -> String {
+    private func rosterAccessibilityLabel(_ character: CharacterKey, isActive: Bool,
+                                          isLocked: Bool) -> String {
+        if isLocked { return "\(character.displayName), sealed. \(PatronUnlocks.requirement(for: character))" }
         if isActive { return "\(character.displayName), active" }
         return "\(character.displayName), tap to set active"
+    }
+
+    // MARK: Patron awakening slab
+
+    /// The "patron awakened" beat — gold, because an awakening is a reward
+    /// moment. Mirrors LevelUpBanner's grammar (hudCard + materialize entrance,
+    /// tap anywhere to acknowledge) but lands above the roster instead of the
+    /// hero: the slab points at the card that just unsealed. `.id(patron)`
+    /// re-mounts it when a second awakening is queued behind the first, so each
+    /// patron gets their own entrance. The ack persists store-side, so a
+    /// dismissal survives relaunch.
+    private func patronAwakeningSlab(_ patron: CharacterKey) -> some View {
+        Button {
+            Haptics.selection()
+            withAnimation(.snappy) { progression.acknowledgePatronAwakening() }
+        } label: {
+            HStack(spacing: 12) {
+                CharacterAvatarView(character: patron, tier: .base, size: 56)
+                VStack(alignment: .leading, spacing: 3) {
+                    Eyebrow("PATRON AWAKENED", tint: SettColor.saiyanGold)
+                    Text(patron.displayName)
+                        .font(.headline)
+                        .foregroundStyle(SettColor.bone)
+                    // The requirement line doubles as satisfied flavor — the
+                    // deed it names is exactly what just woke them.
+                    Text(PatronUnlocks.requirement(for: patron))
+                        .font(.footnote)
+                        .foregroundStyle(SettColor.ash)
+                }
+                Spacer(minLength: 8)
+                Image(systemName: "xmark")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(SettColor.ash)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .hudCard(tint: SettColor.saiyanGold)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .materialize()
+        .id(patron)
+        .onAppear { Haptics.success() }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Patron awakened: \(patron.displayName). Tap to dismiss.")
+        .accessibilityAddTraits(.isButton)
+    }
+}
+
+// MARK: - Haptics: the sealed-card knock
+
+extension Haptics {
+    /// Softer than error(): the tap was understood, the patron just isn't awake
+    /// yet. Lives at its only call site for now — fold into SettTheme's Haptics
+    /// vocabulary the moment a second surface needs to knock.
+    static func warning() {
+        UINotificationFeedbackGenerator().notificationOccurred(.warning)
     }
 }
 
@@ -624,6 +753,16 @@ private struct RivalCard: View {
                     .padding(.vertical, 5)
                     .background(SettColor.villainCrimson.opacity(0.15), in: Capsule())
             }
+            VexethPortraitView(form: rivalForm)
+                .frame(maxWidth: .infinity)
+                .frame(height: 190)
+                .padding(.horizontal, 8)
+                .background(SettColor.villainCrimson.opacity(0.055),
+                            in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(SettColor.villainCrimson.opacity(0.24), lineWidth: 1)
+                }
             PowerNumeral(rivalPL, size: .l, color: SettColor.villainCrimson)
             Text(gapLine)
                 .font(.system(size: 12, weight: .heavy, design: .monospaced))

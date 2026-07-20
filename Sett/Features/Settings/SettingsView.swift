@@ -179,10 +179,24 @@ struct SettingsView: View {
                         Haptics.selection()
                         dismiss()
                     }
+                    // Barok stands in for any patron — the awakening banner reads the
+                    // forced key ahead of the real derivation, so the Power tab and the
+                    // summary ceremonies show it without earning a tonnage badge first.
+                    // Tapping the banner acknowledges it and clears the override.
+                    Button("Preview patron awakening") {
+                        services.progression.debugForcedAwakening = .barok
+                        Haptics.selection()
+                    }
+                    // Forget which awakenings were seen — already-unlocked patrons
+                    // re-fire their banners on the next visit, badges untouched.
+                    Button("Reset patron awakening acks") {
+                        UserDefaults.standard.removeObject(forKey: "sett.patrons.acknowledged")
+                        Haptics.success()
+                    }
                 } header: {
                     Eyebrow("DEBUG — CEREMONIES")
                 } footer: {
-                    Text("Weekly reading shows on Home once toggled on. Tap a ceremony to preview it; Done returns here. The level-up banner and Power roll appear when you next open Home / Power.")
+                    Text("Weekly reading shows on Home once toggled on. Tap a ceremony to preview it; Done returns here. The level-up banner and Power roll appear when you next open Home / Power. Patron awakening previews as Barok on Power and in summaries; resetting acks re-fires banners for patrons already unlocked.")
                         .font(.system(size: 11, design: .monospaced))
                         .foregroundStyle(SettColor.ash)
                 }

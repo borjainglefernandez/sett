@@ -60,29 +60,40 @@ struct ExerciseArtView: View {
     var size: CGFloat = 40
     var color: Color = SettColor.heroCyan
 
+    @Environment(\.activeSettCharacter) private var activeCharacter
+
     var body: some View {
+        let theme = activeCharacter.iconTheme
         ZStack {
             // A near-void ground with a faint tier wash — dark enough that the brightened
             // linework stands off it, unlike the old bright tinted disc it fought against.
             Circle()
                 .fill(RadialGradient(
-                    colors: [color.opacity(0.16), TimeChamber.void.opacity(0.98)],
+                    colors: [theme.primary.opacity(0.20), TimeChamber.void.opacity(0.98)],
                     center: .center, startRadius: 0, endRadius: size * 0.6))
             // The warrior, lifted so the dark 95% becomes a visible glow instead of vanishing.
             Image(asset)
                 .resizable()
+                .interpolation(.none)
                 .scaledToFill()
                 .frame(width: size, height: size)
                 .saturation(2.0)
                 .contrast(1.7)
                 .brightness(0.12)
+                .colorMultiply(theme.highlight)
+            CharacterIconMotifRing(theme: theme)
         }
         .compositingGroup()
         .frame(width: size, height: size)
         .clipShape(Circle())
         .overlay {
-            Circle().strokeBorder(color.opacity(0.9), lineWidth: max(1.5, size / 15))
+            Circle().strokeBorder(theme.primary.opacity(0.92), lineWidth: max(1.5, size / 15))
         }
-        .shadow(color: color.opacity(0.45), radius: size * 0.16)
+        .overlay(alignment: .topTrailing) {
+            CharacterSignatureBadge(theme: theme)
+                .frame(width: max(13, size * 0.30), height: max(13, size * 0.30))
+                .offset(x: size * 0.03, y: -size * 0.03)
+        }
+        .shadow(color: theme.primary.opacity(0.45), radius: size * 0.16)
     }
 }

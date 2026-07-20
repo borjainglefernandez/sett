@@ -1232,6 +1232,8 @@ struct ExerciseGlyphView: View {
     let source: Source
     var color: Color = SettColor.heroCyan
 
+    @Environment(\.activeSettCharacter) private var activeCharacter
+
     init(key: ExerciseGlyphKey, color: Color = SettColor.heroCyan) {
         self.source = .movement(key)
         self.color = color
@@ -1243,29 +1245,49 @@ struct ExerciseGlyphView: View {
     }
 
     var body: some View {
-        Canvas { ctx, size in
-            let rect = CGRect(origin: .zero, size: CGSize(width: min(size.width, size.height),
-                                                          height: min(size.width, size.height)))
-            let layers: GlyphRig.Layers = switch source {
-            case .movement(let key): Glyphs.layers(for: key, in: rect)
-            case .muscle(let muscle): Glyphs.muscleLayers(for: muscle, in: rect)
+        let theme = activeCharacter.iconTheme
+        ZStack {
+            Circle()
+                .fill(RadialGradient(
+                    colors: [theme.primary.opacity(0.18), TimeChamber.void.opacity(0.98)],
+                    center: .center, startRadius: 0, endRadius: 36))
+            Canvas { ctx, size in
+                let side = min(size.width, size.height)
+                let rect = CGRect(x: (size.width - side) / 2,
+                                  y: (size.height - side) / 2,
+                                  width: side, height: side)
+                let layers: GlyphRig.Layers = switch source {
+                case .movement(let key): Glyphs.layers(for: key, in: rect)
+                case .muscle(let muscle): Glyphs.muscleLayers(for: muscle, in: rect)
+                }
+                // Aura — the whole figure bloomed beneath itself.
+                ctx.drawLayer { aura in
+                    aura.addFilter(.blur(radius: rect.width * 0.045))
+                    aura.fill(layers.combined, with: .color(theme.primary.opacity(0.5)))
+                }
+                // The mark itself, with the muscle cuts / plate holes PUNCHED out of it —
+                // negative space is what turns a stick figure into an emblem.
+                ctx.drawLayer { mark in
+                    mark.fill(layers.gear, with: .color(theme.accent.opacity(0.82)))
+                    mark.fill(layers.body, with: .color(theme.primary))
+                    mark.fill(layers.ki, with: .color(theme.highlight.opacity(0.95)))
+                    mark.blendMode = .destinationOut
+                    mark.fill(layers.cuts, with: .color(.white))
+                }
             }
-            // Aura — the whole figure bloomed beneath itself.
-            ctx.drawLayer { aura in
-                aura.addFilter(.blur(radius: rect.width * 0.045))
-                aura.fill(layers.combined, with: .color(color.opacity(0.5)))
-            }
-            // The mark itself, with the muscle cuts / plate holes PUNCHED out of it —
-            // negative space is what turns a stick figure into an emblem.
-            ctx.drawLayer { mark in
-                mark.fill(layers.gear, with: .color(color.opacity(0.78)))
-                mark.fill(layers.body, with: .color(color))
-                mark.fill(layers.ki, with: .color(color.opacity(0.9)))
-                mark.blendMode = .destinationOut
-                mark.fill(layers.cuts, with: .color(.white))
-            }
+            CharacterIconMotifRing(theme: theme)
         }
         .aspectRatio(1, contentMode: .fit)
+        .clipShape(Circle())
+        .overlay {
+            Circle().strokeBorder(theme.primary.opacity(0.9), lineWidth: 1.5)
+        }
+        .overlay(alignment: .topTrailing) {
+            CharacterSignatureBadge(theme: theme)
+                .frame(width: 14, height: 14)
+                .offset(x: 1, y: -1)
+        }
+        .shadow(color: theme.primary.opacity(0.38), radius: 5)
     }
 }
 
@@ -1298,11 +1320,87 @@ struct ExerciseIcon: View {
     }
 }
 
+/// Bespoke action mark for the create row. A pixel dumbbell is crossed by the
+/// forge-plus, then wrapped in the active patron's signature rim.
+struct CreateExerciseMark: View {
+    var size: CGFloat = 40
+
+    @Environment(\.activeSettCharacter) private var activeCharacter
+
+    var body: some View {
+        let theme = activeCharacter.iconTheme
+        ZStack {
+            Circle()
+                .fill(RadialGradient(
+                    colors: [theme.primary.opacity(0.22), TimeChamber.void.opacity(0.98)],
+                    center: .center, startRadius: 0, endRadius: size * 0.6))
+            Canvas { context, canvasSize in
+                let side = min(canvasSize.width, canvasSize.height)
+                let unit = side / 24
+                let ox = (canvasSize.width - side) / 2
+                let oy = (canvasSize.height - side) / 2
+                func fill(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ h: CGFloat, _ color: Color) {
+                    context.fill(Path(CGRect(x: ox + x * unit, y: oy + y * unit,
+                                             width: w * unit, height: h * unit)),
+                                 with: .color(color))
+                }
+
+                // Pixel dumbbell.
+                fill(5, 10, 14, 4, theme.primary)
+                fill(3, 7, 3, 10, theme.highlight)
+                fill(18, 7, 3, 10, theme.highlight)
+                // Gold forge-plus punched over the bar.
+                fill(10, 5, 4, 14, theme.accent)
+                fill(7, 10, 10, 4, theme.accent)
+                fill(11, 6, 2, 12, theme.highlight.opacity(0.9))
+            }
+            CharacterIconMotifRing(theme: theme)
+        }
+        .frame(width: size, height: size)
+        .clipShape(Circle())
+        .overlay { Circle().strokeBorder(theme.primary.opacity(0.95), lineWidth: max(1.5, size / 15)) }
+        .shadow(color: theme.primary.opacity(0.45), radius: size * 0.14)
+        .accessibilityHidden(true)
+    }
+}
+
+/// Shared footer label so Library and both add-exercise flows use the same
+/// icon, typography, hierarchy, and current-character styling.
+struct CreateExerciseRowLabel: View {
+    @Environment(\.activeSettCharacter) private var activeCharacter
+
+    var body: some View {
+        let theme = activeCharacter.iconTheme
+        HStack(spacing: 12) {
+            CreateExerciseMark(size: 40)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("FORGE CUSTOM EXERCISE")
+                    .font(.system(size: 12, weight: .heavy, design: .monospaced))
+                    .kerning(1.15)
+                    .foregroundStyle(theme.primary)
+                Text("BUILD A NEW MOVEMENT")
+                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                    .kerning(0.8)
+                    .foregroundStyle(SettColor.ash)
+            }
+            Spacer()
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(theme.accent)
+        }
+        .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Create custom exercise")
+    }
+}
+
 #if DEBUG
 /// Contact sheet of all 39 movement glyphs + the 8 muscle emblems — for visual QA.
 /// Shown via SETT_DEBUG_GLYPHS=1.
 struct ExerciseGlyphContactSheet: View {
-    /// SETT_DEBUG_GLYPHS=1 → first 24 movements; =2 → the rest + muscle emblems.
+    /// SETT_DEBUG_GLYPHS=1 → first 24 vectors; =2 → the rest + vector muscle emblems;
+    /// =3 → generated exercise catalog; =4 → generated muscle-category artwork only.
     var page = ProcessInfo.processInfo.environment["SETT_DEBUG_GLYPHS"] ?? "1"
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 6), count: 4)
     /// Every movement name in the top-50 catalog (for the art QA page).
@@ -1317,7 +1415,27 @@ struct ExerciseGlyphContactSheet: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 12) {
-                if page == "3" {
+                if page == "4" {
+                    Text("GENERATED MUSCLE ART")
+                        .font(.system(size: 11, weight: .heavy, design: .monospaced))
+                        .kerning(1.8)
+                        .foregroundStyle(SettColor.bone)
+                    LazyVGrid(columns: columns, spacing: 12) {
+                        ForEach(Muscle.allCases, id: \.self) { muscle in
+                            VStack(spacing: 4) {
+                                ExerciseIcon(name: "?", equipment: .bodyweight,
+                                             muscle: muscle, size: 86)
+                                Text(muscle.rawValue.uppercased())
+                                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                    .kerning(1)
+                                    .foregroundStyle(SettColor.ash)
+                            }
+                        }
+                    }
+                } else if page == "3" {
+                    CreateExerciseRowLabel()
+                        .padding(10)
+                        .nestedSlab(radius: 12)
                     // Generated-art QA: icons resolve art-first (vector fallback).
                     LazyVGrid(columns: columns, spacing: 10) {
                         ForEach(allMovementNames, id: \.self) { name in
