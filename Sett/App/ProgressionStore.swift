@@ -45,6 +45,21 @@ public final class ProgressionStore {
         return PowerLevelBreakdown.attribution(from: baseline, to: latest, config: config)
     }
 
+    /// ISO calendar (Monday weeks) so the weekly buckets match the streak engine.
+    private static let isoWeekCalendar: Calendar = {
+        var cal = Calendar(identifier: .iso8601)
+        cal.timeZone = .current
+        return cal
+    }()
+
+    /// The PL change per ISO week over the trailing `weeks` — the week-by-week rhythm
+    /// of the climb (rest weeks read as a flat 0). Derived from powerLevelHistory, so
+    /// it stays retroactive and needs no stored series.
+    public func powerLevelWeeklyChanges(weeks: Int = 12) -> [WeeklyPLChange] {
+        PowerLevelBreakdown.weeklyChanges(history: powerLevelHistory,
+                                          calendar: Self.isoWeekCalendar, weeks: weeks)
+    }
+
     public init() {
         self.config = try? ProgressionConfig.load()
     }

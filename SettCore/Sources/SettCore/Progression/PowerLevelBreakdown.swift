@@ -64,7 +64,57 @@ public struct PLAttribution: Sendable, Hashable {
     }
 }
 
+/// One ISO week of the power-level trajectory: the PL it ended on and how much
+/// that moved from the prior week's close. Rest weeks (no training) carry the
+/// last close forward and read as a flat 0.
+public struct WeeklyPLChange: Sendable, Hashable {
+    public let weekStart: Date
+    public let endPL: Int
+    public let deltaPL: Int
+
+    public init(weekStart: Date, endPL: Int, deltaPL: Int) {
+        self.weekStart = weekStart
+        self.endPL = endPL
+        self.deltaPL = deltaPL
+    }
+}
+
 public enum PowerLevelBreakdown {
+
+    /// Bucket the per-day trajectory into ISO weeks — each week's close is the PL of
+    /// its last training day — then walk week-by-week from the first training week to
+    /// the latest, carrying the last close across empty weeks so a rest week reports a
+    /// flat 0 rather than a gap. deltaPL is the close minus the prior week's close (the
+    /// first week measures from 0, the ground the user started on). Returns the trailing
+    /// `weeks` entries, oldest first.
+    public static func weeklyChanges(history: [PLPoint], calendar: Calendar,
+                                     weeks: Int) -> [WeeklyPLChange] {
+        guard !history.isEmpty else { return [] }
+
+        // Last close per ISO week (history is oldest-first, so the later point wins).
+        var closeByWeek: [Date: Int] = [:]
+        for point in history {
+            let weekStart = calendar.dateInterval(of: .weekOfYear, for: point.date)?.start
+                ?? calendar.startOfDay(for: point.date)
+            closeByWeek[weekStart] = point.pl
+        }
+        let weekStarts = closeByWeek.keys.sorted()
+        guard let first = weekStarts.first, let last = weekStarts.last else { return [] }
+
+        var result: [WeeklyPLChange] = []
+        var priorClose = 0            // pre-history ground is 0 PL
+        var carried = 0               // last known close, carried across empty weeks
+        var cursor = first
+        while cursor <= last {
+            if let close = closeByWeek[cursor] { carried = close }
+            result.append(WeeklyPLChange(weekStart: cursor, endPL: carried,
+                                         deltaPL: carried - priorClose))
+            priorClose = carried
+            guard let next = calendar.date(byAdding: .weekOfYear, value: 1, to: cursor) else { break }
+            cursor = next
+        }
+        return Array(result.suffix(weeks))
+    }
 
     /// Split the current PL into its strength / volume / streak-bonus pieces.
     /// Recomputed from the rounded snapshot levers, so the pieces reconstruct the

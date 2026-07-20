@@ -618,6 +618,33 @@ struct PowerLevelBreakdownTests {
         #expect(attr.deltaPL == expected)
     }
 
+    /// Weekly buckets: one entry per ISO week between the first and last training
+    /// week, empty weeks carried flat (delta 0), the first week measured from 0.
+    @Test("weeklyChanges: per-week deltas, gaps flat, trailing window")
+    func weeklyChangesBucketing() throws {
+        let cal = madridCalendar()
+        func pt(_ d: Date, _ pl: Int) -> PLPoint {
+            PLPoint(date: d, pl: pl, strengthScore: 0, weeklyVolumeLb: 0, consistencyMultiplier: 1)
+        }
+        // Weeks of Jun 2, Jun 9, (gap Jun 16), Jun 23 — 2025.
+        let history = [pt(date(2025, 6, 4), 2000), pt(date(2025, 6, 11), 2300),
+                       pt(date(2025, 6, 25), 2500)]
+
+        let all = PowerLevelBreakdown.weeklyChanges(history: history, calendar: cal, weeks: 12)
+        #expect(all.count == 4)                                  // the gap week is filled
+        #expect(all.map(\.deltaPL) == [2000, 300, 0, 200])       // first from 0; gap flat
+        #expect(all.map(\.endPL) == [2000, 2300, 2300, 2500])    // gap carries the prior close
+        // ISO weeks are exactly 7 days apart, ascending.
+        let starts = all.map(\.weekStart)
+        for (a, b) in zip(starts, starts.dropFirst()) {
+            #expect(cal.dateComponents([.day], from: a, to: b).day == 7)
+        }
+        // Trailing window keeps only the last N.
+        let last2 = PowerLevelBreakdown.weeklyChanges(history: history, calendar: cal, weeks: 2)
+        #expect(last2.map(\.deltaPL) == [0, 200])
+        #expect(PowerLevelBreakdown.weeklyChanges(history: [], calendar: cal, weeks: 12).isEmpty)
+    }
+
     /// Only volume grows: strength and consistency have exactly-zero marginals in every
     /// coalition, so volume carries the whole (positive) delta.
     @Test("Attribution: volume dominates when only volume grew")

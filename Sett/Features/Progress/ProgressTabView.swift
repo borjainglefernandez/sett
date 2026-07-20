@@ -93,20 +93,16 @@ struct ProgressTabView: View {
 
     private func isAvailable(_ section: ProgressSection) -> Bool {
         switch section {
-        case .weight:           return !bodyweightEntries.isEmpty
-        case .goals, .insights: return true
-        // power/net/volume/muscles/strength/sleep/prs all read finished workouts.
-        default:                return workoutSamples.count >= 2
+        // Body rides its own tracks — a month of weigh-ins with no workouts still counts.
+        case .body:  return !bodyweightEntries.isEmpty || workoutSamples.count >= 2
+        case .goals: return true
+        // power/strength/volume all read finished workouts.
+        default:     return workoutSamples.count >= 2
         }
     }
 
-    /// Only the three bucketed cards take `period`; the rest ignore it.
-    private var showsPeriodPicker: Bool {
-        switch section {
-        case .net, .volume, .muscles: return true
-        default:                      return false
-        }
-    }
+    /// Only the Volume group's cards (net + volume + muscle split) take `period`.
+    private var showsPeriodPicker: Bool { section == .volume }
 
     /// Horizontal because there are ~10 sections — the `ChamberSegments` capsule
     /// grammar, made scrollable, with the active chip pulling itself into view.
@@ -160,44 +156,51 @@ struct ProgressTabView: View {
         }
     }
 
-    /// Each card keeps the exact arguments the old vertical stack fed it; only Power
-    /// gains the breakdown panel beneath its history.
+    /// Each grouped section stacks the cards it gathered, with the exact arguments
+    /// the old flat list fed them. The `.id`/`.transition` on sectionContent collapses
+    /// a section into one child, so every multi-card group needs its own VStack.
     @ViewBuilder
     private func graph(for kind: ProgressSection) -> some View {
         switch kind {
         case .power:
-            // Explicit stack: `.id`/`.transition` collapse `sectionContent` into a single
-            // child, so this two-card case would overlap without its own VStack.
             VStack(alignment: .leading, spacing: 16) {
                 PowerHistoryCard(history: services.progression.powerLevelHistory,
                                  peakPL: services.progression.snapshot?.allTimePeakPL ?? 0)
+                WeeklyPowerCard(weeks: services.progression.powerLevelWeeklyChanges())
                 PLBreakdownView()
             }
-        case .net:
-            NetSummaryCard(samples: setSamples, period: period,
-                           unit: unit, calendar: Self.isoCalendar,
-                           phase: services.settings.phase)
-        case .volume:
-            VolumeChartCard(samples: setSamples, period: period,
-                            unit: unit, calendar: Self.isoCalendar)
-        case .muscles:
-            MuscleBalanceCard(samples: setSamples, period: period,
-                              calendar: Self.isoCalendar)
         case .strength:
-            E1RMTrendsCard(samples: setSamples, exerciseNames: exerciseNames, unit: unit)
-        case .sleep:
-            SleepImpactCard(setSamples: setSamples, workoutSamples: workoutSamples,
-                            sleepDays: sleepDays, unit: unit, calendar: Self.isoCalendar)
-        case .weight:
-            BodyweightCard(entries: bodyweightEntries, unit: unit)
-        case .prs:
-            PRFeedCard(samples: setSamples, exerciseNames: exerciseNames, unit: unit)
+            VStack(alignment: .leading, spacing: 16) {
+                E1RMTrendsCard(samples: setSamples, exerciseNames: exerciseNames, unit: unit)
+                PRFeedCard(samples: setSamples, exerciseNames: exerciseNames, unit: unit)
+            }
+        case .volume:
+            VStack(alignment: .leading, spacing: 16) {
+                NetSummaryCard(samples: setSamples, period: period,
+                               unit: unit, calendar: Self.isoCalendar,
+                               phase: services.settings.phase)
+                VolumeChartCard(samples: setSamples, period: period,
+                                unit: unit, calendar: Self.isoCalendar)
+                MuscleBalanceCard(samples: setSamples, period: period,
+                                  calendar: Self.isoCalendar)
+            }
+        case .body:
+            VStack(alignment: .leading, spacing: 16) {
+                if !bodyweightEntries.isEmpty {
+                    BodyweightCard(entries: bodyweightEntries, unit: unit)
+                }
+                if workoutSamples.count >= 2 {
+                    SleepImpactCard(setSamples: setSamples, workoutSamples: workoutSamples,
+                                    sleepDays: sleepDays, unit: unit, calendar: Self.isoCalendar)
+                }
+            }
         case .goals:
-            GoalsSection(goals: goals, setSamples: setSamples,
-                         workoutSamples: workoutSamples,
-                         unit: unit, calendar: Self.isoCalendar)
-        case .insights:
-            InsightsCard(insights: insights)
+            VStack(alignment: .leading, spacing: 16) {
+                GoalsSection(goals: goals, setSamples: setSamples,
+                             workoutSamples: workoutSamples,
+                             unit: unit, calendar: Self.isoCalendar)
+                InsightsCard(insights: insights)
+            }
         }
     }
 
@@ -278,23 +281,21 @@ struct ProgressTabView: View {
     }
 }
 
-/// The switchable graphs on the Progress tab. Declaration order = chip order;
-/// `title` is the short chip label (mono-uppercased in the chip itself).
+/// The switchable sections on the Progress tab. Grouped so no screen is a lone
+/// thin card: Strength gathers e1RM + PRs, Volume gathers net + volume + muscle
+/// split, Body gathers weight + sleep, Goals gathers goals + insights. Power is
+/// the flagship (trajectory + weekly change + contributors). Declaration order =
+/// chip order; `title` is the short chip label (mono-uppercased in the chip).
 private enum ProgressSection: CaseIterable, Hashable {
-    case power, net, volume, muscles, strength, sleep, weight, prs, goals, insights
+    case power, strength, volume, body, goals
 
     var title: String {
         switch self {
         case .power:    return "Power"
-        case .net:      return "Net"
-        case .volume:   return "Volume"
-        case .muscles:  return "Muscles"
         case .strength: return "Strength"
-        case .sleep:    return "Sleep"
-        case .weight:   return "Weight"
-        case .prs:      return "PRs"
+        case .volume:   return "Volume"
+        case .body:     return "Body"
         case .goals:    return "Goals"
-        case .insights: return "Insights"
         }
     }
 }
