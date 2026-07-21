@@ -47,12 +47,12 @@ struct VolumeLandmarksCard: View {
     /// card never re-sorts by count), plus any landmark-less stray that actually
     /// holds sets this week (.other, un-migrated legacy .legs): hiding logged work
     /// would undercut the card's honesty, but at zero sets those rows just vanish.
+    ///
+    /// Counts come through `WeeklyHardSets.byMuscle` — the ONE weekly hard-set
+    /// counter in SettCore — so this card provably agrees with every Home
+    /// surface reading the same contract, instead of re-deriving the week here.
     private var rows: [GroupRow] {
-        guard let week = calendar.dateInterval(of: .weekOfYear, for: .now) else { return [] }
-        var counts: [Muscle: Int] = [:]
-        for sample in samples where !sample.isWarmup && week.contains(sample.completedAt) {
-            counts[sample.muscle, default: 0] += 1
-        }
+        let counts = WeeklyHardSets.byMuscle(samples: samples, calendar: calendar)
         var rows = Muscle.volumeGroups.map {
             GroupRow(muscle: $0, sets: counts[$0] ?? 0,
                      landmarks: VolumeLandmarks.landmarks(for: $0))
@@ -65,26 +65,56 @@ struct VolumeLandmarksCard: View {
         return rows
     }
 
+    /// "MON 20 - SUN 26 JUL" — the exact ISO week the counts cover, from the
+    /// SAME calendar+now the `WeeklyHardSets` contract reads, so the dates and
+    /// the numbers can't drift apart. The month appears once when the week
+    /// stays inside it, on both ends when the week straddles a boundary
+    /// ("MON 29 JUN - SUN 5 JUL"). POSIX locale: this is a mono label in the
+    /// eyebrow register, not prose, and it must render stably.
+    private var weekWindowLabel: String {
+        guard let week = calendar.dateInterval(of: .weekOfYear, for: .now),
+              let last = calendar.date(byAdding: .day, value: 6, to: week.start)
+        else { return "" }
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        let sameMonth = calendar.isDate(week.start, equalTo: last, toGranularity: .month)
+        formatter.dateFormat = sameMonth ? "EEE d" : "EEE d MMM"
+        let start = formatter.string(from: week.start)
+        formatter.dateFormat = "EEE d MMM"
+        let end = formatter.string(from: last)
+        return (start + " - " + end).uppercased()
+    }
+
     // MARK: Body
 
     var body: some View {
         let rows = rows
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                CardTitle("Weekly volume")
-                HStack(spacing: 5) {
-                    Eyebrow("HARD SETS · WK")
-                    // (i) → the landmarks manual, discoverable right where the
-                    // bands raise the question.
-                    Button { showingExplainer = true } label: {
-                        Image(systemName: "info.circle")
-                            .font(.caption2)
-                            .foregroundStyle(SettColor.ash)
-                            .contentShape(Rectangle())
+            VStack(alignment: .leading, spacing: 3) {
+                HStack {
+                    CardTitle("Weekly volume")
+                    HStack(spacing: 5) {
+                        Eyebrow("HARD SETS · THIS WEEK")
+                        // (i) → the landmarks manual, discoverable right where the
+                        // bands raise the question.
+                        Button { showingExplainer = true } label: {
+                            Image(systemName: "info.circle")
+                                .font(.caption2)
+                                .foregroundStyle(SettColor.ash)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("What the volume landmarks mean")
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("What the volume landmarks mean")
                 }
+                // The window, spelled out in dates: this card is THIS ISO week
+                // only, so it can never be confused with the 8-week Volume
+                // chart that follows it in the section.
+                Text(weekWindowLabel)
+                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                    .kerning(1)
+                    .foregroundStyle(SettColor.iron)
             }
             VStack(alignment: .leading, spacing: 10) {
                 ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
@@ -110,7 +140,7 @@ struct VolumeLandmarksCard: View {
     private func groupRow(_ row: GroupRow, index: Int) -> some View {
         let zone = zone(for: row)
         return VStack(alignment: .trailing, spacing: 3) {
-            HStack(spacing: 10) {
+            HStack(alignment: .top, spacing: 10) {
                 Text(row.muscle.shortLabel)
                     .font(.system(size: 10, weight: .bold, design: .monospaced))
                     .kerning(1)
@@ -118,13 +148,15 @@ struct VolumeLandmarksCard: View {
                     .frame(width: 76, alignment: .leading)
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
-                track(row, index: index)
-                    .frame(height: 10)
-                Text("\(row.sets)")
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                    .monospacedDigit()
-                    .foregroundStyle(countInk(zone))
-                    .frame(width: 26, alignment: .trailing)
+                VStack(alignment: .leading, spacing: 1) {
+                    track(row, index: index)
+                        .frame(height: 10)
+                    thresholdTicks(row)
+                }
+                countLabel(row, zone: zone)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .frame(width: 60, alignment: .trailing)
             }
             if zone == .pastCeiling {
                 // Recovery guidance in the quiet register — ash eyebrow, no alarm.
@@ -177,6 +209,51 @@ struct VolumeLandmarksCard: View {
             .fill(color)
             .frame(width: max(x1 - x0, 2))
             .offset(x: x0)
+    }
+
+    /// The band's anatomy in numerals: the FLOOR number sits under the band's
+    /// floor edge and the CEILING number under its ceiling edge (8pt iron
+    /// mono), so chest reads "6 … 20" per row without opening the info sheet.
+    /// Structure ink only — the ticks never take zone color, and they share
+    /// `domainMax` with the bands so they can't drift off the edges they name.
+    /// Landmark-less strays have no band, so no ticks.
+    @ViewBuilder
+    private func thresholdTicks(_ row: GroupRow) -> some View {
+        if let marks = row.landmarks {
+            GeometryReader { geo in
+                let width = geo.size.width
+                let domain = domainMax(row)
+                ZStack(alignment: .topLeading) {
+                    tickNumeral(marks.floor)
+                        .position(x: width * CGFloat(Double(marks.floor) / domain), y: 4)
+                    tickNumeral(marks.ceiling)
+                        .position(x: width * CGFloat(Double(marks.ceiling) / domain), y: 4)
+                }
+            }
+            .frame(height: 8)
+        }
+    }
+
+    private func tickNumeral(_ value: Int) -> some View {
+        Text("\(value)")
+            .font(.system(size: 8, weight: .semibold, design: .monospaced))
+            .foregroundStyle(SettColor.iron)
+            .fixedSize()
+    }
+
+    /// "n / s-S" — the week's count in its zone ink against the sweet-spot
+    /// range in iron ("2 / 10-16"): the done-vs-target read at the row's edge,
+    /// with the range in structure ink so the user's own number keeps the
+    /// color story. Strays without landmarks show the bare count.
+    private func countLabel(_ row: GroupRow, zone: Zone) -> Text {
+        let count = Text("\(row.sets)")
+            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+            .foregroundStyle(countInk(zone))
+        guard let marks = row.landmarks else { return count }
+        return count
+            + Text(" / \(marks.sweetLow)-\(marks.sweetHigh)")
+                .font(.system(size: 9, weight: .medium, design: .monospaced))
+                .foregroundStyle(SettColor.iron)
     }
 
     /// Track domain: 12% headroom past the ceiling so an over-ceiling bar visibly
@@ -274,6 +351,11 @@ private struct VolumeLandmarksExplainer: View {
                         The ceiling is the recovery line. Past it, extra sets \
                         mostly add fatigue, not growth — pulling back is the \
                         productive move.
+                        """)
+                    bullet("""
+                        The small numbers under each bar are that band's two \
+                        edges: floor — grows · sweet spot — brightest · \
+                        ceiling — recovery line.
                         """)
                     bullet("""
                         Across all groups, most lifters land between \

@@ -47,9 +47,15 @@ public final class WorkoutSessionStore {
 
     private func resumeOngoingWorkoutIfAny() {
         #if DEBUG
+        let env = ProcessInfo.processInfo.environment
+        // A NORMAL launch (no SETT_DEBUG_* env at all) sweeps any workouts a
+        // previous harness run fabricated — before the ongoing fetch below, so a
+        // live demo session is tombstoned rather than resumed as a real one.
+        if !env.keys.contains(where: { $0.hasPrefix("SETT_DEBUG_") }) {
+            purgeDebugDemoWorkouts()
+        }
         // Screenshot harness: a resurrected demo workout's fullScreenCover was
         // occluding every SETT_DEBUG_SURFACE / SETT_DEBUG_TAB capture.
-        let env = ProcessInfo.processInfo.environment
         if !(env["SETT_DEBUG_SURFACE"] ?? "").isEmpty || !(env["SETT_DEBUG_TAB"] ?? "").isEmpty {
             return
         }
@@ -150,6 +156,9 @@ public final class WorkoutSessionStore {
             FetchDescriptor<Routine>(predicate: #Predicate { $0.deletedAt == nil }))) ?? []
         guard let routine = routines.first else { return }
         start(routine: routine)
+        // Tag the fabricated session so the next NORMAL launch sweeps it — harness
+        // captures must never leave a phantom 2-set workout in the real week's ledger.
+        if let id = activeWorkout?.id { recordDebugDemoWorkout(id) }
         // Insert directly (not logSet) so no rest timer / notification prompt fires.
         if let first = activeWorkout?.orderedExercises.first {
             let grams = Units.grams(fromDisplay: 135, unit: settings.unit)
@@ -172,6 +181,48 @@ public final class WorkoutSessionStore {
         set.notes = notes
         set.workoutExercise = workoutExercise
         context.insert(set)
+    }
+
+    /// UserDefaults key: UUIDs of workouts fabricated by `debugStartOverviewDemo`,
+    /// pending sweep by the next launch without any `SETT_DEBUG_*` env.
+    private static let demoWorkoutIDsKey = "sett.debug.demoWorkoutIDs"
+
+    private func recordDebugDemoWorkout(_ id: UUID) {
+        let defaults = UserDefaults.standard
+        var ids = defaults.stringArray(forKey: Self.demoWorkoutIDsKey) ?? []
+        ids.append(id.uuidString)
+        defaults.set(ids, forKey: Self.demoWorkoutIDsKey)
+    }
+
+    /// Harness hygiene: demo sessions the screenshot harness fabricated were
+    /// polluting the sim ledger as phantom 2-set workouts. On a normal launch,
+    /// soft-delete every recorded demo workout still live — tombstoning children
+    /// too, mirroring `deleteWorkout`'s sync discipline — then clear the list.
+    private func purgeDebugDemoWorkouts() {
+        let defaults = UserDefaults.standard
+        guard let stored = defaults.stringArray(forKey: Self.demoWorkoutIDsKey),
+              !stored.isEmpty else { return }
+        defaults.removeObject(forKey: Self.demoWorkoutIDsKey)
+        let ids = Set(stored.compactMap(UUID.init(uuidString:)))
+        guard !ids.isEmpty else { return }
+        let workouts = (try? context.fetch(FetchDescriptor<Workout>())) ?? []
+        let now = Date.now
+        var swept = false
+        for workout in workouts where ids.contains(workout.id) && workout.deletedAt == nil {
+            for we in workout.exercises {
+                for set in we.sets where set.deletedAt == nil {
+                    set.deletedAt = now; set.updatedAt = now; set.needsPush = true
+                }
+                if we.deletedAt == nil {
+                    we.deletedAt = now; we.updatedAt = now; we.needsPush = true
+                }
+            }
+            workout.deletedAt = now
+            workout.updatedAt = now
+            workout.needsPush = true
+            swept = true
+        }
+        if swept { persist() }
     }
     #endif
 

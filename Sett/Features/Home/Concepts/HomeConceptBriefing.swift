@@ -12,7 +12,7 @@ import SettCore
 // 1px scanline sweeps once. The boot plays ONCE per app session — tab-hopping back
 // lands the grid instantly. Two mono sizes only (10 / 13); the discipline IS the
 // aesthetic. Eight tiles fill the viewport: POWER+STREAK / VEXETH (with the
-// two-line race) / DIRECTIVE / WEEK / TRAJECTORY (the 10-week gold curve) /
+// gap trendline) / DIRECTIVE / WEEK / TRAJECTORY (the 10-week gold curve) /
 // ZONES+LAST SCAN, then the SYSTEM ticker. Color law holds: gold = the PL numeral
 // and its trajectory line only, cyan = ki/action, crimson = the ONE Vexeth tile,
 // scouter green = the live START control (session grammar). Reduce Motion:
@@ -21,6 +21,7 @@ struct HomeConceptBriefingView: View {
     @Environment(AppServices.self) private var services
     @Environment(WorkoutSessionStore.self) private var session
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.modelContext) private var modelContext
 
     @Query private var finishedWorkouts: [Workout]
     @Query private var routines: [Routine]
@@ -294,7 +295,7 @@ struct HomeConceptBriefingView: View {
         return "\(streakWeeks) week streak\(shieldPart)\(weekPart)"
     }
 
-    // MARK: VEXETH tile (the ONLY crimson tile — gap numeral + the two-line race)
+    // MARK: VEXETH tile (the ONLY crimson tile — gap numeral + the gap trendline)
 
     private var rivalTile: some View {
         let pl = services.progression.snapshotPowerLevel
@@ -336,27 +337,48 @@ struct HomeConceptBriefingView: View {
         .accessibilityLabel(rivalAccessibility(gap: gap, form: rival.form, taunt: taunt))
     }
 
-    /// The two-line mini race — bone you, crimson him — converging (or not) over the
-    /// trailing 8 weeks. Static marks, hidden axes: pure shape, no chart chrome.
+    /// The GAP trendline — ONE bone line, (Vexeth's PL minus yours) per trailing
+    /// week, against a dashed crimson baseline at 0 ("HIM"). His scripted growth
+    /// stops flat-lining the chart: the story is YOUR closing distance — a falling
+    /// line means you're closing in, dipping below the baseline means you passed
+    /// him. The line stays bone throughout (calm); crimson is the baseline alone.
     private var raceSparkline: some View {
-        Chart {
-            ForEach(Array(raceLines.enumerated()), id: \.offset) { item in
-                LineMark(x: .value("Week", item.element.weekStart),
-                         y: .value("PL", item.element.you),
-                         series: .value("Series", "You"))
-                    .foregroundStyle(SettColor.bone)
-                    .lineStyle(StrokeStyle(lineWidth: 1.5))
-                LineMark(x: .value("Week", item.element.weekStart),
-                         y: .value("PL", item.element.rival),
-                         series: .value("Series", "Vexeth"))
-                    .foregroundStyle(SettColor.villainCrimson)
-                    .lineStyle(StrokeStyle(lineWidth: 1.5))
+        let gaps = raceLines.map { (weekStart: $0.weekStart, gap: $0.rival - $0.you) }
+        // Y-domain padded past the extremes (0 always included so the baseline
+        // shows) — the line never kisses the frame.
+        let lo = min(gaps.map(\.gap).min() ?? 0, 0)
+        let hi = max(gaps.map(\.gap).max() ?? 0, 0)
+        let pad = max(1, Int((Double(hi - lo) * 0.18).rounded(.up)))
+        return VStack(alignment: .trailing, spacing: 2) {
+            Chart {
+                RuleMark(y: .value("Gap", 0))
+                    .foregroundStyle(SettColor.villainCrimson.opacity(0.65))
+                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                    .annotation(position: .top, alignment: .trailing, spacing: 1,
+                                overflowResolution: .init(x: .fit(to: .chart), y: .fit(to: .chart))) {
+                        Text("HIM")
+                            .font(.system(size: 7, weight: .bold, design: .monospaced))
+                            .kerning(1)
+                            .foregroundStyle(SettColor.villainCrimson.opacity(0.8))
+                    }
+                ForEach(gaps, id: \.weekStart) { point in
+                    LineMark(x: .value("Week", point.weekStart),
+                             y: .value("Gap", point.gap))
+                        .foregroundStyle(SettColor.bone)
+                        .lineStyle(StrokeStyle(lineWidth: 1.5))
+                }
             }
+            .chartXAxis(.hidden)
+            .chartYAxis(.hidden)
+            .chartLegend(.hidden)
+            .chartYScale(domain: (lo - pad) ... (hi + pad))
+            .frame(width: 132, height: 28)
+            Text("GAP · \(gaps.count) WK")
+                .font(.system(size: 8, weight: .bold, design: .monospaced))
+                .kerning(1)
+                .monospacedDigit()
+                .foregroundStyle(SettColor.iron)
         }
-        .chartXAxis(.hidden)
-        .chartYAxis(.hidden)
-        .chartLegend(.hidden)
-        .frame(width: 132, height: 28)
         .accessibilityHidden(true)
     }
 
@@ -368,7 +390,7 @@ struct HomeConceptBriefingView: View {
             let openGap = first.rival - first.you
             let nowGap = last.rival - last.you
             let trend = nowGap < openGap ? "closing" : nowGap > openGap ? "widening" : "holding"
-            parts.append("the race is \(trend)")
+            parts.append("the gap is \(trend) over \(raceLines.count) weeks")
         }
         parts.append(taunt)
         return parts.joined(separator: ". ")
@@ -1060,26 +1082,16 @@ struct HomeConceptBriefingView: View {
                                   to: cal.startOfDay(for: .now)).day
     }
 
-    /// This week's hard working sets AND the per-muscle zone verdict — ONE
-    /// relationship walk, so it runs in a task and lands in @State, never in
-    /// `body` (per the CPU traps).
+    /// This week's hard working sets AND the per-muscle zone verdict — routed
+    /// through the shared WeeklyHardSets engine (canonical SampleExtractor samples
+    /// → total/byMuscle) so every surface counts the week identically. Still ONE
+    /// relationship walk, run in a task and landed in @State, never in `body`
+    /// (per the CPU traps).
     private func loadWeekSets() {
-        guard let week = Self.isoCalendar.dateInterval(of: .weekOfYear, for: .now) else {
-            weekSetCount = 0
-            weekZonesInZone = 0
-            return
-        }
-        var muscleSets: [Muscle: Int] = [:]
-        var total = 0
-        for workout in finishedWorkouts where week.contains(workout.startedAt) {
-            for exercise in workout.orderedExercises {
-                for set in exercise.orderedSets where !set.isWarmup {
-                    total += 1
-                    muscleSets[exercise.muscle, default: 0] += 1
-                }
-            }
-        }
-        weekSetCount = total
+        let samples = SampleExtractor.setSamples(context: modelContext)
+        let calendar = Self.isoCalendar
+        weekSetCount = WeeklyHardSets.total(samples: samples, calendar: calendar)
+        let muscleSets = WeeklyHardSets.byMuscle(samples: samples, calendar: calendar)
         var inZone = 0
         for muscle in Muscle.volumeGroups {
             guard let landmarks = VolumeLandmarks.landmarks(for: muscle),

@@ -5,13 +5,16 @@ import SettCore
 // MARK: - Concept 3 — "FUSION" (Briefing's glance + Corridor's road)
 //
 // One screen, two questions. The TOP is Briefing compressed to its essence: a
-// fixed ~230pt telemetry band in strict mono grammar — POWER (the one gold
-// numeral), STREAK, VEXETH (the one crimson tile), WEEK — that answers "how am
-// I doing" in two seconds and never scrolls. BELOW it, Corridor's road answers
-// "where am I going": the glowing rail drops straight out of the POWER tile's
-// baseline and walks the week — sealed yesterday, TODAY's doorway, the
-// remaining stops, the crimson stretch where Vexeth stands, and the distant
-// gold gate of the next form.
+// fixed ~205pt telemetry band in strict mono grammar — a tall POWER tile (the
+// one gold numeral, form, week line, hard-set pulse) beside a STREAK-over-WEEK
+// column — that answers "how am I doing" in two seconds and never scrolls.
+// Vexeth has NO band tile: he is a place, not a stat, and lives only at his
+// stop on the road. BELOW the band, Corridor's road answers "where am I going"
+// AND "where have I been": the glowing rail drops straight out of the POWER
+// tile's baseline, fades up into the recent PAST (compact sealed medallions +
+// an ALL SCANS link into the full log), and walks the week — sealed yesterday,
+// TODAY's doorway, the remaining stops, the crimson stretch where Vexeth
+// stands, and the distant gold gate of the next form.
 //
 // Signature motion — ONE continuous boot: the glance band scans in (~350 ms,
 // staggered tiles + digit scramble), then the rail draws downward out of the
@@ -19,18 +22,22 @@ import SettCore
 // once per app session. Reduce Motion: everything lands instantly.
 //
 // Color law holds: gold = PL numeral + the form gate ONLY; cyan = ki/action;
-// crimson = Vexeth's tile and his stretch of road, never beside gold; scouter
-// green = the live START control (session grammar); deltaInk on signed numbers.
+// crimson = Vexeth's stretch of road only, never beside gold; scouter green =
+// the live START control (session grammar); deltaInk on signed numbers.
 struct HomeConceptFusionView: View {
     @Environment(AppServices.self) private var services
     @Environment(WorkoutSessionStore.self) private var session
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.modelContext) private var modelContext
 
     @Query private var finishedWorkouts: [Workout]
     @Query private var routines: [Routine]
     @Query private var frequencyGoals: [Goal]
 
     @State private var isShowingStreak = false
+    /// Non-warmup sets landed this ISO week (WeeklyHardSets) — extracted once per
+    /// appearance / new finish, never derived from SwiftData in `body` (CPU law).
+    @State private var weeklyHardSets = 0
 
     // MARK: Boot state (the single connected reveal)
 
@@ -86,6 +93,8 @@ struct HomeConceptFusionView: View {
             .dungeonBackground()
             .toolbar(.hidden, for: .navigationBar)
             .onAppear(perform: boot)
+            // Re-extract when a session lands (count bump) and on first mount.
+            .task(id: finishedWorkouts.count) { refreshWeeklySets() }
             .onChange(of: services.progression.snapshotPowerLevel) { _, newValue in
                 guard booted else { return }
                 if reduceMotion { plShown = newValue }
@@ -106,16 +115,18 @@ struct HomeConceptFusionView: View {
     private var glance: some View {
         VStack(alignment: .leading, spacing: 8) {
             glanceHeader
+            // Two columns, no dead space: the tall POWER tile carries the numeral,
+            // form, week line and hard-set pulse; the right column stacks the
+            // compact STREAK over WEEK. Vexeth holds no tile — he waits on the road.
             HStack(alignment: .top, spacing: 8) {
                 powerTile
-                streakTile.frame(width: 132)
+                VStack(spacing: 8) {
+                    streakTile
+                    weekTile.frame(height: 56)
+                }
+                .frame(width: 132)
             }
-            .frame(height: 118)
-            HStack(alignment: .top, spacing: 8) {
-                rivalTile
-                weekTile
-            }
-            .frame(height: 70)
+            .frame(height: 150)
         }
         .padding(.horizontal, 16)
         .padding(.bottom, 12)
@@ -171,7 +182,7 @@ struct HomeConceptFusionView: View {
         return FusionTile(label: "POWER", index: 0, booted: booted, animated: animatedBoot) {
             VStack(alignment: .leading, spacing: 3) {
                 Text(plShown.formatted())
-                    .font(.system(size: 40, weight: .heavy, design: .rounded).italic())
+                    .font(.system(size: 48, weight: .heavy, design: .rounded).italic())
                     .monospacedDigit()
                     .foregroundStyle(Aura.gold)
                     .contentTransition(.numericText(value: Double(plShown)))
@@ -185,6 +196,7 @@ struct HomeConceptFusionView: View {
                     .font(.system(size: 10, weight: .bold, design: .monospaced))
                     .kerning(1.5)
                     .foregroundStyle(SettColor.heroCyan)
+                Spacer(minLength: 4)
                 Text(powerStatusLine(pl: pl))
                     .font(.system(size: 10, weight: .bold, design: .monospaced))
                     .kerning(1)
@@ -192,10 +204,19 @@ struct HomeConceptFusionView: View {
                     .foregroundStyle(powerStatusTint)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
+                Text("\(weeklyHardSets.formatted()) HARD SET\(weeklyHardSets == 1 ? "" : "S") THIS WK")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .kerning(1)
+                    .monospacedDigit()
+                    .foregroundStyle(SettColor.ash)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .padding(.top, 3)
             }
+            .frame(maxHeight: .infinity, alignment: .topLeading)
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Power level \(pl), \(form.title.capitalized), \(powerStatusLine(pl: pl).lowercased())")
+        .accessibilityLabel("Power level \(pl), \(form.title.capitalized), \(powerStatusLine(pl: pl).lowercased()), \(weeklyHardSets) hard set\(weeklyHardSets == 1 ? "" : "s") this week")
     }
 
     /// Week-so-far ΔPL when a session landed this week; otherwise the chase —
@@ -282,54 +303,14 @@ struct HomeConceptFusionView: View {
         return "\(streakWeeks) week streak\(shieldPart)\(weekPart)"
     }
 
-    // MARK: VEXETH tile (the band's ONLY crimson — he also waits on the road below)
-
-    private var rivalTile: some View {
-        let gap = rival.pl - services.progression.snapshotPowerLevel
-        // Label stays short — "· FORM N" truncated in the half-width tile, and the
-        // road's Vexeth stop below already names the form in full.
-        return FusionTile(label: "VEXETH",
-                          labelTint: SettColor.villainCrimson.opacity(0.9),
-                          rimTint: SettColor.villainCrimson,
-                          index: 2, booted: booted, animated: animatedBoot) {
-            VStack(alignment: .leading, spacing: 3) {
-                FusionScramble(gap > 0 ? "+\(gap.formatted()) PL" : "\(abs(gap).formatted()) PL",
-                               size: 13, color: SettColor.villainCrimson,
-                               delay: tileDelay(2), active: booted,
-                               animated: animatedBoot)
-                Text(rivalGapCaption(gap: gap))
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                    .kerning(1)
-                    .monospacedDigit()
-                    .foregroundStyle(SettColor.ash)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-            }
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(gap > 0
-            ? "Vexeth form \(rival.form), \(gap) power levels ahead, \(rivalGapCaption(gap: gap).lowercased())"
-            : "Vexeth form \(rival.form), \(abs(gap)) power levels behind you")
-    }
-
-    /// AHEAD (+ catch-in-N when your pace outruns his growth) or the lead you hold.
-    private func rivalGapCaption(gap: Int) -> String {
-        guard gap > 0 else { return "BEHIND YOU" }
-        let pace = services.progression.trailingWeeklyPace
-        let growth = services.progression.effectiveRivalGrowth
-        if pace > growth {
-            let weeks = Int((Double(gap) / Double(pace - growth)).rounded(.up))
-            return "AHEAD · CATCH IN \(weeks) WK"
-        }
-        return "AHEAD"
-    }
-
     // MARK: WEEK tile (7 pips + n/target)
+    // (No VEXETH tile — the rival is a PLACE, not a stat: he lives only at his
+    // stop on the road below, which keeps gap + form + taunt + catch states.)
 
     private static let dayLetters = ["M", "T", "W", "T", "F", "S", "S"]
 
     private var weekTile: some View {
-        FusionTile(label: "WEEK", index: 3, booted: booted, animated: animatedBoot) {
+        FusionTile(label: "WEEK", index: 2, booted: booted, animated: animatedBoot) {
             HStack(alignment: .center, spacing: 10) {
                 HStack(spacing: 5) {
                     ForEach(0 ..< 7, id: \.self) { day in
@@ -339,7 +320,7 @@ struct HomeConceptFusionView: View {
                 Spacer(minLength: 4)
                 FusionScramble("\(trainedDaysThisWeek.count)/\(streakTarget)",
                                size: 13, color: SettColor.bone,
-                               delay: tileDelay(3), active: booted,
+                               delay: tileDelay(2), active: booted,
                                animated: animatedBoot)
             }
         }
@@ -367,14 +348,21 @@ struct HomeConceptFusionView: View {
     // MARK: - THE ROAD (scrolls; the rail draws in its background layer)
 
     private var road: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        let pastRows = pastSealedWorkouts
+        return VStack(alignment: .leading, spacing: 0) {
+            if !finishedWorkouts.isEmpty {
+                // The PAST rides above the seal: the ALL SCANS corner link, then up
+                // to two older medallions, oldest furthest up the fading rail.
+                pastSection(pastRows)
+                    .fusionPop(0.3, active: roadShown, animated: animatedBoot)
+                    .padding(.top, 10)
+            } else {
+                Color.clear.frame(height: 16)
+            }
             if let last = lastSealedWorkout {
                 sealNode(last)
                     .fusionPop(0.34, active: roadShown, animated: animatedBoot)
-                    .padding(.top, 14)
                     .padding(.bottom, 16)
-            } else {
-                Color.clear.frame(height: 16)
             }
             todayNode
                 .fusionPop(0.42, active: roadShown, animated: animatedBoot)
@@ -390,7 +378,7 @@ struct HomeConceptFusionView: View {
         }
         .backgroundPreferenceValue(FusionStopKey.self) { anchors in
             GeometryReader { geo in
-                rail(in: geo, anchors: anchors)
+                rail(in: geo, anchors: anchors, fadesPast: !pastRows.isEmpty)
             }
         }
     }
@@ -400,14 +388,14 @@ struct HomeConceptFusionView: View {
     /// The cyan spine starts at y = 0 — the top edge of the scroll content — so it
     /// visually pours out of the glance band's exit tick under the POWER tile.
     @ViewBuilder
-    private func rail(in geo: GeometryProxy, anchors: [FusionStop: Anchor<CGPoint>]) -> some View {
+    private func rail(in geo: GeometryProxy, anchors: [FusionStop: Anchor<CGPoint>],
+                      fadesPast: Bool) -> some View {
         if let todayAnchor = anchors[.today] {
             let x = geo[todayAnchor].x
             let weekEndY = anchors[.weekEnd].map { geo[$0].y } ?? (geo[todayAnchor].y + 56)
             ZStack {
-                glowStroke(FusionRailSegment(from: CGPoint(x: x, y: 0),
-                                             to: CGPoint(x: x, y: weekEndY)),
-                           trim: cyanTrim, color: SettColor.heroCyan)
+                spine(x: x, endY: weekEndY, in: geo,
+                      fadeToY: fadesPast ? anchors[.seal].map { geo[$0].y } : nil)
                 if let vexethAnchor = anchors[.vexeth] {
                     let vexethY = geo[vexethAnchor].y
                     // The last walked stretch turns crimson: Vexeth is ON the road.
@@ -431,6 +419,30 @@ struct HomeConceptFusionView: View {
         }
     }
 
+    /// The cyan spine — full strength from the seal node down; when the PAST rides
+    /// above it, the stretch up through the medallions fades toward history. The
+    /// fade is a static mask over the ONE trimmed path, so the boot still draws a
+    /// single connected stroke out of the band's exit tick.
+    @ViewBuilder
+    private func spine(x: CGFloat, endY: CGFloat, in geo: GeometryProxy,
+                       fadeToY: CGFloat?) -> some View {
+        let stroke = glowStroke(FusionRailSegment(from: CGPoint(x: x, y: 0),
+                                                  to: CGPoint(x: x, y: endY)),
+                                trim: cyanTrim, color: SettColor.heroCyan)
+        if let fadeToY, geo.size.height > 1 {
+            let frac = max(0.02, min(1, fadeToY / geo.size.height))
+            stroke.mask {
+                LinearGradient(stops: [
+                    .init(color: .black.opacity(0.14), location: 0),
+                    .init(color: .black, location: frac),
+                    .init(color: .black, location: 1),
+                ], startPoint: .top, endPoint: .bottom)
+            }
+        } else {
+            stroke
+        }
+    }
+
     /// Soft ki glow: three layered strokes of the same trimmed segment (wide faint
     /// halo → mid wash → hot core). Static styling; only the trim animates, once.
     private func glowStroke(_ segment: FusionRailSegment, trim: CGFloat, color: Color) -> some View {
@@ -442,6 +454,108 @@ struct HomeConceptFusionView: View {
             segment.trim(from: 0, to: trim)
                 .stroke(color.opacity(0.9), style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
         }
+    }
+
+    // MARK: The PAST — older medallions up the fading rail + the ALL SCANS link
+
+    /// The road behind the seal node: the ALL SCANS corner chip, then up to two
+    /// older sealed sessions as compact medallions (oldest at the top, where the
+    /// rail fades off into history).
+    private func pastSection(_ workouts: [Workout]) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack {
+                Spacer(minLength: 0)
+                allScansChip
+            }
+            ForEach(workouts) { workout in
+                pastMedallionRow(workout)
+            }
+        }
+        .padding(.bottom, workouts.isEmpty ? 6 : 10)
+    }
+
+    /// The corner link into the full log — a mono chip in cyan (the action voice).
+    private var allScansChip: some View {
+        NavigationLink {
+            HistoryListView()
+        } label: {
+            Text("ALL SCANS ›")
+                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .kerning(1.5)
+                .foregroundStyle(SettColor.heroCyan)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 4)
+                .background(SettColor.card.opacity(0.6), in: Capsule())
+                .overlay {
+                    Capsule().strokeBorder(SettColor.cardBorder, lineWidth: 1)
+                }
+                .contentShape(Capsule())
+        }
+        .buttonStyle(PressableSlabStyle(haptic: .light))
+        .accessibilityLabel("All scans")
+        .accessibilityHint("Opens the full workout history")
+    }
+
+    /// One session further back up the road — quieter chrome than the seal node,
+    /// same destination on tap.
+    private func pastMedallionRow(_ workout: Workout) -> some View {
+        NavigationLink {
+            WorkoutDetailView(workout: workout)
+        } label: {
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle().fill(SettColor.card)
+                    Circle().strokeBorder(SettColor.heroCyan.opacity(0.28), lineWidth: 1)
+                    Image(systemName: "checkmark.seal.fill")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(SettColor.heroCyan.opacity(0.55))
+                }
+                .frame(width: 20, height: 20)
+                .frame(width: Self.railColumnWidth)
+                Text(workout.title)
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(SettColor.bone.opacity(0.85))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                Text(pastDateLabel(workout))
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .kerning(0.5)
+                    .foregroundStyle(SettColor.ash)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                if let delta = plDelta(for: workout) {
+                    Text("\(delta >= 0 ? "+" : "")\(delta.formatted()) PL")
+                        .font(.system(size: 8, weight: .bold, design: .monospaced))
+                        .kerning(0.5)
+                        .monospacedDigit()
+                        .foregroundStyle(SettColor.deltaInk(delta))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(SettColor.deltaInk(delta).opacity(0.12), in: Capsule())
+                }
+            }
+            .frame(height: 30)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PressableSlabStyle(haptic: .light))
+        .accessibilityLabel(pastMedallionAccessibility(workout))
+        .accessibilityHint("Opens the workout's details")
+    }
+
+    /// "YESTERDAY" / "2 DAYS AGO" — the medallions read as distance, not dates.
+    private func pastDateLabel(_ workout: Workout) -> String {
+        workout.startedAt
+            .formatted(.relative(presentation: .named))
+            .uppercased()
+    }
+
+    private func pastMedallionAccessibility(_ workout: Workout) -> String {
+        var parts = ["\(workout.title), \(pastDateLabel(workout).lowercased())"]
+        if let delta = plDelta(for: workout) {
+            parts.append(delta == 0 ? "no power change"
+                                    : "\(delta > 0 ? "up" : "down") \(abs(delta)) power level")
+        }
+        return parts.joined(separator: ", ")
     }
 
     // MARK: Seal node — the last sealed session, a medallion just behind you
@@ -729,26 +843,29 @@ struct HomeConceptFusionView: View {
     // MARK: Week cluster — the remaining stops, compressed, target tick marked
 
     /// Tapping the cluster opens the streak sheet — the week IS the streak.
+    /// Counts (pips, n/target, streak weeks) are BAND-OWNED now: the cluster keeps
+    /// only its named weekday stops, the YOU marker above it, and the streak-target
+    /// tick (+SEALED chip once the week's ask is met — passed, so it leads).
     private var weekCluster: some View {
         Button {
             Haptics.light()
             isShowingStreak = true
         } label: {
             VStack(alignment: .leading, spacing: 0) {
-                weekHeaderRow
-                    .padding(.bottom, 4)
+                if daysStillNeeded == 0 {
+                    targetRow(met: true)
+                        .padding(.bottom, 2)
+                }
                 ForEach(Array(remainingDayIndices.enumerated()), id: \.element) { position, day in
                     ghostStopRow(day: day)
-                    if position + 1 == daysStillNeeded {
-                        targetLineRow
+                    if daysStillNeeded > 0, position + 1 == daysStillNeeded {
+                        targetRow(met: false)
                     }
                 }
-                if daysStillNeeded == 0 {
-                    weekSealedRow
-                } else if daysStillNeeded > remainingDayIndices.count {
+                if daysStillNeeded > remainingDayIndices.count {
                     // The target can't land inside the remaining stops (short week or
                     // deep target) — mark it quietly at the cluster's end, never a scold.
-                    targetLineRow
+                    targetRow(met: false)
                 }
             }
             .contentShape(Rectangle())
@@ -758,18 +875,6 @@ struct HomeConceptFusionView: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(weekClusterAccessibility)
         .accessibilityHint("Shows streak rules and this week's progress")
-    }
-
-    private var weekHeaderRow: some View {
-        HStack(spacing: 12) {
-            Circle()
-                .strokeBorder(SettColor.heroCyan.opacity(0.5), lineWidth: 1)
-                .frame(width: 8, height: 8)
-                .frame(width: Self.railColumnWidth)
-            Eyebrow("THE WEEK AHEAD")
-            Spacer(minLength: 0)
-        }
-        .frame(height: 18)
     }
 
     /// A ghost stop: hollow marker on the rail, weekday letter, and (weekday mode)
@@ -797,37 +902,24 @@ struct HomeConceptFusionView: View {
         .frame(height: 21)
     }
 
-    /// The streak-target tick crossing the rail where the week's ask would be met.
-    private var targetLineRow: some View {
+    /// The streak-target tick crossing the rail where the week's ask would be met —
+    /// and, once met, the quiet SEALED chip. The counts themselves live in the band.
+    private func targetRow(met: Bool) -> some View {
         HStack(spacing: 12) {
             RoundedRectangle(cornerRadius: 1)
                 .fill(SettColor.heroCyan.opacity(0.7))
                 .frame(width: 16, height: 2)
                 .frame(width: Self.railColumnWidth)
-            Text("STREAK TARGET · \(streakTarget)/WK")
+            Text("STREAK TARGET")
                 .font(.system(size: 9, weight: .bold, design: .monospaced))
                 .kerning(1)
                 .foregroundStyle(SettColor.heroCyan.opacity(0.9))
+            if met {
+                StatusChip("SEALED", tint: SettColor.heroCyan, icon: "flame.fill")
+            }
             Spacer(minLength: 0)
         }
-        .frame(height: 16)
-    }
-
-    /// The week already met its ask — the target reads as passed, quietly lit.
-    private var weekSealedRow: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "flame.fill")
-                .font(.system(size: 10, weight: .bold))
-                .foregroundStyle(SettColor.heroCyan)
-                .frame(width: Self.railColumnWidth)
-            Text("WEEK SEALED · \(trainedDaysThisWeek.count)/\(streakTarget)")
-                .font(.system(size: 9, weight: .bold, design: .monospaced))
-                .kerning(1)
-                .monospacedDigit()
-                .foregroundStyle(SettColor.heroCyan)
-            Spacer(minLength: 0)
-        }
-        .frame(height: 18)
+        .frame(height: met ? 24 : 16)
     }
 
     private var weekClusterAccessibility: String {
@@ -967,6 +1059,20 @@ struct HomeConceptFusionView: View {
     /// today node. When today is untrained this is simply the latest workout.
     private var lastSealedWorkout: Workout? {
         finishedWorkouts.first { !Calendar.current.isDateInToday($0.startedAt) }
+    }
+
+    /// Up to two sealed sessions BEHIND the seal node, most distant first — the
+    /// road's past runs upward, so the oldest medallion sits furthest up the fade.
+    private var pastSealedWorkouts: [Workout] {
+        let past = finishedWorkouts.filter { !Calendar.current.isDateInToday($0.startedAt) }
+        return Array(past.dropFirst().prefix(2).reversed())
+    }
+
+    /// Extract set samples ONCE per appearance/finish and fold them through the
+    /// shared WeeklyHardSets engine — never a SwiftData walk in `body`.
+    private func refreshWeeklySets() {
+        let samples = SampleExtractor.setSamples(context: modelContext)
+        weeklyHardSets = WeeklyHardSets.total(samples: samples, calendar: Self.isoCalendar)
     }
 
     /// ΔPL a given workout's day landed vs the previous training day — read from the

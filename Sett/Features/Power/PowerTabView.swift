@@ -880,7 +880,8 @@ private struct RivalCard: View {
     /// The System Voice's line keyed to the current gap state (from the store) —
     /// replaces the old three hard-coded quotes.
     var taunt: String = ""
-    /// bone = you, crimson = Vexeth, over the trailing weeks. Empty when < 2 weeks.
+    /// Your PL and Vexeth's per trailing week — the card plots the GAP between
+    /// them (rival minus you) as one trendline. Empty when < 2 weeks.
     var raceLines: [(weekStart: Date, you: Int, rival: Int)] = []
     /// True while a form reveal is unacknowledged — fires the one-shot portrait burn-in.
     var revealPending: Bool = false
@@ -1031,58 +1032,69 @@ private struct RivalCard: View {
         .accessibilityLabel("Emperor Vexeth, \(formEpithet). Power level \(rivalPL), form \(rivalForm) of 3, \(gapLine).")
     }
 
-    /// A compact two-line race: bone = you, crimson = Vexeth, converging or diverging
-    /// over the trailing weeks. Hidden until there are at least two weekly points.
+    /// (rival − you) per trailing week, capped at 8 — the single series the
+    /// trendline plots.
+    private var gapPoints: [(weekStart: Date, gap: Int)] {
+        raceLines.suffix(8).map { (weekStart: $0.weekStart, gap: $0.rival - $0.you) }
+    }
+
+    /// The GAP trendline: ONE bone line — (Vexeth's PL minus yours) per trailing
+    /// week — against a dashed crimson baseline at 0 ("HIM"). His scripted growth
+    /// no longer flat-lines the chart: the story is YOUR closing distance — a
+    /// falling line means you're closing in, dipping below the baseline means you
+    /// passed him. The line stays bone throughout (calm); crimson is the baseline
+    /// alone. Hidden until there are at least two weekly points — no empty frame.
     @ViewBuilder
     private var raceSparkline: some View {
-        if raceLines.count >= 2 {
-            VStack(alignment: .leading, spacing: 4) {
+        let gaps = gapPoints
+        if gaps.count >= 2 {
+            // Y-domain padded past the extremes (0 always included so the baseline
+            // shows) — the line never kisses the frame.
+            let lo = min(gaps.map(\.gap).min() ?? 0, 0)
+            let hi = max(gaps.map(\.gap).max() ?? 0, 0)
+            let pad = max(1, Int((Double(hi - lo) * 0.18).rounded(.up)))
+            VStack(alignment: .leading, spacing: 3) {
                 Chart {
-                    ForEach(Array(raceLines.enumerated()), id: \.offset) { item in
-                        LineMark(x: .value("Week", item.element.weekStart),
-                                 y: .value("PL", item.element.you),
-                                 series: .value("Series", "You"))
+                    RuleMark(y: .value("Gap", 0))
+                        .foregroundStyle(SettColor.villainCrimson.opacity(0.65))
+                        .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                        .annotation(position: .top, alignment: .trailing, spacing: 1,
+                                    overflowResolution: .init(x: .fit(to: .chart), y: .fit(to: .chart))) {
+                            Text("HIM")
+                                .font(.system(size: 7, weight: .bold, design: .monospaced))
+                                .kerning(1)
+                                .foregroundStyle(SettColor.villainCrimson.opacity(0.8))
+                        }
+                    ForEach(gaps, id: \.weekStart) { point in
+                        LineMark(x: .value("Week", point.weekStart),
+                                 y: .value("Gap", point.gap))
                             .foregroundStyle(SettColor.bone)
-                            .lineStyle(StrokeStyle(lineWidth: 1.5))
-                        LineMark(x: .value("Week", item.element.weekStart),
-                                 y: .value("PL", item.element.rival),
-                                 series: .value("Series", "Vexeth"))
-                            .foregroundStyle(SettColor.villainCrimson)
                             .lineStyle(StrokeStyle(lineWidth: 1.5))
                     }
                 }
                 .chartXAxis(.hidden)
                 .chartYAxis(.hidden)
                 .chartLegend(.hidden)
-                .frame(height: 52)
-                // Inline legend — bone you / crimson Vexeth, so the two lines read.
-                HStack(spacing: 12) {
-                    raceKey(SettColor.bone, "YOU")
-                    raceKey(SettColor.villainCrimson, "VEXETH")
-                }
+                .chartYScale(domain: (lo - pad) ... (hi + pad))
+                .frame(height: 44)
+                Text("GAP · \(gaps.count) WK")
+                    .font(.system(size: 8, weight: .bold, design: .monospaced))
+                    .kerning(1)
+                    .monospacedDigit()
+                    .foregroundStyle(SettColor.iron)
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(raceAccessibilityLabel)
         }
     }
 
-    private func raceKey(_ color: Color, _ label: String) -> some View {
-        HStack(spacing: 5) {
-            Capsule().fill(color).frame(width: 12, height: 2)
-            Text(label)
-                .font(.system(size: 9, weight: .bold, design: .monospaced))
-                .kerning(1)
-                .foregroundStyle(SettColor.ash)
-        }
-        .accessibilityHidden(true)
-    }
-
     private var raceAccessibilityLabel: String {
-        guard let first = raceLines.first, let last = raceLines.last else { return "" }
-        let openGap = first.rival - first.you
-        let nowGap = last.rival - last.you
-        let trend = nowGap < openGap ? "closing" : nowGap > openGap ? "widening" : "holding"
-        return "Race over \(raceLines.count) weeks: the gap to Vexeth is \(trend)."
+        let gaps = gapPoints
+        guard let first = gaps.first, let last = gaps.last else { return "" }
+        let trend = last.gap < first.gap ? "closing" : last.gap > first.gap ? "widening" : "holding"
+        var line = "Gap to Vexeth over \(gaps.count) weeks: \(trend)"
+        if last.gap <= 0 { line += ", you are ahead" }
+        return line + "."
     }
 
     private func fireBurnIn() {
