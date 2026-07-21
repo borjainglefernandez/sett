@@ -662,9 +662,10 @@ struct HomeTabView: View {
                             restedChip.padding(.top, 2)
                         }
                     }
-                    // Top-align so the routine info sits up top and the bottom-leading
-                    // ghost has clear air beneath it.
-                    .frame(maxHeight: .infinity, alignment: .top)
+                    // NOTE: no `.frame(maxHeight:.infinity)` here — greedy height on the
+                    // content collapsed the whole label VStack (only the accessory showed).
+                    // The card centers the label vertically, like the Train routine cards.
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 } accessory: {
                     playDisc
                 }
@@ -721,7 +722,7 @@ struct HomeTabView: View {
                         .padding(.top, 2)
                 }
             }
-            .frame(maxHeight: .infinity, alignment: .top)
+            .frame(maxWidth: .infinity, alignment: .leading)
         } accessory: {
             // A quiet seal in place of the play disc — the evening chamber has cooled.
             Image(systemName: "checkmark.seal.fill")
@@ -762,7 +763,7 @@ struct HomeTabView: View {
                     .shadow(color: .black.opacity(0.6), radius: 3)
                 quickStartGhost.padding(.top, 2)
             }
-            .frame(maxHeight: .infinity, alignment: .top)
+            .frame(maxWidth: .infinity, alignment: .leading)
         } accessory: {
             Image(systemName: "moon.stars.fill")
                 .font(.system(size: 26))
@@ -991,7 +992,7 @@ struct HomeTabView: View {
                         .kerning(1)
                         .foregroundStyle(.white.opacity(0.75))
                 }
-                .frame(maxHeight: .infinity, alignment: .top)
+                .frame(maxWidth: .infinity, alignment: .leading)
             } accessory: {
                 // The empty chamber reads as an ember waiting to be lit — a soft ki
                 // bloom breathes behind the play disc, not a dead control.
