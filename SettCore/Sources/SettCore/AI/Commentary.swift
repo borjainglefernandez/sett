@@ -10,9 +10,14 @@ public struct CommentaryFacts: Sendable {
     public let powerLevelDelta: Int
     /// "Off the record" workout — no numbers to celebrate, just the training itself.
     public let isCasual: Bool
+    /// The phase this session was logged under — reframes a down or flat reading so a
+    /// cut dip reads as the toll for leaning out and a maintain hold reads as a win,
+    /// never as an off day or complacency. Defaults to `.maintaining` (steady is fine).
+    public let phase: TrainingPhase
 
     public init(title: String, netReps: Int, netVolumeGrams: Int, netIsNew: Bool,
-                newBadgeCount: Int, powerLevelDelta: Int, isCasual: Bool = false) {
+                newBadgeCount: Int, powerLevelDelta: Int, isCasual: Bool = false,
+                phase: TrainingPhase = .maintaining) {
         self.title = title
         self.netReps = netReps
         self.netVolumeGrams = netVolumeGrams
@@ -20,6 +25,7 @@ public struct CommentaryFacts: Sendable {
         self.newBadgeCount = newBadgeCount
         self.powerLevelDelta = powerLevelDelta
         self.isCasual = isCasual
+        self.phase = phase
     }
 }
 
@@ -50,13 +56,27 @@ public enum CommentaryFallback {
             let lb = Int(Units.pounds(fromGrams: facts.netVolumeGrams).rounded())
             lines.append("+\(lb) lb over last time. Adequate.")
         } else if facts.netVolumeGrams < 0 {
-            lines.append("Down from last time. Even I have off days. Few.")
+            switch facts.phase {
+            case .cutting:
+                lines.append("Lighter tank, ceiling held. That counts double.")
+            case .maintaining:
+                lines.append("Dipped a touch. At altitude the line wavers — you're still holding it.")
+            case .bulking:
+                lines.append("Down from last time. Even I have off days. Few.")
+            }
         } else {
-            lines.append("Identical to last time. Consistency — or complacency.")
+            switch facts.phase {
+            case .cutting:
+                lines.append("Even, on less fuel. Holding the line in a deficit is a win.")
+            case .maintaining:
+                lines.append("Held the line. At altitude, steady IS the climb.")
+            case .bulking:
+                lines.append("Identical to last time. Consistency — or complacency.")
+            }
         }
 
         if facts.powerLevelDelta > 0 {
-            lines.append("Power level up \(facts.powerLevelDelta). Do it again Thursday.")
+            lines.append("Power level up \(facts.powerLevelDelta). Again soon. The chamber stays warm.")
         }
         if facts.newBadgeCount > 0 {
             lines.append(facts.newBadgeCount == 1
@@ -89,6 +109,7 @@ public enum WorkoutCommentator {
         Net reps: \(facts.netReps)
         New badges: \(facts.newBadgeCount)
         Power level delta: \(facts.powerLevelDelta)
+        Training phase: \(facts.phase.rawValue) — in a cut a dip is the toll for leaning out (praise retention); maintaining, steady is a win; bulking, push for more. Never frame a down or flat reading as failure.
         Write 2-3 sentences of post-workout commentary.
         """
         do {

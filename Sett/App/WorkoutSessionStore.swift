@@ -843,7 +843,8 @@ public final class WorkoutSessionStore {
             netIsNew: netIsNew,
             newBadgeCount: newBadges.count,
             powerLevelDelta: progression.snapshotPowerLevel - plBefore,
-            isCasual: isCasual
+            isCasual: isCasual,
+            phase: workout.phase   // so Vego's line reframes a cut dip / maintain hold, never shames it
         )
         let (commentary, source) = CommentaryFallback.generate(facts: facts)
 

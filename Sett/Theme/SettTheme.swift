@@ -1,6 +1,7 @@
 import SwiftUI
 import Charts
 import UIKit
+import SettCore // TransformationTier lives in the engine package (used by Aura.forTier below).
 
 // MARK: - Palette (the Dark Chamber, design language v3)
 // One permanently dark world — warm near-black stone lit from the center.
@@ -18,6 +19,18 @@ public enum SettColor {
 
     public static let positive = Color(uiColor: .systemGreen)
     public static let negative = Color(uiColor: .systemRed)
+
+    /// Ink for a delta numeral on the USER'S OWN number (Δ volume, Δ streak, week-
+    /// over-week change). Up is `positive` green; zero is neutral `ash`; DOWN is the
+    /// quiet tertiary `iron` — deliberately NOT `negative` red. The non-toxic ethos:
+    /// a down-week is the toll for cutting, not an alarm, so a user's own down-number
+    /// must never read as failure. Red stays reserved for the scanner effort ramp and
+    /// Vexeth. One source so every delta chip agrees on the sign coloring.
+    public static func deltaInk(_ value: Int) -> Color {
+        if value > 0 { return positive }
+        if value < 0 { return iron }
+        return ash
+    }
 
     /// Warm near-black — the chamber floor. Never #000; flat black halates.
     /// Both dynamic variants are dark on purpose: there is no light mode anymore,
@@ -86,6 +99,18 @@ public enum Aura {
         case 0, 1, 2: cyan
         case 3: gold
         default: zenith
+        }
+    }
+
+    /// Type-safe tier aura — the Power hero's form tint (a later wave applies this).
+    /// Cyan ki holds through ASCENDANT; the sacred gold ramp arrives at RADIANT (the
+    /// tier where the power level itself turns gold); the scarce white-cyan Zenith
+    /// caps the top. Mirrors the `Int` overload above, which predates the tier enum.
+    public static func forTier(_ tier: TransformationTier) -> LinearGradient {
+        switch tier {
+        case .base, .kindled, .ascendant: cyan
+        case .radiant: gold
+        case .zenith: zenith
         }
     }
 }
@@ -625,7 +650,15 @@ public extension EmptyChamber where Actions == EmptyView {
 /// drift, 3–6% luminance variation. Drawn once — no TimelineView, nothing
 /// animates, so Reduce Motion needs no special-casing.
 public struct DungeonBackground: View {
-    public init() {}
+    /// Optional realm hue. When set, a whisper of the active world's color is mixed
+    /// into the vignette's dark edges so non-realm tabs (Progress/Power/Settings/
+    /// History) still feel like the chosen world. Default nil keeps the neutral
+    /// chamber, so every existing `DungeonBackground()` call site is untouched.
+    var realmTint: Color?
+
+    public init(realmTint: Color? = nil) {
+        self.realmTint = realmTint
+    }
 
     public var body: some View {
         ZStack {
@@ -643,7 +676,7 @@ public struct DungeonBackground: View {
                 stops: [
                     .init(color: .clear, location: 0),
                     .init(color: .clear, location: 0.45),
-                    .init(color: .black.opacity(0.5), location: 1),
+                    .init(color: vignetteEdge, location: 1),
                 ],
                 center: .center,
                 startRadius: 0,
@@ -651,6 +684,16 @@ public struct DungeonBackground: View {
             )
         }
         .allowsHitTesting(false)
+    }
+
+    /// The vignette's corner color — normally 50% black. With a realm tint set, ~10%
+    /// of the hue is mixed into that black so the world's color pools ONLY in the dark
+    /// outer ring (net ~5% of the corner pixel), never the lit center where the sacred
+    /// number sits and never over a card/chart — keeping it below chart legibility.
+    /// The vignette is drawn once and never animates, so Reduce Motion is irrelevant.
+    private var vignetteEdge: Color {
+        guard let realmTint else { return .black.opacity(0.5) }
+        return .black.mix(with: realmTint, by: 0.1).opacity(0.5)
     }
 
     /// Deterministic grime: seeded LCG, never Date or SystemRandom — the
@@ -824,6 +867,38 @@ public struct ChamberCTAButton: View {
         }
         .buttonStyle(PressableSlabStyle(enabled: enabled, haptic: .light))
         .disabled(!enabled)
+    }
+}
+
+// MARK: - Chip edge fade (the "scroll for more" affordance for chip rows)
+
+public extension View {
+    /// A horizontal edge-fade mask for a chip ScrollView: chips clipped at the
+    /// trailing edge dissolve to clear instead of hard-cutting, signalling there's
+    /// more to scroll; a tiny leading fade hints at content already scrolled past.
+    /// Opaque through the whole middle so nothing central dims. Pure `.mask` — no
+    /// layout or hit-testing change — so it's safe on ANY horizontally-scrolling
+    /// HStack/ScrollView. The fades are converted from points to gradient fractions
+    /// via the viewport width, so the trailing dissolve stays ~24pt (and the leading
+    /// ~8pt) on any screen instead of a percentage that balloons when wide.
+    func chipEdgeFade() -> some View {
+        mask {
+            GeometryReader { geo in
+                let w = max(geo.size.width, 1)
+                let lead = min(8 / w, 0.5)
+                let trail = min(24 / w, 0.5)
+                LinearGradient(
+                    stops: [
+                        .init(color: .clear, location: 0),
+                        .init(color: .black, location: lead),
+                        .init(color: .black, location: 1 - trail),
+                        .init(color: .clear, location: 1),
+                    ],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            }
+        }
     }
 }
 

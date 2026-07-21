@@ -116,6 +116,9 @@ struct ProgressTabView: View {
                 }
                 .padding(.vertical, 2) // breathing room so the capsules aren't clipped
             }
+            // Trailing fade so the last chip dissolves at the edge instead of a hard
+            // mid-word cut — the app-wide signal (SettTheme) that more chips scroll past.
+            .chipEdgeFade()
             .onChange(of: section) { _, selected in
                 withAnimation(.snappy) { proxy.scrollTo(selected, anchor: .center) }
             }
@@ -291,7 +294,9 @@ private enum ProgressSection: CaseIterable, Hashable {
 
     var title: String {
         switch self {
-        case .power:    return "Power"
+        // "Curve" not "Power": the tab bar already owns a Power tab, and a second
+        // "Power" one tap away read as a dupe. This chip is the PL trajectory/curve.
+        case .power:    return "Curve"
         case .strength: return "Strength"
         case .volume:   return "Volume"
         case .body:     return "Body"

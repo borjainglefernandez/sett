@@ -36,26 +36,29 @@ enum MotivationQuotes {
         "PROGRESS OVER PERFECTION.",
         "There's one thing a warrior always keeps… THEIR PRIDE.",
         "Shatter your limits. Push into the domain of the gods.",
-        "Comfort is the killer of joy, achievement, and fulfillment.",
+        "The chamber doesn't ask how you feel. Only that you enter.",
         "Every limit is a door. Kick it off the hinges.",
         "BREAK YOUR OWN RECORD. The old you was only a warm-up.",
         "Strength is what remains after you refuse to stop.",
         "ONE MORE REP. That's where the old you dies.",
         "Pride is earned in the reps nobody clapped for.",
         "The ceiling you fear is just today's floor. CLIMB PAST IT.",
-        "Talent naps while you train — every rep steals its crown.",
+        "The iron remembers effort, not potential. Spend some.",
         "Push until the weight forgets it was ever heavier than you.",
     ]
 
+    /// Ran on little sleep — smart-effort framing, not martyrdom. Respect the lifter
+    /// for showing up, then steer toward scaling down and sleeping tonight. Luma's
+    /// domain: presence over heroics; the Recovery Protocol counts a light day.
     static let lowSleep: [String] = [
-        "No sleep, still here. That isn't weakness. That is WILL.",
-        "Energy runs out. Resolve doesn't. You brought the one that matters.",
-        "The exhausted who show up outrank the rested who don't.",
-        "YOUR BODY BEGGED TO STAY DOWN — YOU STOOD UP ANYWAY.",
-        "Sleep is fuel. Heart is the engine. Yours is running.",
-        "Tired is a feeling. SHOWING UP is a decision.",
-        "Drained and dangerous — heart carries what the body cannot.",
-        "Willpower doesn't check how you slept before it answers.",
+        "Low fuel — trim the volume, keep the habit.",
+        "Show up, scale down, sleep tonight. The scanner counts presence, not heroics.",
+        "Tired is data. Log a light one and rest hard.",
+        "Under-slept means under-load. Keep the streak, spare the body.",
+        "Half a tank still moves. Ease the sets, then go recover.",
+        "Do the minimum today, then go recover. Rest is training too.",
+        "A light session and a full night's sleep both count. Take both.",
+        "Short on rest? Short the sets. Presence beats punishment.",
     ]
 
     static let offDay: [String] = [
@@ -74,7 +77,7 @@ enum MotivationQuotes {
         "You didn't lose it. You set it down. PICK IT BACK UP.",
         "Momentum forgives the pause. Move once and it comes home.",
         "The comeback starts quiet. One session, then the fire remembers.",
-        "You're not starting over. You're starting stronger, wiser, hungrier.",
+        "The chamber kept the door open. Walk back through it.",
         "The layoff ends the second you touch the bar again.",
         "Every legend has a return chapter. Write yours today.",
         "You're not behind — you're reloading. Rebuild the streak.",

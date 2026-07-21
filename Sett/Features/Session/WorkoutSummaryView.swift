@@ -105,10 +105,11 @@ struct WorkoutSummaryView: View {
         )
         .overlay {
             // The ceiling break: UI fractures over the whole screen, gold light
-            // leaking through. Non-interactive (CrackOverlay ignores hits), so
-            // tap-to-skip keeps working underneath.
+            // leaking through (bone cores over the gold ramp — "shattered by YOUR
+            // power," never a Vexeth-red fissure). Non-interactive (CrackOverlay
+            // ignores hits), so tap-to-skip keeps working underneath.
             if showCrack {
-                CrackOverlay(progress: crackProgress, color: summaryTier.color)
+                CrackOverlay(progress: crackProgress, color: SettColor.saiyanGold)
                     .opacity(crackOpacity)
                     .ignoresSafeArea()
             }
@@ -180,6 +181,17 @@ struct WorkoutSummaryView: View {
         return .base
     }
 
+    /// The chrome the ceremony wears — the scan card rim, its scanline/scramble, and
+    /// the ceiling-break cracks. A ceiling break is the user's OWN power cracking the
+    /// ceiling, so at the top of the ramp the accent is bone-white heat (the scouter
+    /// whiting out past red), NEVER the overload red: red rim + red cracks beside the
+    /// gold numeral and the gold FORM ASCENDED line breach the colour law twice over
+    /// (crimson is Vexeth-only, and never beside gold) at the user's proudest moment.
+    /// Lower tiers keep the scouter ramp untouched (green holding / amber ascension).
+    private var ceremonyAccent: Color {
+        ceilingBroken ? SettColor.bone : summaryTier.color
+    }
+
     /// The realm this workout ran in (routine's domain snapshot), else the app
     /// default — the summary rides the same backdrop as the session.
     private var bgAsset: String {
@@ -216,8 +228,12 @@ struct WorkoutSummaryView: View {
         try? await Task.sleep(for: .seconds(1.1))
         guard stage == .power else { return }
 
-        // (d) completion ceremony: scale punch + 3-oscillation 2 pt shake.
-        if powerDelta != 0 {
+        // (d) completion ceremony. A GAIN earns the full transformation: level-up
+        // haptic + scale punch + 3-oscillation 2 pt shake. A DROP is a down-week /
+        // comeback reading, not a failure — no level-up haptic, no punch, no shake
+        // (that would celebrate a loss, and it lands hardest on comeback sessions);
+        // just a soft settle so the number still registers as landed.
+        if powerDelta > 0 {
             Haptics.levelUp()
             ceremonyPunch = 1.06
             withAnimation(.spring(response: 0.3, dampingFraction: 0.5)) { ceremonyPunch = 1 }
@@ -228,6 +244,9 @@ struct WorkoutSummaryView: View {
                 try? await Task.sleep(for: .milliseconds(50))
             }
             withAnimation(.linear(duration: 0.05)) { shakeX = 0 }
+            try? await Task.sleep(for: .milliseconds(350))
+        } else if powerDelta < 0 {
+            Haptics.light()
             try? await Task.sleep(for: .milliseconds(350))
         }
         guard stage < .ceiling else { return }
@@ -311,19 +330,22 @@ struct WorkoutSummaryView: View {
                     if powerDelta != 0 {
                         deltaChip
                     }
+                    if powerDelta < 0 {
+                        dropReframeLine
+                    }
                     receiptRows
                 }
             } else {
                 Text("SCANNING…")
                     .font(.system(.footnote, design: .monospaced).weight(.bold))
                     .kerning(2)
-                    .foregroundStyle(summaryTier.color)
+                    .foregroundStyle(ceremonyAccent)
                     .frame(height: 100)
             }
         }
         .frame(maxWidth: .infinity)
         .padding(24)
-        .hudCard(tint: summaryTier.color, heavy: true, radius: 18, padding: nil)
+        .hudCard(tint: ceremonyAccent, heavy: true, radius: 18, padding: nil)
         .overlay {
             // Clip only the scanline, so the numeral's ember halo can spill.
             if stage == .scanning && !reduceMotion {
@@ -344,13 +366,13 @@ struct WorkoutSummaryView: View {
     private var powerReadout: some View {
         if scrambling {
             HStack(spacing: 10) {
-                SettSigil(size: 34, color: summaryTier.color)
+                SettSigil(size: 34, color: ceremonyAccent)
                 ScrambleNumeral(
                     digitCount: String(max(summary.powerLevelAfter, 1)).count,
                     seed: UInt64(bitPattern: Int64(summary.powerLevelAfter))
                         &* 0x9E37_79B9_7F4A_7C15
                         &+ UInt64(bitPattern: Int64(summary.powerLevelBefore)),
-                    color: summaryTier.color
+                    color: ceremonyAccent
                 )
             }
             .frame(height: 68)
@@ -405,13 +427,37 @@ struct WorkoutSummaryView: View {
     }
 
     private var deltaChip: some View {
-        Text("\(powerDelta > 0 ? "+" : "")\(powerDelta) ⚡")
+        // Gold is the reward hue — it celebrates a GAIN only. A drop (down-week /
+        // comeback) is never gold-for-a-loss: it settles to ash, no reward tint.
+        let tint = powerDelta > 0 ? SettColor.saiyanGold : SettColor.ash
+        return Text("\(powerDelta > 0 ? "+" : "")\(powerDelta) ⚡")
             .font(.subheadline.weight(.bold))
             .monospacedDigit()
-            .foregroundStyle(SettColor.saiyanGold)
+            .foregroundStyle(tint)
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
-            .background(SettColor.saiyanGold.opacity(0.15), in: Capsule())
+            .background(tint.opacity(0.15), in: Capsule())
+    }
+
+    /// The reframe under a DROP: names what the session actually banked (the receipt
+    /// levers that still moved up) against what the decay window took, so a negative
+    /// reading reads as "absence met with patience," never failure. Only shown when
+    /// `powerDelta < 0`; a gain keeps the clean gold chip with nothing to explain.
+    private var dropReframeLine: some View {
+        let ssDelta = summary.strengthScoreAfter - summary.strengthScoreBefore
+        let wvlDelta = summary.weeklyVolumeLbAfter - summary.weeklyVolumeLbBefore
+        let streakUp = summary.consistencyAfter > summary.consistencyBefore
+        var banked: [String] = []
+        if ssDelta > 0 { banked.append("+\(ssDelta.formatted()) strength") }
+        if wvlDelta > 0 { banked.append("+\(wvlDelta.formatted()) volume") }
+        if streakUp { banked.append("a longer streak") }
+        let middle = banked.isEmpty ? "the work still counts"
+                                    : "today banked \(banked.joined(separator: ", "))"
+        return Text("The clock took \(abs(powerDelta)) — \(middle). Windows refill as you train.")
+            .font(.footnote)
+            .foregroundStyle(SettColor.ash)
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     /// The scouter scan: a horizontal band in the scan's aura hue sweeping down the
@@ -419,7 +465,7 @@ struct WorkoutSummaryView: View {
     private var scanline: some View {
         GeometryReader { proxy in
             Rectangle()
-                .fill(LinearGradient(colors: [.clear, summaryTier.color.opacity(0.8), .clear],
+                .fill(LinearGradient(colors: [.clear, ceremonyAccent.opacity(0.8), .clear],
                                      startPoint: .top, endPoint: .bottom))
                 .frame(height: 28)
                 .phaseAnimator([0.0, 1.0]) { view, phase in

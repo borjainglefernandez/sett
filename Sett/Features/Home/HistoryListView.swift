@@ -52,6 +52,13 @@ struct HistoryListView: View {
     private struct WorkoutMetrics { var volume = 0; var sets = 0; var reps = 0; var topE1RM = 0 }
     @State private var metrics: [UUID: WorkoutMetrics] = [:]
 
+    /// Workouts that set an all-time e1RM record on at least one exercise — the gold
+    /// crown signal. Same effective-load e1RM the engine/exercise-detail crown uses,
+    /// derived from `samples` (see refreshPRWorkouts). Precomputed ONCE per refresh —
+    /// never re-walked in `body` — so a record can lead the net chips without a
+    /// per-render scan pinning the CPU (the metrics-cache tenet above).
+    @State private var prWorkoutIDs: Set<UUID> = []
+
     var body: some View {
         List {
             if sort == .date {
@@ -299,7 +306,8 @@ struct HistoryListView: View {
                         StatusChip("CASUAL")
                     } else if !samples.isEmpty {
                         netChips(ProgressEngine.workoutNet(samples: samples, workoutID: workout.id),
-                                 phase: workout.phase)
+                                 phase: workout.phase,
+                                 isPR: prWorkoutIDs.contains(workout.id))
                     }
                     if let count = badgeCounts[workout.id], count > 0 {
                         Label("\(count)", systemImage: "medal.fill")
@@ -325,39 +333,73 @@ struct HistoryListView: View {
     }
 
     /// Net vs previous same-exercise sessions — BOTH deltas (reps + weight), matching
-    /// the home strip's pair. Green up, red down, cyan NEW. On a cut workout a lighter
-    /// session is expected — neutral ash, never red (the tenet).
+    /// the home strip's pair. A verified all-time PR leads with a gold crown so a
+    /// record can never read as a down day. Gains stay green; a dip is quiet iron with
+    /// a thin ▼ (never red — red is Vexeth/effort-ramp only); NEW is cyan.
     @ViewBuilder
-    private func netChips(_ net: NetSummary, phase: TrainingPhase) -> some View {
-        if net.isNew {
-            Text("NEW")
-                .foregroundStyle(SettColor.heroCyan)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3)
-                .background(SettColor.heroCyan.opacity(0.15), in: Capsule())
-                .font(.caption2.weight(.bold))
-                .monospacedDigit()
-        } else {
-            HStack(spacing: 4) {
-                netChip(value: net.reps, suffix: "reps", phase: phase)
+    private func netChips(_ net: NetSummary, phase: TrainingPhase, isPR: Bool) -> some View {
+        HStack(spacing: 4) {
+            // Precedence: the reward voice (gold) reads first, before the deltas.
+            if isPR { prCrownChip }
+            if net.isNew {
+                Text("NEW")
+                    .foregroundStyle(SettColor.heroCyan)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(SettColor.heroCyan.opacity(0.15), in: Capsule())
+                    .font(.caption2.weight(.bold))
+                    .monospacedDigit()
+            } else {
+                netChip(value: net.reps, suffix: "reps", phase: phase, softened: isPR)
                 netChip(value: netDisplayValue(net.volumeGrams), suffix: services.settings.unit.symbol,
-                        phase: phase)
+                        phase: phase, softened: isPR)
             }
-            .lineLimit(1)
-            .minimumScaleFactor(0.7)
         }
+        .lineLimit(1)
+        .minimumScaleFactor(0.7)
     }
 
-    private func netChip(value: Int, suffix: String, phase: TrainingPhase) -> some View {
-        let negativeColor = phase == .cutting ? SettColor.ash : SettColor.negative
-        let color = value >= 0 ? SettColor.positive : negativeColor
-        return Text("\(value >= 0 ? "+" : "")\(value) \(suffix)")
+    /// A verified all-time e1RM record on at least one exercise this session. Gold is
+    /// the reward voice (color law); no crimson ever sits beside it here since dips
+    /// are iron/ash, not red.
+    private var prCrownChip: some View {
+        Image(systemName: "crown.fill")
+            .font(.caption2.weight(.bold))
+            .foregroundStyle(SettColor.saiyanGold)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(SettColor.saiyanGold.opacity(0.15), in: Capsule())
+            .accessibilityLabel("Personal record")
+    }
+
+    private func netChip(value: Int, suffix: String, phase: TrainingPhase, softened: Bool) -> some View {
+        // Shared non-toxic grammar: up is green, zero is ash, a dip is quiet iron
+        // (deltaInk) — never red. A dip softens further to ash when a PR crown carries
+        // the session, or on a cut where a lighter day is the expected toll, not failure.
+        let color: Color = (value < 0 && (softened || phase == .cutting))
+            ? SettColor.ash
+            : SettColor.deltaInk(value)
+        return netChipLabel(value: value, suffix: suffix)
             .foregroundStyle(color)
             .padding(.horizontal, 7)
             .padding(.vertical, 3)
             .background(color.opacity(0.12), in: Capsule())
             .font(.caption2.weight(.bold))
             .monospacedDigit()
+    }
+
+    /// "+N" for a gain, a thin ▼ before the magnitude for a dip (direction without a
+    /// minus sign's alarm), plain "0" at parity. The marker rides a smaller, lighter
+    /// run than the digits so it reads as a hairline cue, not a warning.
+    private func netChipLabel(value: Int, suffix: String) -> Text {
+        if value > 0 {
+            return Text("+\(value) \(suffix)")
+        } else if value < 0 {
+            return Text("▼").font(.system(size: 8, weight: .regular))
+                + Text(" \(abs(value)) \(suffix)")
+        } else {
+            return Text("0 \(suffix)")
+        }
     }
 
     private func netDisplayValue(_ grams: Int) -> Int {
@@ -378,6 +420,46 @@ struct HistoryListView: View {
     private func refreshSamples() {
         samples = SampleExtractor.setSamples(context: modelContext)
         refreshMetrics()
+        refreshPRWorkouts()
+    }
+
+    /// Mark every workout that set a NEW all-time e1RM record on at least one exercise.
+    /// Mirrors the engine/exercise-detail crown signal from the data the row already
+    /// holds: `samples.weightGrams` is effective load (bodyweight added), so
+    /// `ProgressEngine.e1RMGrams` here matches the store's PR math and the detail
+    /// screen's gold dot. Warmup and casual sets are excluded (casual is off the
+    /// record). A record needs a prior session to beat — a brand-new exercise's first
+    /// session is never crowned (it reads as NEW/positive, never a loss). Traversed
+    /// ONCE per refresh (finished workouts are immutable), never during body.
+    private func refreshPRWorkouts() {
+        struct SessionBest { var workoutID: UUID; var at: Date; var grams: Int }
+        // exercise → its best e1RM per session (keyed by workout).
+        var byExercise: [UUID: [UUID: SessionBest]] = [:]
+        for sample in samples where !sample.isWarmup && !sample.isCasual {
+            let grams = ProgressEngine.e1RMGrams(weightGrams: sample.weightGrams, reps: sample.reps)
+            var sessions = byExercise[sample.exerciseID] ?? [:]
+            if var existing = sessions[sample.workoutID] {
+                existing.grams = max(existing.grams, grams)
+                existing.at = min(existing.at, sample.completedAt)
+                sessions[sample.workoutID] = existing
+            } else {
+                sessions[sample.workoutID] = SessionBest(workoutID: sample.workoutID,
+                                                         at: sample.completedAt, grams: grams)
+            }
+            byExercise[sample.exerciseID] = sessions
+        }
+
+        var prs: Set<UUID> = []
+        for sessions in byExercise.values {
+            var runningBest = 0
+            var seenPrior = false
+            for session in sessions.values.sorted(by: { $0.at < $1.at }) {
+                if seenPrior && session.grams > runningBest { prs.insert(session.workoutID) }
+                runningBest = max(runningBest, session.grams)
+                seenPrior = true
+            }
+        }
+        prWorkoutIDs = prs
     }
 
     private func delete(_ workout: Workout) {
