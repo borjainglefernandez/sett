@@ -58,6 +58,15 @@ struct HistoryListView: View {
     /// never re-walked in `body` — so a record can lead the net chips without a
     /// per-render scan pinning the CPU (the metrics-cache tenet above).
     @State private var prWorkoutIDs: Set<UUID> = []
+    /// Per-workout net-vs-previous, precomputed ONCE per refresh. Computing
+    /// `ProgressEngine.workoutNet` inline in `row(_:)` walked the ENTIRE sample
+    /// history per row per render — during a detail push SwiftUI re-evaluates the
+    /// list repeatedly, and ~90 rows × thousands of samples × repeated passes
+    /// pinned the main thread at 100% (the "All Workouts freezes" bug, round two —
+    /// same trap e3103ea's metrics cache closed for volume/sets/reps).
+    @State private var netByWorkout: [UUID: NetSummary] = [:]
+    /// The tapped row — drives the item-based push (see row(_:) for why).
+    @State private var selectedWorkout: Workout?
 
     var body: some View {
         List {
@@ -109,6 +118,10 @@ struct HistoryListView: View {
             }
         }
         .searchable(text: $searchText, prompt: "Search workouts")
+        // Item-based push — created lazily on tap, exactly once (see row(_:)).
+        .navigationDestination(item: $selectedWorkout) { workout in
+            WorkoutDetailView(workout: workout)
+        }
         .navigationTitle("All Workouts")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { sortMenu }
@@ -266,8 +279,17 @@ struct HistoryListView: View {
     /// Each workout is its own HUD slab on the clear chamber (RoutineListView's
     /// hosting pattern) instead of a stock grouped-list cell.
     private func row(_ workout: Workout) -> some View {
-        NavigationLink {
-            WorkoutDetailView(workout: workout)
+        // A Button + item-based navigationDestination, NOT an eager NavigationLink
+        // destination closure: `NavigationLink { WorkoutDetailView(...) }` rebuilt
+        // the destination (fresh @Query and all) on every List invalidation — and
+        // during the push transition the rebuild restarted the push, which
+        // invalidated the List again: an infinite update loop that froze All
+        // Workouts at 100% CPU whenever it was itself pushed from a Home stack.
+        // (A value-based link was tried first, but a type destination declared on
+        // an already-pushed view fails to register silently.) The item binding
+        // creates the detail exactly once, when the row is actually tapped.
+        Button {
+            selectedWorkout = workout
         } label: {
             HStack(spacing: 12) {
                 if let first = workout.orderedExercises.first {
@@ -304,9 +326,10 @@ struct HistoryListView: View {
                         // Casual sessions are off the record — the engine returns (0,0)
                         // for them, so "+0 lb" would be a lie. Say what it is instead.
                         StatusChip("CASUAL")
-                    } else if !samples.isEmpty {
-                        netChips(ProgressEngine.workoutNet(samples: samples, workoutID: workout.id),
-                                 phase: workout.phase,
+                    } else if let net = netByWorkout[workout.id] {
+                        // Cache lookup ONLY — recomputing workoutNet here re-walked the
+                        // full sample history per row per render and froze the screen.
+                        netChips(net, phase: workout.phase,
                                  isPR: prWorkoutIDs.contains(workout.id))
                     }
                     if let count = badgeCounts[workout.id], count > 0 {
@@ -320,6 +343,7 @@ struct HistoryListView: View {
             }
             .hudCard()
         }
+        .buttonStyle(.plain)
         .listRowBackground(Color.clear)
         .listRowSeparator(.hidden)
         .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
@@ -421,6 +445,17 @@ struct HistoryListView: View {
         samples = SampleExtractor.setSamples(context: modelContext)
         refreshMetrics()
         refreshPRWorkouts()
+        refreshNets()
+    }
+
+    /// One `workoutNet` pass per finished workout, cached off the render path —
+    /// `row(_:)` must only ever do a dictionary lookup (see `netByWorkout`).
+    private func refreshNets() {
+        var next: [UUID: NetSummary] = [:]
+        for workout in workouts where !workout.isCasual {
+            next[workout.id] = ProgressEngine.workoutNet(samples: samples, workoutID: workout.id)
+        }
+        netByWorkout = next
     }
 
     /// Mark every workout that set a NEW all-time e1RM record on at least one exercise.
