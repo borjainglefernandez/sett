@@ -68,6 +68,7 @@ struct HomeTabView: View {
             case .classic:  classicHome
             case .briefing: conceptShell { HomeConceptBriefingView() }
             case .corridor: conceptShell { HomeConceptCorridorView() }
+            case .fusion:   conceptShell { HomeConceptFusionView() }
             case .chamber:  conceptShell { HomeConceptChamberView() }
             case .ledger:   conceptShell { HomeConceptLedgerView() }
             case .saga:     conceptShell { HomeConceptSagaView() }

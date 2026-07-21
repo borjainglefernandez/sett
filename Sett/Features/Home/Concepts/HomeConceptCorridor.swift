@@ -16,6 +16,14 @@ import SettCore
 // cyan first, then the crimson last segment), nodes popping in as it passes;
 // TODAY's node breathes a slow ki pulse. All Reduce-Motion-safe; the glow is
 // layered strokes, never an animated shadow.
+//
+// Round-2 iteration (owner critique): hero header (engraved 44pt gold PL + one
+// status line, the rail now originates AT the number); the sealed medallion is a
+// proper slab receipt (ΔPL chip + tonnage, visibly pressable); an explicit
+// scouter-green START capsule docks in the doorway; Vexeth gets the CATCH-IN
+// read and a receding BEHIND-YOU state; the road compresses (~15% tighter,
+// trailing dead stations fold into "…"); the week rail marks YOU and stamps the
+// target tick SEALED once the ask is met.
 struct HomeConceptCorridorView: View {
     @Environment(AppServices.self) private var services
     @Environment(WorkoutSessionStore.self) private var session
@@ -26,6 +34,10 @@ struct HomeConceptCorridorView: View {
     @Query private var frequencyGoals: [Goal]
 
     @State private var isShowingStreak = false
+
+    /// The sealed node's working-set tonnage (grams) — computed OFF `body` (onAppear
+    /// + workout-count changes) because it walks workout → exercises → sets.
+    @State private var sealTonnageGrams: Int?
 
     // The path-draw entrance: cyan spine first, then the crimson approach, then
     // the ghost segment to the gate. One-shot; Reduce Motion snaps all to done.
@@ -66,7 +78,13 @@ struct HomeConceptCorridorView: View {
             .scrollIndicators(.hidden)
             .dungeonBackground()
             .toolbar(.hidden, for: .navigationBar)
-            .onAppear(perform: drawRail)
+            .onAppear {
+                drawRail()
+                recomputeSealTonnage()
+            }
+            .onChange(of: finishedWorkouts.count) { _, _ in
+                recomputeSealTonnage()
+            }
             .sheet(isPresented: $isShowingStreak) {
                 StreakSheet(state: streakState,
                             mode: services.settings.scheduleMode,
@@ -82,21 +100,21 @@ struct HomeConceptCorridorView: View {
     private var corridor: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
-                .padding(.bottom, 28)
+                .padding(.bottom, 20)
             if let last = lastSealedWorkout {
                 sealNode(last)
                     .corridorPop(0.05, reduceMotion: reduceMotion)
-                    .padding(.bottom, 20)
+                    .padding(.bottom, 17)
             }
             todayNode
                 .corridorPop(0.12, reduceMotion: reduceMotion)
-                .padding(.bottom, 24)
+                .padding(.bottom, 20)
             weekCluster
                 .corridorPop(0.25, reduceMotion: reduceMotion)
-                .padding(.bottom, 36)
+                .padding(.bottom, 30)
             vexethNode
                 .corridorPop(0.4, reduceMotion: reduceMotion)
-                .padding(.bottom, 40)
+                .padding(.bottom, 34)
             gateNode
                 .corridorPop(0.5, reduceMotion: reduceMotion)
         }
@@ -130,7 +148,11 @@ struct HomeConceptCorridorView: View {
         if let todayAnchor = anchors[.today] {
             let today = geo[todayAnchor]
             let x = today.x
-            let topY = anchors[.seal].map { geo[$0].y } ?? (today.y - 40)
+            // The rail begins AT the header's numeral block — the arc flows out
+            // of your power — falling back to the seal stop pre-first-scan.
+            let topY = anchors[.origin].map { geo[$0].y + 4 }
+                ?? anchors[.seal].map { geo[$0].y }
+                ?? (today.y - 40)
             let weekEndY = anchors[.weekEnd].map { geo[$0].y } ?? (today.y + 56)
             ZStack {
                 glowStroke(RailSegment(from: CGPoint(x: x, y: topY),
@@ -140,9 +162,12 @@ struct HomeConceptCorridorView: View {
                     let vexethY = geo[vexethAnchor].y
                     // The last walked segment turns crimson: Vexeth is ON the road.
                     // It stops at his marker and NEVER runs on toward the gold gate.
+                    // When he's fallen BEHIND you the threat recedes — same road,
+                    // dimmed to a memory.
                     glowStroke(RailSegment(from: CGPoint(x: x, y: weekEndY),
                                            to: CGPoint(x: x, y: vexethY - 24)),
                                trim: crimsonTrim, color: SettColor.villainCrimson)
+                        .opacity(rivalIsAhead ? 1 : 0.45)
                     if let gateAnchor = anchors[.gate] {
                         // Past the rival the road is unwalked — a faint iron dash,
                         // keeping crimson and gold apart.
@@ -172,24 +197,50 @@ struct HomeConceptCorridorView: View {
         }
     }
 
-    // MARK: Header — compact gold PL + form (small; the path is the hero here)
+    // MARK: Header — the hero PL block; the rail begins AT the number
 
+    /// Ledger's confidence at corridor scale: an engraved ~44pt gold numeral with
+    /// the form word beside it and ONE status line beneath (week ΔPL in deltaInk,
+    /// else the reclaim/chase read). The rail's origin anchors to this block, so
+    /// the corridor visibly flows OUT of your power. Still compact (~90pt).
     private var header: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
             Eyebrow(Date.now.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())
                 .uppercased())
             let pl = services.progression.snapshotPowerLevel
             if pl > 0 {
-                HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    SacredNumberView(value: pl, size: .m)
-                    Text(UserForm.form(forPL: pl).title)
-                        .font(.system(size: 10, weight: .heavy, design: .monospaced))
-                        .kerning(1.5)
-                        .foregroundStyle(SettColor.heroCyan)
-                    Spacer(minLength: 0)
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        Text("\(pl)")
+                            .font(PowerFont.xl(44).italic())
+                            .monospacedDigit()
+                            .foregroundStyle(Aura.gold)
+                            // PowerNumeral's engraved cut at header scale.
+                            .shadow(color: SettColor.etch, radius: 0, x: 1, y: 1)
+                            .shadow(color: SettColor.etch, radius: 0, x: -1, y: 1)
+                            .auraGlow(SettColor.saiyanGold, radius: 12)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.5)
+                            .contentTransition(.numericText(value: Double(pl)))
+                            .animation(.snappy(duration: 0.4), value: pl)
+                        Text(UserForm.form(forPL: pl).title)
+                            .font(.system(size: 10, weight: .heavy, design: .monospaced))
+                            .kerning(1.5)
+                            .foregroundStyle(SettColor.heroCyan)
+                        Spacer(minLength: 0)
+                    }
+                    Text(headerStatusLine(pl: pl))
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .kerning(1)
+                        .monospacedDigit()
+                        .foregroundStyle(headerStatusTint)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
                 }
+                // The rail's origin: the corridor starts under the numeral block.
+                .anchorPreference(key: CorridorAnchorKey.self, value: .bottom) { [.origin: $0] }
                 .accessibilityElement(children: .ignore)
-                .accessibilityLabel("Power level \(pl), \(UserForm.form(forPL: pl).title.capitalized)")
+                .accessibilityLabel("Power level \(pl), \(UserForm.form(forPL: pl).title.capitalized), \(headerStatusLine(pl: pl).lowercased())")
             } else {
                 Text("The corridor opens.")
                     .font(.title3.weight(.semibold))
@@ -201,8 +252,33 @@ struct HomeConceptCorridorView: View {
         .padding(.trailing, 56)
     }
 
+    /// Week-so-far ΔPL once a session has landed this week; otherwise the chase —
+    /// the peak to reclaim, or the distance to the next form. Mirrors Briefing.
+    private func headerStatusLine(pl: Int) -> String {
+        if !trainedDaysThisWeek.isEmpty, let delta = services.progression.plDeltaThisWeek {
+            return "\(delta >= 0 ? "+" : "")\(delta.formatted()) THIS WEEK"
+        }
+        let peak = services.progression.snapshot?.allTimePeakPL ?? pl
+        if peak > pl {
+            return "PEAK \(peak.formatted()) · \((peak - pl).formatted()) TO RECLAIM"
+        }
+        let form = UserForm.form(forPL: pl)
+        return "\((form.nextPL - pl).formatted()) PL TO \(UserForm.form(forPL: form.nextPL).title)"
+    }
+
+    /// deltaInk carries the signed week number; the chase lines stay quiet ash.
+    private var headerStatusTint: Color {
+        if !trainedDaysThisWeek.isEmpty, let delta = services.progression.plDeltaThisWeek {
+            return SettColor.deltaInk(delta)
+        }
+        return SettColor.ash
+    }
+
     // MARK: Seal node — the last sealed session, a medallion behind you
 
+    /// The receipt half sits on a quiet slab (fill + hairline) so the row reads
+    /// as a CONTROL, not a caption — the rail column stays clear of the card so
+    /// the corridor line never gets occluded. Press = the shared slab squeeze.
     private func sealNode(_ workout: Workout) -> some View {
         NavigationLink {
             WorkoutDetailView(workout: workout)
@@ -218,36 +294,74 @@ struct HomeConceptCorridorView: View {
                 .frame(width: 28, height: 28)
                 .frame(width: Self.railColumnWidth)
                 .anchorPreference(key: CorridorAnchorKey.self, value: .center) { [.seal: $0] }
-                VStack(alignment: .leading, spacing: 3) {
-                    Eyebrow("SEALED · \(sealDayLabel(workout))")
-                    HStack(spacing: 8) {
-                        Text(workout.title)
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(SettColor.bone)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.8)
-                        if let delta = plDelta(for: workout) {
-                            Text("\(delta >= 0 ? "+" : "")\(delta.formatted()) PL")
+                HStack(spacing: 8) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Eyebrow("SEALED · \(sealDayLabel(workout))")
+                        HStack(spacing: 8) {
+                            Text(workout.title)
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(SettColor.bone)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
+                            if let delta = plDelta(for: workout) {
+                                Text("\(delta >= 0 ? "+" : "")\(delta.formatted()) PL")
+                                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                    .kerning(0.5)
+                                    .monospacedDigit()
+                                    .foregroundStyle(SettColor.deltaInk(delta))
+                                    .padding(.horizontal, 7)
+                                    .padding(.vertical, 3)
+                                    .background(SettColor.deltaInk(delta).opacity(0.12), in: Capsule())
+                            }
+                        }
+                        if let tonnage = sealTonnageText {
+                            Text(tonnage)
                                 .font(.system(size: 9, weight: .bold, design: .monospaced))
-                                .kerning(0.5)
+                                .kerning(1)
                                 .monospacedDigit()
-                                .foregroundStyle(SettColor.deltaInk(delta))
-                                .padding(.horizontal, 7)
-                                .padding(.vertical, 3)
-                                .background(SettColor.deltaInk(delta).opacity(0.12), in: Capsule())
+                                .foregroundStyle(SettColor.iron)
                         }
                     }
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.right")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(SettColor.ash)
                 }
-                Spacer(minLength: 0)
-                Image(systemName: "chevron.right")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(SettColor.iron)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(SettColor.card.opacity(0.72))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .strokeBorder(SettColor.cardBorder.opacity(0.9), lineWidth: 1)
+                        }
+                }
             }
             .contentShape(Rectangle())
         }
         .buttonStyle(PressableSlabStyle(haptic: .light))
         .accessibilityLabel(sealAccessibility(workout))
         .accessibilityHint("Opens the workout's details")
+    }
+
+    /// Sealed-session tonnage (working sets only) in the display unit — cached in
+    /// @State via recomputeSealTonnage; NEVER a relationship walk in `body`.
+    private var sealTonnageText: String? {
+        guard let grams = sealTonnageGrams, grams > 0 else { return nil }
+        let unit = services.settings.unit
+        let value = Int((Double(grams) / unit.gramsPerUnit).rounded())
+        return "\(value.formatted()) \(unit.symbol.uppercased())"
+    }
+
+    private func recomputeSealTonnage() {
+        guard let workout = lastSealedWorkout else {
+            sealTonnageGrams = nil
+            return
+        }
+        sealTonnageGrams = workout.orderedExercises
+            .flatMap { $0.orderedSets.filter { !$0.isWarmup } }
+            .reduce(0) { $0 + $1.weightGrams * $1.reps }
     }
 
     private func sealDayLabel(_ workout: Workout) -> String {
@@ -262,6 +376,9 @@ struct HomeConceptCorridorView: View {
         if let delta = plDelta(for: workout) {
             parts.append(delta == 0 ? "no power change"
                                     : "\(delta > 0 ? "up" : "down") \(abs(delta)) power level")
+        }
+        if let tonnage = sealTonnageText {
+            parts.append("\(tonnage.lowercased()) moved")
         }
         return parts.joined(separator: ", ")
     }
@@ -290,14 +407,16 @@ struct HomeConceptCorridorView: View {
     private static let railColumnWidth: CGFloat = 40
     private let heroHeight: CGFloat = 150
 
-    /// The NEXT DIRECTIVE face — the whole doorway starts the routine; the small
-    /// "or start empty" ghost is a sibling button (never nested tap targets).
+    /// The NEXT DIRECTIVE face — the whole doorway starts the routine, and an
+    /// explicit scouter-green START capsule (Briefing's strongest control) docks
+    /// inside the doorway's floor. The capsule and the "or start empty" ghost are
+    /// sibling buttons overlaid on the card — never nested tap targets.
     private var directiveCard: some View {
         ZStack(alignment: .bottomLeading) {
             Button {
                 startPrimary()
             } label: {
-                RealmDoorwayCard(asset: launchRealmAsset, emphasized: true, height: heroHeight) {
+                RealmDoorwayCard(asset: launchRealmAsset, emphasized: true, height: heroHeight + 22) {
                     VStack(alignment: .leading, spacing: 5) {
                         Eyebrow(todayEyebrow, tint: SettColor.heroCyan)
                         Text(todaysRoutine?.name ?? "Quick Start")
@@ -316,6 +435,8 @@ struct HomeConceptCorridorView: View {
                                 .accessibilityLabel("Rested surge armed — this session counts extra")
                         }
                     }
+                    // Reserve the doorway's floor for the START capsule row.
+                    .padding(.bottom, 34)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 } accessory: {
                     playDisc
@@ -325,12 +446,36 @@ struct HomeConceptCorridorView: View {
             .buttonStyle(PressableSlabStyle(haptic: .light))
             .accessibilityLabel(todaysRoutine.map { "Start \($0.name)" } ?? "Quick start a workout")
 
-            if todaysRoutine != nil {
-                quickStartGhost
-                    .padding(.leading, 18)
-                    .padding(.bottom, 12)
+            HStack(spacing: 14) {
+                startCapsule
+                if todaysRoutine != nil {
+                    quickStartGhost
+                }
             }
+            .padding(.leading, 18)
+            .padding(.bottom, 12)
         }
+    }
+
+    /// The GO control — scouter green, the session instrument's live hue (stolen
+    /// from Briefing). Compact, docked to the doorway floor beside the ghost.
+    private var startCapsule: some View {
+        Button(action: startPrimary) {
+            HStack(spacing: 7) {
+                Image(systemName: "play.fill")
+                    .font(.system(size: 10, weight: .bold))
+                Text("START")
+                    .font(.system(size: 12, weight: .bold, design: .monospaced))
+                    .kerning(2)
+            }
+            .foregroundStyle(SettColor.etch)
+            .padding(.horizontal, 18)
+            .frame(height: 34)
+            .background(TimeChamber.scouterGreen, in: Capsule())
+            .contentShape(Capsule())
+        }
+        .buttonStyle(PressableSlabStyle(haptic: .light))
+        .accessibilityLabel(todaysRoutine.map { "Start \($0.name)" } ?? "Quick start a workout")
     }
 
     /// The SEALED face — today's stop already stamped: ΔPL (gold on a gain, per the
@@ -473,6 +618,8 @@ struct HomeConceptCorridorView: View {
     // MARK: Week cluster — the remaining stops, with the streak target marked
 
     /// Tapping anywhere on the cluster opens the streak sheet — the week IS the streak.
+    /// Road order: [target already sealed] → YOU (today's tick) → the remaining
+    /// stops (with the target tick inline) → a faint "…" where dead stations fold.
     private var weekCluster: some View {
         Button {
             Haptics.light()
@@ -481,18 +628,23 @@ struct HomeConceptCorridorView: View {
             VStack(alignment: .leading, spacing: 0) {
                 weekHeaderRow
                     .padding(.bottom, 6)
-                ForEach(Array(remainingDayIndices.enumerated()), id: \.element) { position, day in
+                if daysStillNeeded == 0 {
+                    targetRow(sealed: true)
+                }
+                nowMarkerRow
+                ForEach(Array(visibleRemainingDays.enumerated()), id: \.element) { position, day in
                     ghostStopRow(day: day)
                     if position + 1 == daysStillNeeded {
-                        targetLineRow
+                        targetRow(sealed: false)
                     }
                 }
-                if daysStillNeeded == 0 {
-                    weekSealedRow
-                } else if daysStillNeeded > remainingDayIndices.count {
+                if hasCollapsedTail {
+                    collapsedTailRow
+                }
+                if daysStillNeeded > visibleRemainingDays.count, daysStillNeeded > 0 {
                     // The target can't land inside the remaining stops (short week or
                     // deep target) — mark it quietly at the cluster's end, never a scold.
-                    targetLineRow
+                    targetRow(sealed: false)
                 }
             }
             .contentShape(Rectangle())
@@ -502,6 +654,37 @@ struct HomeConceptCorridorView: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(weekAccessibility)
         .accessibilityHint("Shows streak rules and this week's progress")
+    }
+
+    /// Today's position ON the rail — a lit tick between the stops, so the road
+    /// reads "you are HERE" without another card.
+    private var nowMarkerRow: some View {
+        HStack(spacing: 12) {
+            Circle()
+                .fill(SettColor.heroCyan)
+                .frame(width: 6, height: 6)
+                .shadow(color: SettColor.heroCyan.opacity(0.8), radius: 3)
+                .frame(width: Self.railColumnWidth)
+            Text("YOU · \(TrainDays.shortNames[todayIndex].uppercased())")
+                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .kerning(1)
+                .foregroundStyle(SettColor.heroCyan.opacity(0.7))
+            Spacer(minLength: 0)
+        }
+        .frame(height: 18)
+    }
+
+    /// Trailing empty weekdays fold into one faint stop — the road ahead never
+    /// trails dead stations.
+    private var collapsedTailRow: some View {
+        HStack(spacing: 12) {
+            Text("…")
+                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                .foregroundStyle(SettColor.iron.opacity(0.55))
+                .frame(width: Self.railColumnWidth)
+            Spacer(minLength: 0)
+        }
+        .frame(height: 16)
     }
 
     private var weekHeaderRow: some View {
@@ -570,41 +753,37 @@ struct HomeConceptCorridorView: View {
             }
             Spacer(minLength: 0)
         }
-        .frame(height: 26)
+        .frame(height: 24)
     }
 
     /// The streak-target line: a cyan tick crossing the rail where the week's ask
-    /// would be met — a station marker on the road, not a deadline.
-    private var targetLineRow: some View {
+    /// would be met — a station marker on the road, not a deadline. Once the week
+    /// meets its ask the tick earns a tiny SEALED chip and reads as passed.
+    private func targetRow(sealed: Bool) -> some View {
         HStack(spacing: 12) {
             RoundedRectangle(cornerRadius: 1)
-                .fill(SettColor.heroCyan.opacity(0.7))
+                .fill(SettColor.heroCyan.opacity(sealed ? 0.9 : 0.7))
                 .frame(width: 16, height: 2)
                 .frame(width: Self.railColumnWidth)
             Text("STREAK TARGET · \(streakTarget)/WK")
                 .font(.system(size: 9, weight: .bold, design: .monospaced))
                 .kerning(1)
                 .foregroundStyle(SettColor.heroCyan.opacity(0.9))
+            if sealed {
+                Text("SEALED")
+                    .font(.system(size: 8, weight: .heavy, design: .monospaced))
+                    .kerning(1)
+                    .foregroundStyle(SettColor.heroCyan)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(SettColor.heroCyan.opacity(0.14), in: Capsule())
+                    .overlay {
+                        Capsule().strokeBorder(SettColor.heroCyan.opacity(0.35), lineWidth: 1)
+                    }
+            }
             Spacer(minLength: 0)
         }
         .frame(height: 20)
-    }
-
-    /// The week already met its ask — the target line reads as passed, quietly lit.
-    private var weekSealedRow: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "flame.fill")
-                .font(.system(size: 10, weight: .bold))
-                .foregroundStyle(SettColor.heroCyan)
-                .frame(width: Self.railColumnWidth)
-            Text("WEEK SEALED · \(trainedDaysThisWeek.count)/\(streakTarget)")
-                .font(.system(size: 9, weight: .bold, design: .monospaced))
-                .kerning(1)
-                .monospacedDigit()
-                .foregroundStyle(SettColor.heroCyan)
-            Spacer(minLength: 0)
-        }
-        .frame(height: 22)
     }
 
     private var weekAccessibility: String {
@@ -612,59 +791,90 @@ struct HomeConceptCorridorView: View {
             ? ", \(streakState.shields) shield\(streakState.shields == 1 ? "" : "s") banked" : ""
         let firePart = isRekindle ? "streak ready to relight"
                                   : "\(streakWeeks) week streak"
-        return "This week \(trainedDaysThisWeek.count) of \(streakTarget) days trained, \(firePart)\(shieldPart)"
+        let targetPart = daysStillNeeded == 0 ? ", streak target sealed" : ""
+        return "This week \(trainedDaysThisWeek.count) of \(streakTarget) days trained, \(firePart)\(shieldPart)\(targetPart)"
     }
 
     // MARK: Vexeth node — the rival as a PLACE on your road
 
+    /// AHEAD: full-menace stop — gap numeral, then the "CATCH IN N WK" read when
+    /// your trailing pace outruns his growth. BEHIND YOU: the stop RECEDES —
+    /// portrait shrinks, crimson dims, the road's threat is in your mirror.
     private var vexethNode: some View {
-        HStack(alignment: .center, spacing: 12) {
+        let ahead = rivalIsAhead
+        return HStack(alignment: .center, spacing: 12) {
             ZStack {
                 Circle().fill(SettColor.villainVoid)
                 VexethPortraitView(form: rival.form)
-                    .frame(width: 32, height: 32)
+                    .frame(width: ahead ? 32 : 24, height: ahead ? 32 : 24)
                     .clipShape(Circle())
-                Circle().strokeBorder(SettColor.villainCrimson.opacity(0.8), lineWidth: 1.5)
+                Circle().strokeBorder(SettColor.villainCrimson.opacity(ahead ? 0.8 : 0.4),
+                                      lineWidth: 1.5)
             }
-            .frame(width: 36, height: 36)
-            .shadow(color: SettColor.villainCrimson.opacity(0.45), radius: 6)
+            .frame(width: ahead ? 36 : 28, height: ahead ? 36 : 28)
+            .shadow(color: SettColor.villainCrimson.opacity(ahead ? 0.45 : 0.18),
+                    radius: ahead ? 6 : 3)
             .frame(width: Self.railColumnWidth)
             .anchorPreference(key: CorridorAnchorKey.self, value: .center) { [.vexeth: $0] }
             VStack(alignment: .leading, spacing: 3) {
                 Eyebrow(VexethArtwork.title(for: rival.form).uppercased(),
-                        tint: SettColor.villainCrimson)
+                        tint: SettColor.villainCrimson.opacity(ahead ? 1 : 0.55))
                 Text(rivalGapLine)
                     .font(.system(size: 12, weight: .heavy, design: .monospaced))
                     .kerning(0.5)
                     .monospacedDigit()
-                    .foregroundStyle(SettColor.villainCrimson)
+                    .foregroundStyle(SettColor.villainCrimson.opacity(ahead ? 1 : 0.6))
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
+                if let weeks = catchWeeks {
+                    Text("CATCH IN \(weeks) WK")
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .kerning(1)
+                        .monospacedDigit()
+                        .foregroundStyle(SettColor.villainCrimson.opacity(0.75))
+                }
                 Text("“\(services.progression.rivalTaunt)”")
                     .font(.footnote.italic())
-                    .foregroundStyle(SettColor.villainCrimson.opacity(0.7))
+                    .foregroundStyle(SettColor.villainCrimson.opacity(ahead ? 0.7 : 0.45))
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 0)
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Vexeth, \(rivalGapLine.lowercased()). \(services.progression.rivalTaunt)")
+        .accessibilityLabel(rivalAccessibility)
     }
 
     private var rival: (pl: Int, form: Int) { services.progression.effectiveRival }
 
-    /// "N PL AHEAD · CATCH IN W WK" — or, when the road is yours, "N PL BEHIND YOU".
+    private var rivalIsAhead: Bool { rival.pl > services.progression.snapshotPowerLevel }
+
+    /// "N PL AHEAD" — or, when the road is yours, "BEHIND YOU · N PL".
     private var rivalGapLine: String {
         let gap = rival.pl - services.progression.snapshotPowerLevel
-        guard gap > 0 else { return "\(abs(gap).formatted()) PL BEHIND YOU" }
+        guard gap > 0 else { return "BEHIND YOU · \(abs(gap).formatted()) PL" }
+        return "\(gap.formatted()) PL AHEAD"
+    }
+
+    /// Weeks to close the gap at your trailing pace vs his growth — nil when the
+    /// pace doesn't beat the growth, or when he's already behind you.
+    private var catchWeeks: Int? {
+        let gap = rival.pl - services.progression.snapshotPowerLevel
+        guard gap > 0 else { return nil }
         let pace = services.progression.trailingWeeklyPace
         let growth = services.progression.effectiveRivalGrowth
-        if pace > growth {
-            let weeks = Int((Double(gap) / Double(pace - growth)).rounded(.up))
-            return "\(gap.formatted()) PL AHEAD · CATCH IN \(weeks) WK"
+        guard pace > growth else { return nil }
+        return Int((Double(gap) / Double(pace - growth)).rounded(.up))
+    }
+
+    private var rivalAccessibility: String {
+        let gap = rival.pl - services.progression.snapshotPowerLevel
+        let taunt = services.progression.rivalTaunt
+        guard gap > 0 else {
+            return "Vexeth, \(abs(gap)) power levels behind you. \(taunt)"
         }
-        return "\(gap.formatted()) PL AHEAD"
+        let catchPart = catchWeeks.map { ", catch in \($0) week\($0 == 1 ? "" : "s") at your pace" } ?? ""
+        return "Vexeth, \(gap) power levels ahead\(catchPart). \(taunt)"
     }
 
     // MARK: Gate node — the next form, a distant gold gate
@@ -791,6 +1001,24 @@ struct HomeConceptCorridorView: View {
         todayIndex < 6 ? Array((todayIndex + 1)...6) : []
     }
 
+    /// The remaining stops worth a station: the trailing run of days with nothing
+    /// scheduled folds into the "…" stop — but never below the rows the streak
+    /// target tick needs to land inline.
+    private var visibleRemainingDays: [Int] {
+        let days = remainingDayIndices
+        var keep = days.count
+        while keep > 0,
+              keep > daysStillNeeded,
+              scheduledRoutineName(day: days[keep - 1]) == nil {
+            keep -= 1
+        }
+        return Array(days.prefix(keep))
+    }
+
+    private var hasCollapsedTail: Bool {
+        visibleRemainingDays.count < remainingDayIndices.count
+    }
+
     /// Days still needed this week to hit the streak target.
     private var daysStillNeeded: Int {
         max(0, streakTarget - trainedDaysThisWeek.count)
@@ -894,7 +1122,7 @@ struct HomeConceptCorridorView: View {
 /// The stops whose rail geometry the background path needs. Week ghost stops sit
 /// on the line but don't bend it, so only the cluster's end is anchored.
 private enum CorridorStop: Hashable {
-    case seal, today, weekEnd, vexeth, gate
+    case origin, seal, today, weekEnd, vexeth, gate
 }
 
 private struct CorridorAnchorKey: PreferenceKey {

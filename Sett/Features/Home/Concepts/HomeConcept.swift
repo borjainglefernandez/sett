@@ -4,7 +4,7 @@ import Foundation
 /// the app's front door, switchable live from Settings so they can be judged in
 /// the hand, not in mockups. `classic` is the shipping stack-of-cards Home.
 enum HomeConcept: String, CaseIterable, Identifiable {
-    case classic, briefing, corridor, chamber, ledger, saga
+    case classic, briefing, corridor, fusion, chamber, ledger, saga
 
     var id: String { rawValue }
 
@@ -13,6 +13,7 @@ enum HomeConcept: String, CaseIterable, Identifiable {
         case .classic:  return "Classic"
         case .briefing: return "Briefing"
         case .corridor: return "Corridor"
+        case .fusion:   return "Fusion"
         case .chamber:  return "Chamber"
         case .ledger:   return "Ledger"
         case .saga:     return "Saga"
@@ -25,6 +26,7 @@ enum HomeConcept: String, CaseIterable, Identifiable {
         case .classic:  return "The shipping stack — doorway, week, directives."
         case .briefing: return "Scouter telemetry — a dense HUD that boots in."
         case .corridor: return "Your arc as a path — Vexeth stands on the road."
+        case .fusion:   return "Briefing's glance up top, Corridor's road below."
         case .chamber:  return "The realm is the interface — enter the door."
         case .ledger:   return "One number, one sentence, one action."
         case .saga:     return "Today as a hand of cards — swipe the saga."

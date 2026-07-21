@@ -1,17 +1,22 @@
 import SwiftUI
 import SwiftData
+import Charts
 import SettCore
 
 // MARK: - Concept 1 — "BRIEFING" (the scouter telemetry HUD)
 //
 // The two-second total read: a strict grid of HUD tiles on the dungeon background,
-// everything mono except the one gold Power Level numeral. Flighty-density data,
+// everything mono except the gold Power Level marks. Flighty-density data,
 // F1-telemetry grammar, terminal boot sequence — the screen POWERS UP on appear:
 // each tile's rule draws, its numerals flicker from scramble to value, and a single
-// 1px scanline sweeps once. Two mono sizes only (10 / 13); the discipline IS the
-// aesthetic. Color law holds: gold = PL numeral only, cyan = ki/action, crimson =
-// the ONE Vexeth tile, scouter green = the live START control (session grammar).
-// Reduce Motion: everything lands instantly — no sweep, no scramble, no stagger.
+// 1px scanline sweeps once. The boot plays ONCE per app session — tab-hopping back
+// lands the grid instantly. Two mono sizes only (10 / 13); the discipline IS the
+// aesthetic. Eight tiles fill the viewport: POWER+STREAK / VEXETH (with the
+// two-line race) / DIRECTIVE / WEEK / TRAJECTORY (the 10-week gold curve) /
+// ZONES+LAST SCAN, then the SYSTEM ticker. Color law holds: gold = the PL numeral
+// and its trajectory line only, cyan = ki/action, crimson = the ONE Vexeth tile,
+// scouter green = the live START control (session grammar). Reduce Motion:
+// everything lands instantly — no sweep, no scramble, no stagger.
 struct HomeConceptBriefingView: View {
     @Environment(AppServices.self) private var services
     @Environment(WorkoutSessionStore.self) private var session
@@ -22,11 +27,19 @@ struct HomeConceptBriefingView: View {
     @Query private var frequencyGoals: [Goal]
     @Query private var badgeAwards: [BadgeAward]
 
-    // MARK: Boot state (the signature moment)
+    // MARK: Boot state (the signature moment — once per app session)
+
+    /// One boot per APP SESSION: the choreography plays on the first mount and every
+    /// later mount (tab-hop back) lands instantly. A static, not @AppStorage — the
+    /// scan is a launch ritual, so a fresh launch SHOULD replay it.
+    private static var hasBootedThisSession = false
 
     /// Flips once on first appearance; every tile keys its staggered entrance off it.
     @State private var booted = false
     @State private var hasBooted = false
+    /// False when this mount skips the choreography (session already booted, or RM):
+    /// gates every tile entrance, scramble, and the ticker fade to "instant".
+    @State private var bootAnimated = true
     /// The gold numeral rolls 0 → PL during the boot (odometer feel via numericText).
     @State private var plShown = 0
     /// One-shot scanline sweep: 0 → 1 travel, then the layer fades out and unmounts.
@@ -36,6 +49,13 @@ struct HomeConceptBriefingView: View {
     /// This week's hard working sets — a SwiftData relationship walk, so it's
     /// computed in a task and cached here, never in `body` (per the CPU traps).
     @State private var weekSetCount: Int?
+    /// How many of the 10 landmark muscle groups sit in their weekly growth zone —
+    /// filled by the same cached walk as `weekSetCount`.
+    @State private var weekZonesInZone: Int?
+    /// The trailing 10-week PL curve and 8-week race lines — engine math over the
+    /// in-memory trajectory, cached so the 6-second ticker re-render never recomputes.
+    @State private var weeklyCurve: [WeeklyPLChange] = []
+    @State private var raceLines: [(weekStart: Date, you: Int, rival: Int)] = []
     @State private var isShowingStreak = false
     /// Rotating SYSTEM ticker line index (advances every ~6s while mounted).
     @State private var tickerIndex = 0
@@ -65,23 +85,27 @@ struct HomeConceptBriefingView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: BriefingMetrics.gap) {
                 header
                 grid
                 ticker
             }
             .padding(.horizontal, 16)
-            .padding(.bottom, 88) // clear the floating tab bar
+            .padding(.bottom, 80) // clear the floating tab bar (~72pt + margin)
         }
         .scrollIndicators(.hidden)
         .dungeonBackground()
         .onAppear(perform: boot)
-        .task(id: finishedWorkouts.count) { loadWeekSets() }
+        .task(id: finishedWorkouts.count) {
+            loadWeekSets()
+            loadCurves()
+        }
         .task { await rotateTicker() }
         .onChange(of: services.progression.snapshotPowerLevel) { _, newValue in
             guard hasBooted else { return }
             if reduceMotion { plShown = newValue }
             else { withAnimation(.easeOut(duration: 0.5)) { plShown = newValue } }
+            loadCurves()
         }
         .sheet(isPresented: $isShowingStreak) {
             StreakSheet(state: streakState,
@@ -104,6 +128,7 @@ struct HomeConceptBriefingView: View {
                     .uppercased())
                 .font(.system(size: 10, weight: .bold, design: .monospaced))
                 .kerning(1.5)
+                .monospacedDigit()
                 .foregroundStyle(SettColor.ash)
             Spacer(minLength: 0)
         }
@@ -113,17 +138,22 @@ struct HomeConceptBriefingView: View {
         .accessibilityLabel("Sett telemetry, \(Date.now.formatted(date: .abbreviated, time: .omitted))")
     }
 
-    // MARK: The grid (POWER + STREAK / VEXETH / DIRECTIVE / WEEK)
+    // MARK: The grid (POWER+STREAK / VEXETH / DIRECTIVE / WEEK / TRAJECTORY / ZONES+LAST SCAN)
 
     private var grid: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top, spacing: 8) {
+        VStack(alignment: .leading, spacing: BriefingMetrics.gap) {
+            HStack(alignment: .top, spacing: BriefingMetrics.gap) {
                 powerTile
                 streakTile.frame(width: 132)
             }
             rivalTile
             directiveTile
             weekTile
+            trajectoryTile
+            HStack(alignment: .top, spacing: BriefingMetrics.gap) {
+                zonesTile.frame(width: 132)
+                lastScanTile
+            }
         }
         .overlay(alignment: .top) {
             if scanOpacity > 0 { scanline }
@@ -144,12 +174,12 @@ struct HomeConceptBriefingView: View {
         .accessibilityHidden(true)
     }
 
-    // MARK: POWER tile (the ONE gold element on the screen)
+    // MARK: POWER tile (the ONE gold numeral on the screen)
 
     private var powerTile: some View {
         let pl = services.progression.snapshotPowerLevel
         let form = UserForm.form(forPL: pl)
-        return BriefingTile(label: "POWER", index: 0, booted: booted) {
+        return BriefingTile(label: "POWER", index: 0, booted: booted, animated: bootAnimated) {
             VStack(alignment: .leading, spacing: 4) {
                 PowerNumeral(plShown, size: .l)
                 Text(form.title)
@@ -169,28 +199,41 @@ struct HomeConceptBriefingView: View {
         .accessibilityLabel("Power level \(pl), \(form.title.capitalized), \(powerStatusLine(pl: pl).lowercased())")
     }
 
-    /// Week-so-far ΔPL when a session has landed this week; otherwise the chase —
-    /// the peak to reclaim, or the pips to the next form. Mirrors the classic crest.
+    /// This week's ΔPL so far — nil until a session has landed this week.
+    private var weekDeltaSoFar: Int? {
+        guard !trainedDaysThisWeek.isEmpty else { return nil }
+        return services.progression.plDeltaThisWeek
+    }
+
+    /// Week-so-far ΔPL when a session has landed this week — but a down-week NEVER
+    /// reads as a bare minus: the dip is paired with the ground to retake (the peak
+    /// to reclaim, or the pips to the next form). No session yet: the chase alone.
     private func powerStatusLine(pl: Int) -> String {
         guard pl > 0 else { return "AWAITING FIRST SCAN" }
-        if !trainedDaysThisWeek.isEmpty, let delta = services.progression.plDeltaThisWeek {
-            return "\(delta >= 0 ? "+" : "")\(delta.formatted()) THIS WEEK"
+        if let delta = weekDeltaSoFar {
+            if delta >= 0 { return "+\(delta.formatted()) THIS WEEK" }
+            return "\(delta.formatted()) WK · \(chaseLine(pl: pl))"
         }
         let peak = services.progression.snapshot?.allTimePeakPL ?? pl
         if peak > pl {
             return "PEAK \(peak.formatted()) · \((peak - pl).formatted()) TO RECLAIM"
         }
+        return chaseLine(pl: pl)
+    }
+
+    /// The chase fragment: reclaim distance when below peak, else next-form distance.
+    private func chaseLine(pl: Int) -> String {
+        let peak = services.progression.snapshot?.allTimePeakPL ?? pl
+        if peak > pl { return "\((peak - pl).formatted()) TO RECLAIM" }
         let form = UserForm.form(forPL: pl)
         let next = UserForm.form(forPL: form.nextPL)
         return "\((form.nextPL - pl).formatted()) TO \(next.title)"
     }
 
+    /// The week delta wears deltaInk (up = green, down = quiet iron, never red);
+    /// the chase fallback stays ash.
     private var powerStatusTint: Color {
-        if !trainedDaysThisWeek.isEmpty, let delta = services.progression.plDeltaThisWeek,
-           delta >= 0 {
-            return SettColor.positive
-        }
-        return SettColor.ash
+        weekDeltaSoFar.map { SettColor.deltaInk($0) } ?? SettColor.ash
     }
 
     // MARK: STREAK tile (flame + wk + shields — tap for the rules)
@@ -202,7 +245,7 @@ struct HomeConceptBriefingView: View {
         Button {
             isShowingStreak = true
         } label: {
-            BriefingTile(label: "STREAK", index: 1, booted: booted) {
+            BriefingTile(label: "STREAK", index: 1, booted: booted, animated: bootAnimated) {
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(spacing: 6) {
                         Image(systemName: "flame.fill")
@@ -211,7 +254,7 @@ struct HomeConceptBriefingView: View {
                             .accessibilityHidden(true)
                         ScrambleNumeral(isRekindle ? "RELIGHT" : "\(streakWeeks) WK",
                                         size: 13, color: SettColor.bone,
-                                        delay: tileDelay(1), active: booted)
+                                        delay: tileDelay(1), active: booted, animated: bootAnimated)
                     }
                     HStack(spacing: 3) {
                         ForEach(0 ..< max(streakState.shields, 0), id: \.self) { _ in
@@ -251,43 +294,84 @@ struct HomeConceptBriefingView: View {
         return "\(streakWeeks) week streak\(shieldPart)\(weekPart)"
     }
 
-    // MARK: VEXETH tile (the ONLY crimson tile)
+    // MARK: VEXETH tile (the ONLY crimson tile — gap numeral + the two-line race)
 
     private var rivalTile: some View {
         let pl = services.progression.snapshotPowerLevel
         let rival = services.progression.effectiveRival
         let gap = rival.pl - pl
         let taunt = services.progression.rivalTaunt
+        let hasRace = raceLines.count >= 2
         return BriefingTile(label: "VEXETH · FORM \(rival.form)",
                             labelTint: SettColor.villainCrimson.opacity(0.9),
                             rimTint: SettColor.villainCrimson,
-                            index: 2, booted: booted) {
-            HStack(alignment: .top, spacing: 12) {
+                            index: 2, booted: booted, animated: bootAnimated) {
+            HStack(alignment: .center, spacing: 12) {
                 VStack(alignment: .leading, spacing: 3) {
                     ScrambleNumeral(gap > 0 ? "+\(gap.formatted()) PL" : "\(abs(gap).formatted()) PL",
                                     size: 13, color: SettColor.villainCrimson,
-                                    delay: tileDelay(2), active: booted)
+                                    delay: tileDelay(2), active: booted, animated: bootAnimated)
                     Text(rivalGapCaption(gap: gap))
                         .font(.system(size: 10, weight: .bold, design: .monospaced))
                         .kerning(1)
+                        .monospacedDigit()
                         .foregroundStyle(SettColor.ash)
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
                 }
                 Spacer(minLength: 8)
-                Text(taunt)
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                    .foregroundStyle(SettColor.ash)
-                    .multilineTextAlignment(.trailing)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.8)
-                    .frame(maxWidth: 190, alignment: .trailing)
+                VStack(alignment: .trailing, spacing: 4) {
+                    if hasRace { raceSparkline }
+                    Text(taunt)
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .foregroundStyle(SettColor.ash)
+                        .multilineTextAlignment(.trailing)
+                        .lineLimit(hasRace ? 1 : 2)
+                        .minimumScaleFactor(0.8)
+                }
+                .frame(maxWidth: 190, alignment: .trailing)
             }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(gap > 0
-            ? "Vexeth form \(rival.form), \(gap) power levels ahead. \(taunt)"
-            : "Vexeth form \(rival.form), \(abs(gap)) power levels behind you. \(taunt)")
+        .accessibilityLabel(rivalAccessibility(gap: gap, form: rival.form, taunt: taunt))
+    }
+
+    /// The two-line mini race — bone you, crimson him — converging (or not) over the
+    /// trailing 8 weeks. Static marks, hidden axes: pure shape, no chart chrome.
+    private var raceSparkline: some View {
+        Chart {
+            ForEach(Array(raceLines.enumerated()), id: \.offset) { item in
+                LineMark(x: .value("Week", item.element.weekStart),
+                         y: .value("PL", item.element.you),
+                         series: .value("Series", "You"))
+                    .foregroundStyle(SettColor.bone)
+                    .lineStyle(StrokeStyle(lineWidth: 1.5))
+                LineMark(x: .value("Week", item.element.weekStart),
+                         y: .value("PL", item.element.rival),
+                         series: .value("Series", "Vexeth"))
+                    .foregroundStyle(SettColor.villainCrimson)
+                    .lineStyle(StrokeStyle(lineWidth: 1.5))
+            }
+        }
+        .chartXAxis(.hidden)
+        .chartYAxis(.hidden)
+        .chartLegend(.hidden)
+        .frame(width: 132, height: 28)
+        .accessibilityHidden(true)
+    }
+
+    private func rivalAccessibility(gap: Int, form: Int, taunt: String) -> String {
+        var parts = [gap > 0
+            ? "Vexeth form \(form), \(gap) power levels ahead"
+            : "Vexeth form \(form), \(abs(gap)) power levels behind you"]
+        if let first = raceLines.first, let last = raceLines.last, raceLines.count >= 2 {
+            let openGap = first.rival - first.you
+            let nowGap = last.rival - last.you
+            let trend = nowGap < openGap ? "closing" : nowGap > openGap ? "widening" : "holding"
+            parts.append("the race is \(trend)")
+        }
+        parts.append(taunt)
+        return parts.joined(separator: ". ")
     }
 
     /// AHEAD (+ the catch-in-N-weeks read when your pace outruns his growth) or the
@@ -319,8 +403,8 @@ struct HomeConceptBriefingView: View {
     /// The next session, armed: routine + planning cues + the scouter-green START
     /// capsule (the session's live-instrument green — this is the GO control).
     private var liveDirective: some View {
-        BriefingTile(label: directiveEyebrow, index: 3, booted: booted) {
-            VStack(alignment: .leading, spacing: 10) {
+        BriefingTile(label: directiveEyebrow, index: 3, booted: booted, animated: bootAnimated) {
+            VStack(alignment: .leading, spacing: 8) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(todaysRoutine?.name ?? (finishedWorkouts.isEmpty ? "Enter the chamber" : "Quick Start"))
                         .font(.system(size: 13, weight: .bold, design: .monospaced))
@@ -330,6 +414,7 @@ struct HomeConceptBriefingView: View {
                     Text(directiveSubline)
                         .font(.system(size: 10, weight: .bold, design: .monospaced))
                         .kerning(1)
+                        .monospacedDigit()
                         .foregroundStyle(SettColor.ash)
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
@@ -348,7 +433,7 @@ struct HomeConceptBriefingView: View {
 
     /// Today's work already landed — the tile seals instead of prompting again.
     private var sealedDirective: some View {
-        BriefingTile(label: "DIRECTIVE · SEALED", index: 3, booted: booted) {
+        BriefingTile(label: "DIRECTIVE · SEALED", index: 3, booted: booted, animated: bootAnimated) {
             HStack(spacing: 10) {
                 Image(systemName: "checkmark.seal.fill")
                     .font(.system(size: 20, weight: .bold))
@@ -379,7 +464,7 @@ struct HomeConceptBriefingView: View {
 
     /// A weekday-mode planned rest: the surge mechanic spelled out, quick start demoted.
     private var restDirective: some View {
-        BriefingTile(label: "DIRECTIVE · REST", index: 3, booted: booted) {
+        BriefingTile(label: "DIRECTIVE · REST", index: 3, booted: booted, animated: bootAnimated) {
             VStack(alignment: .leading, spacing: 8) {
                 Text("A full rest day arms tomorrow ×1.25")
                     .font(.system(size: 13, weight: .bold, design: .monospaced))
@@ -425,7 +510,7 @@ struct HomeConceptBriefingView: View {
                     .kerning(2)
             }
             .foregroundStyle(SettColor.etch)
-            .frame(maxWidth: .infinity, minHeight: 46)
+            .frame(maxWidth: .infinity, minHeight: 44)
             .background(TimeChamber.scouterGreen, in: Capsule())
             .contentShape(Capsule())
         }
@@ -460,7 +545,7 @@ struct HomeConceptBriefingView: View {
 
     private var weekTile: some View {
         let band = VolumeLandmarks.weeklyTotalRange
-        return BriefingTile(label: "WEEK", index: 4, booted: booted) {
+        return BriefingTile(label: "WEEK", index: 4, booted: booted, animated: bootAnimated) {
             HStack(alignment: .center, spacing: 12) {
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(spacing: 6) {
@@ -478,12 +563,13 @@ struct HomeConceptBriefingView: View {
                 VStack(alignment: .trailing, spacing: 6) {
                     ScrambleNumeral(weekSetCount.map { "\($0) SETS" } ?? "— SETS",
                                     size: 13, color: SettColor.bone,
-                                    delay: tileDelay(4), active: booted)
+                                    delay: tileDelay(4), active: booted, animated: bootAnimated)
                     setBandMeter
                         .frame(width: 118, height: 5)
                     Text(setZoneCaption(band: band))
                         .font(.system(size: 10, weight: .bold, design: .monospaced))
                         .kerning(1)
+                        .monospacedDigit()
                         .foregroundStyle(SettColor.ash)
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
@@ -558,6 +644,194 @@ struct HomeConceptBriefingView: View {
         return parts.joined(separator: ", ")
     }
 
+    // MARK: TRAJECTORY tile (wide — the 10-week gold PL curve with the peak line)
+
+    private var trajectoryTile: some View {
+        let peak = services.progression.snapshot?.allTimePeakPL ?? 0
+        return BriefingTile(label: "TRAJECTORY", index: 5, booted: booted, animated: bootAnimated) {
+            if weeklyCurve.count >= 2 {
+                VStack(alignment: .leading, spacing: 6) {
+                    trajectoryChart(peak: peak)
+                    HStack(spacing: 8) {
+                        Text("\(weeklyCurve.count) WK")
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .kerning(1)
+                            .monospacedDigit()
+                            .foregroundStyle(SettColor.ash)
+                        Spacer(minLength: 8)
+                        if peak > 0 {
+                            Text("PEAK \(peak.formatted())")
+                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                .kerning(1)
+                                .monospacedDigit()
+                                .foregroundStyle(SettColor.ash)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.7)
+                        }
+                    }
+                }
+            } else {
+                Text("TWO WEEKS OF SCANS DRAW THE CURVE")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .kerning(1)
+                    .foregroundStyle(SettColor.ash)
+                    .padding(.vertical, 6)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(trajectoryAccessibility(peak: peak))
+    }
+
+    /// A tiny Curve: the weekly PL closes as ONE gold line (the trajectory IS the
+    /// power level, so gold is lawful), the all-time peak as a dashed ash rule.
+    /// Static marks, hidden axes — scouter shape, no chart chrome.
+    private func trajectoryChart(peak: Int) -> some View {
+        Chart {
+            ForEach(weeklyCurve, id: \.weekStart) { week in
+                LineMark(x: .value("Week", week.weekStart),
+                         y: .value("PL", week.endPL))
+                    .foregroundStyle(SettColor.saiyanGold)
+                    .lineStyle(StrokeStyle(lineWidth: 1.5))
+                    .interpolationMethod(.monotone)
+            }
+            if peak > 0 {
+                RuleMark(y: .value("Peak", peak))
+                    .foregroundStyle(SettColor.ash.opacity(0.55))
+                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
+            }
+        }
+        .chartXAxis(.hidden)
+        .chartYAxis(.hidden)
+        .chartLegend(.hidden)
+        .frame(height: 32)
+        .accessibilityHidden(true)
+    }
+
+    private func trajectoryAccessibility(peak: Int) -> String {
+        guard weeklyCurve.count >= 2, let first = weeklyCurve.first,
+              let last = weeklyCurve.last else {
+            return "Trajectory: two weeks of training draw the curve"
+        }
+        var parts = ["Power trajectory over \(weeklyCurve.count) weeks, \(first.endPL) to \(last.endPL)"]
+        if peak > 0 { parts.append("all-time peak \(peak)") }
+        return parts.joined(separator: ", ")
+    }
+
+    // MARK: ZONES tile (this week's per-muscle volume vs the landmarks)
+
+    private var zonesTile: some View {
+        let total = Muscle.volumeGroups.count
+        let inZone = weekZonesInZone ?? 0
+        return BriefingTile(label: "ZONES", index: 6, booted: booted, animated: bootAnimated) {
+            VStack(alignment: .leading, spacing: 6) {
+                ScrambleNumeral(weekZonesInZone.map { "\($0)/\(total)" } ?? "—/\(total)",
+                                size: 13, color: SettColor.bone,
+                                delay: tileDelay(6), active: booted, animated: bootAnimated)
+                Text("IN ZONE")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .kerning(1)
+                    .foregroundStyle(SettColor.ash)
+                HStack(spacing: 3) {
+                    ForEach(0 ..< total, id: \.self) { index in
+                        RoundedRectangle(cornerRadius: 1, style: .continuous)
+                            .fill(index < inZone ? SettColor.heroCyan : SettColor.cardNested)
+                            .frame(width: 6, height: 9)
+                    }
+                }
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(inZone) of \(total) muscle groups in the weekly growth zone")
+    }
+
+    // MARK: LAST SCAN tile (the latest session: title · ΔPL · when)
+
+    private var lastScanTile: some View {
+        BriefingTile(label: "LAST SCAN", index: 7, booted: booted, animated: bootAnimated) {
+            if let last = finishedWorkouts.first {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(last.title)
+                        .font(.system(size: 13, weight: .bold, design: .monospaced))
+                        .foregroundStyle(SettColor.bone)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                    HStack(spacing: 6) {
+                        if let delta = plDelta(for: last) {
+                            deltaChip(delta)
+                        }
+                        Text(lastScanDateLabel(last))
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .kerning(1)
+                            .monospacedDigit()
+                            .foregroundStyle(SettColor.ash)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                    }
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("NO SCANS YET")
+                        .font(.system(size: 13, weight: .bold, design: .monospaced))
+                        .foregroundStyle(SettColor.ash)
+                    Text("THE FIRST SESSION WRITES IT")
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .kerning(1)
+                        .foregroundStyle(SettColor.iron)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                }
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(lastScanAccessibility)
+    }
+
+    /// The signed ΔPL pill — deltaInk law: up green, down quiet iron, never red.
+    private func deltaChip(_ delta: Int) -> some View {
+        Text("\(delta >= 0 ? "+" : "")\(delta.formatted()) PL")
+            .font(.system(size: 9, weight: .bold, design: .monospaced))
+            .kerning(0.5)
+            .monospacedDigit()
+            .foregroundStyle(SettColor.deltaInk(delta))
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(SettColor.deltaInk(delta).opacity(0.12), in: Capsule())
+    }
+
+    private func lastScanDateLabel(_ workout: Workout) -> String {
+        let cal = Calendar.current
+        if cal.isDateInToday(workout.startedAt) { return "TODAY" }
+        if cal.isDateInYesterday(workout.startedAt) { return "YESTERDAY" }
+        let days = cal.dateComponents([.day], from: cal.startOfDay(for: workout.startedAt),
+                                      to: cal.startOfDay(for: .now)).day ?? 0
+        if days < 7 { return "\(days)D AGO" }
+        return workout.startedAt.formatted(.dateTime.month(.abbreviated).day()).uppercased()
+    }
+
+    private var lastScanAccessibility: String {
+        guard let last = finishedWorkouts.first else {
+            return "No scans yet, the first session writes it"
+        }
+        var parts = ["Last scan: \(last.title), \(lastScanDateLabel(last).lowercased())"]
+        if let delta = plDelta(for: last) {
+            parts.append(delta == 0 ? "no power change"
+                                    : "\(delta > 0 ? "up" : "down") \(abs(delta)) power level")
+        }
+        return parts.joined(separator: ", ")
+    }
+
+    /// ΔPL a workout's day landed vs the previous training day — read from the
+    /// in-memory trajectory (never SwiftData relationship walks in `body`).
+    private func plDelta(for workout: Workout) -> Int? {
+        let history = services.progression.powerLevelHistory
+        guard history.count >= 2 else { return nil }
+        let calendar = Calendar.current
+        guard let index = history.lastIndex(where: {
+            calendar.isDate($0.date, inSameDayAs: workout.startedAt)
+        }), index > 0 else { return nil }
+        return history[index].pl - history[index - 1].pl
+    }
+
     // MARK: SYSTEM ticker (one rotating ash status line)
 
     private var ticker: some View {
@@ -567,6 +841,7 @@ struct HomeConceptBriefingView: View {
                 Text(currentTickerLine)
                     .font(.system(size: 10, weight: .bold, design: .monospaced))
                     .kerning(1)
+                    .monospacedDigit()
                     .foregroundStyle(SettColor.ash)
                     .lineLimit(1)
                     .minimumScaleFactor(0.6)
@@ -582,7 +857,8 @@ struct HomeConceptBriefingView: View {
         .padding(.horizontal, 4)
         .padding(.top, 2)
         .opacity(booted ? 1 : 0)
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.22).delay(tileDelay(5)), value: booted)
+        .animation((reduceMotion || !bootAnimated)
+                   ? nil : .easeOut(duration: 0.22).delay(tileDelay(8)), value: booted)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("System status: \(currentTickerLine.lowercased())")
     }
@@ -594,7 +870,8 @@ struct HomeConceptBriefingView: View {
     }
 
     /// The rotating status bank, all real reads: the next Monday reading, this week's
-    /// volume zone, an armed surge, and the latest patron word over its medallion.
+    /// volume zone, an armed surge, the villain's word when the race is close, and
+    /// the latest patron word over its medallion.
     private var tickerLines: [String] {
         var lines: [String] = [readingLine]
         if let sets = weekSetCount {
@@ -606,10 +883,28 @@ struct HomeConceptBriefingView: View {
         if services.progression.snapshot?.restedBonusActive == true {
             lines.append("SURGE ARMED · NEXT SESSION COUNTS ×1.25")
         }
+        if raceIsClose {
+            // A close race earns the villain a feed slot — his voice invades the wire
+            // (ash text like every ticker line; crimson stays the tile's alone).
+            lines.append("VEXETH · \(services.progression.rivalTaunt.uppercased())")
+        }
         if let key = badgeAwards.first?.badgeKey, let line = PatronLines.line(forBadgeKey: key) {
             lines.append("PATRON · \(line)")
         }
         return lines
+    }
+
+    /// True when the race is genuinely close: the gap (either side) is within ~10%
+    /// of the user's PL, or Vexeth is ahead but catchable within a month at pace.
+    private var raceIsClose: Bool {
+        let pl = services.progression.snapshotPowerLevel
+        guard pl > 0 else { return false }
+        let gap = services.progression.effectiveRival.pl - pl
+        if abs(gap) <= max(200, pl / 10) { return true }
+        let pace = services.progression.trailingWeeklyPace
+        let growth = services.progression.effectiveRivalGrowth
+        guard gap > 0, pace > growth else { return false }
+        return Int((Double(gap) / Double(pace - growth)).rounded(.up)) <= 4
     }
 
     /// Days until the next Weekly Power Reading (Mondays, ISO weeks).
@@ -635,7 +930,13 @@ struct HomeConceptBriefingView: View {
         let pl = services.progression.snapshotPowerLevel
         guard !hasBooted else { plShown = pl; return }
         hasBooted = true
-        guard !reduceMotion else {
+        let alreadyPlayed = Self.hasBootedThisSession
+        Self.hasBootedThisSession = true
+        guard !reduceMotion, !alreadyPlayed else {
+            // Reduce Motion, or the boot already played this app session (tab-hop
+            // back): everything lands instantly — bootAnimated gates every tile
+            // entrance, scramble, and the ticker fade; no scanline, no haptic.
+            bootAnimated = false
             booted = true
             plShown = pl
             return
@@ -759,20 +1060,50 @@ struct HomeConceptBriefingView: View {
                                   to: cal.startOfDay(for: .now)).day
     }
 
-    /// This week's hard working sets — a relationship walk, so it runs in a task and
-    /// lands in @State, never in `body` (per the CPU traps).
+    /// This week's hard working sets AND the per-muscle zone verdict — ONE
+    /// relationship walk, so it runs in a task and lands in @State, never in
+    /// `body` (per the CPU traps).
     private func loadWeekSets() {
         guard let week = Self.isoCalendar.dateInterval(of: .weekOfYear, for: .now) else {
             weekSetCount = 0
+            weekZonesInZone = 0
             return
         }
-        weekSetCount = finishedWorkouts
-            .filter { week.contains($0.startedAt) }
-            .flatMap(\.orderedExercises)
-            .flatMap(\.orderedSets)
-            .filter { !$0.isWarmup }
-            .count
+        var muscleSets: [Muscle: Int] = [:]
+        var total = 0
+        for workout in finishedWorkouts where week.contains(workout.startedAt) {
+            for exercise in workout.orderedExercises {
+                for set in exercise.orderedSets where !set.isWarmup {
+                    total += 1
+                    muscleSets[exercise.muscle, default: 0] += 1
+                }
+            }
+        }
+        weekSetCount = total
+        var inZone = 0
+        for muscle in Muscle.volumeGroups {
+            guard let landmarks = VolumeLandmarks.landmarks(for: muscle),
+                  let sets = muscleSets[muscle] else { continue }
+            if sets >= landmarks.floor && sets <= landmarks.ceiling { inZone += 1 }
+        }
+        weekZonesInZone = inZone
     }
+
+    /// The trajectory + race series — engine math over the in-memory history
+    /// (no SwiftData), cached so the ticker's 6-second re-render stays free.
+    private func loadCurves() {
+        weeklyCurve = services.progression.powerLevelWeeklyChanges(weeks: 10)
+        raceLines = services.progression.rivalRaceLines(weeks: 8)
+    }
+}
+
+// MARK: - Grid rhythm (ONE constant each — no per-tile padding drift)
+
+private enum BriefingMetrics {
+    /// Every tile's inner inset.
+    static let tilePad: CGFloat = 10
+    /// The gap between tiles, rows, and the outer stack.
+    static let gap: CGFloat = 6
 }
 
 // MARK: - Tile chrome (thin cardBorder rules, mono eyebrow, staggered boot entrance)
@@ -780,16 +1111,21 @@ struct HomeConceptBriefingView: View {
 /// One HUD tile: a mono eyebrow with a hairline rule that DRAWS on boot, content
 /// below, a quiet slab behind. `rimTint` (Vexeth's crimson) tints the frame; nil
 /// keeps the neutral iron hairline. The entrance staggers off `index` so the grid
-/// scans in top-to-bottom like a terminal powering up. Reduce Motion: instant.
+/// scans in top-to-bottom like a terminal powering up. Reduce Motion — or
+/// `animated: false`, the once-per-session boot gate — lands it instantly.
 private struct BriefingTile<Content: View>: View {
     let label: String
     var labelTint: Color = SettColor.ash
     var rimTint: Color? = nil
     let index: Int
     let booted: Bool
+    var animated: Bool = true
     @ViewBuilder var content: () -> Content
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// Reduce Motion and the session-boot gate collapse to the same instant landing.
+    private var instant: Bool { reduceMotion || !animated }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -803,13 +1139,13 @@ private struct BriefingTile<Content: View>: View {
                 Rectangle()
                     .fill(rimTint?.opacity(0.35) ?? SettColor.cardBorder)
                     .frame(height: 1)
-                    .scaleEffect(x: booted || reduceMotion ? 1 : 0, anchor: .leading)
-                    .animation(reduceMotion ? nil : .easeOut(duration: 0.3).delay(delay + 0.06),
+                    .scaleEffect(x: booted || instant ? 1 : 0, anchor: .leading)
+                    .animation(instant ? nil : .easeOut(duration: 0.3).delay(delay + 0.06),
                                value: booted)
             }
             content()
         }
-        .padding(12)
+        .padding(BriefingMetrics.tilePad)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
@@ -820,8 +1156,8 @@ private struct BriefingTile<Content: View>: View {
                 }
         }
         .opacity(booted ? 1 : 0)
-        .offset(y: booted || reduceMotion ? 0 : 5)
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.22).delay(delay), value: booted)
+        .offset(y: booted || instant ? 0 : 5)
+        .animation(instant ? nil : .easeOut(duration: 0.22).delay(delay), value: booted)
     }
 
     private var delay: Double { 0.04 + Double(index) * 0.07 }
@@ -832,13 +1168,15 @@ private struct BriefingTile<Content: View>: View {
 /// A mono readout whose DIGITS flicker through ~4 scramble frames before settling —
 /// the boot's terminal feel without heavy effects (pure text swaps, a finite task).
 /// Letters and punctuation hold still so the line never reads as garbage. Reduce
-/// Motion (or an already-settled boot) renders the value directly.
+/// Motion, `animated: false` (the once-per-session boot gate), or an already-
+/// settled boot renders the value directly.
 private struct ScrambleNumeral: View {
     let text: String
     var size: CGFloat = 13
     var color: Color = SettColor.bone
     var delay: Double = 0
     var active: Bool
+    var animated: Bool = true
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var shown: String
@@ -846,12 +1184,13 @@ private struct ScrambleNumeral: View {
     @State private var fired = false
 
     init(_ text: String, size: CGFloat = 13, color: Color = SettColor.bone,
-         delay: Double = 0, active: Bool) {
+         delay: Double = 0, active: Bool, animated: Bool = true) {
         self.text = text
         self.size = size
         self.color = color
         self.delay = delay
         self.active = active
+        self.animated = animated
         _shown = State(initialValue: text)
     }
 
@@ -880,7 +1219,7 @@ private struct ScrambleNumeral: View {
     private func fire() {
         guard !fired else { return }
         fired = true
-        guard !reduceMotion else {
+        guard !reduceMotion, animated else {
             shown = text
             return
         }
