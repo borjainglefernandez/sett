@@ -56,7 +56,51 @@ struct HomeTabView: View {
         return calendar
     }()
 
+    /// Re-read on every appearance so a Settings change lands immediately.
+    @State private var concept: HomeConcept = .selected
+    /// The floating-gear Settings sheet for non-classic concepts (classic keeps
+    /// its own toolbar gear + sheet).
+    @State private var isShowingConceptSettings = false
+
     var body: some View {
+        Group {
+            switch concept {
+            case .classic:  classicHome
+            case .briefing: conceptShell { HomeConceptBriefingView() }
+            case .corridor: conceptShell { HomeConceptCorridorView() }
+            case .chamber:  conceptShell { HomeConceptChamberView() }
+            case .ledger:   conceptShell { HomeConceptLedgerView() }
+            case .saga:     conceptShell { HomeConceptSagaView() }
+            }
+        }
+        .onAppear { concept = .selected }
+    }
+
+    /// Every concept gets a guaranteed way back to Settings (a quiet floating gear)
+    /// no matter how full-bleed its own chrome is — a design exploration must never
+    /// strand its reviewer.
+    private func conceptShell<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        content()
+            .overlay(alignment: .topTrailing) {
+                Button {
+                    isShowingConceptSettings = true
+                } label: {
+                    Image(systemName: "gearshape.fill")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(SettColor.ash.opacity(0.85))
+                        .padding(10)
+                        .background(.ultraThinMaterial, in: Circle())
+                }
+                .padding(.trailing, 16)
+                .padding(.top, 6)
+                .accessibilityLabel("Settings")
+            }
+            .sheet(isPresented: $isShowingConceptSettings, onDismiss: { concept = .selected }) {
+                SettingsView()
+            }
+    }
+
+    private var classicHome: some View {
         NavigationStack {
             ScrollView {
                 ZStack(alignment: .top) {

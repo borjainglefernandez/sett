@@ -14,6 +14,13 @@ struct SettingsView: View {
     /// DEBUG ceremony preview — presents a WorkoutSummaryView with a tailored mock.
     @State private var demoCeremony: WorkoutSummaryData?
 
+    /// The Home design-concept switcher (five parallel front doors).
+    @AppStorage(HomeConcept.storageKey) private var homeConceptRaw = HomeConcept.classic.rawValue
+
+    private var selectedHomeConcept: HomeConcept {
+        HomeConcept(rawValue: homeConceptRaw) ?? .classic
+    }
+
     /// 1.25 lb / 2.5 lb / 5 lb expressed in canonical grams.
     private static let standardIncrementsGrams = [567, 1134, 2268]
 
@@ -103,6 +110,26 @@ struct SettingsView: View {
                     Eyebrow("DEFAULT REALM")
                 } footer: {
                     Text("Your default training realm. Routines can override it.")
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(SettColor.ash)
+                }
+                .listRowBackground(SettColor.card)
+                .listRowSeparatorTint(SettColor.cardBorder)
+
+                Section {
+                    Picker("Home style", selection: $homeConceptRaw) {
+                        ForEach(HomeConcept.allCases) { concept in
+                            Text(concept.title).tag(concept.rawValue)
+                        }
+                    }
+                    .foregroundStyle(SettColor.bone)
+                    Text(selectedHomeConcept.pitch)
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(SettColor.ash)
+                } header: {
+                    Eyebrow("HOME STYLE")
+                } footer: {
+                    Text("Five parallel takes on the front door — switch live, judge in the hand.")
                         .font(.system(size: 11, design: .monospaced))
                         .foregroundStyle(SettColor.ash)
                 }
