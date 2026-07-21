@@ -18,8 +18,11 @@ enum ExerciseArt {
     }
 
     /// Asset name for a muscle-group emblem, if present.
+    /// The catalog has ONE lower-body asset (`ExArt_muscle_legs`), so every group the
+    /// legs bucket split into wears it — a follow-up may commission per-group art.
     static func muscleAsset(for muscle: Muscle) -> String? {
-        let name = "ExArt_muscle_\(muscle.rawValue)"
+        let resolved = Muscle.lowerBody.contains(muscle) ? Muscle.legs : muscle
+        let name = "ExArt_muscle_\(resolved.rawValue)"
         return UIImage(named: name) != nil ? name : nil
     }
 

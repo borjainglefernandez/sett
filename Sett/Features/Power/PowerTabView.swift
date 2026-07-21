@@ -460,19 +460,24 @@ struct PowerTabView: View {
             .accessibilityHidden(true)
     }
 
-    /// The six primary muscle groups, in fixed radar order (top, clockwise).
-    private static let radarMuscles: [Muscle] = [.chest, .triceps, .biceps, .shoulders, .back, .legs]
-    private static let radarLabels: [String] = radarMuscles.map { $0.rawValue.uppercased() }
+    /// The six coarse axes, in fixed radar order (top, clockwise). The legs split
+    /// stays FOLDED here — a 9-axis mini radar has no readable shape — with the
+    /// lower axis aggregating all of `Muscle.lowerBody` under the LOWER label.
+    /// `MuscleFold` (MuscleBalanceCard.swift) owns the fold so this radar and the
+    /// Progress balance list can't disagree about what "LOWER" contains.
+    private static let radarMuscles: [Muscle] = MuscleFold.radarAxes
+    private static let radarLabels: [String] = radarMuscles.map(MuscleFold.label(for:))
 
-    /// Working-set volume (weight × reps, warmups excluded) per primary muscle
-    /// over the trailing 28 days, normalized so the biggest muscle is 1.0 —
+    /// Working-set volume (weight × reps, warmups excluded) per coarse axis
+    /// over the trailing 28 days, normalized so the biggest axis is 1.0 —
     /// the closest app-side stand-in for the engine's effective volume.
     private func recomputeRadar() {
         let cutoff = Calendar.current.date(byAdding: .day, value: -28, to: .now) ?? .now
         var totals: [Muscle: Double] = [:]
         for sample in SampleExtractor.setSamples(context: modelContext)
         where !sample.isWarmup && sample.completedAt >= cutoff {
-            totals[sample.muscle, default: 0] += Double(sample.weightGrams) * Double(sample.reps)
+            totals[MuscleFold.axis(for: sample.muscle), default: 0]
+                += Double(sample.weightGrams) * Double(sample.reps)
         }
         let volumes = Self.radarMuscles.map { totals[$0] ?? 0 }
         guard let peak = volumes.max(), peak > 0 else {

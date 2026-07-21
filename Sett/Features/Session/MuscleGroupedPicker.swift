@@ -10,11 +10,26 @@ enum ExerciseNameFilter {
     }
 }
 
+// MARK: - The app's ONE muscle-picker vocabulary (assign grids, filter chips, sections)
+
+extension Muscle {
+    /// The groups a user can ASSIGN or FILTER by: the ten landmark groups plus the
+    /// `.other` catch-all. Legacy `.legs` is deliberately absent — the bucket split
+    /// into glutes/hamstrings/quadriceps/calves, so existing legs-tagged lifts keep
+    /// working but nobody can forge a new one.
+    static let pickable: [Muscle] = volumeGroups + [.other]
+
+    /// Section/group ordering for lists that show EXISTING data — the pickable order
+    /// with the legacy bucket slotted before the catch-all, so stray legs-tagged
+    /// customs still get a home instead of vanishing.
+    static let displayOrder: [Muscle] = volumeGroups + [.legs, .other]
+}
+
 // MARK: - Muscle-grouped exercise picker (collapsed groups, tap to expand)
 
 /// The condensed body of both "add exercise" sheets. Instead of one long flat list
-/// of every lift, it opens as eight collapsed muscle-group rows (emblem + name +
-/// count); tapping a group reveals its exercises in place. Searching flattens to a
+/// of every lift, it opens as collapsed muscle-group rows (emblem + name + count);
+/// tapping a group reveals its exercises in place. Searching flattens to a
 /// filtered result list (grouping would hide matches behind collapsed headers).
 ///
 /// Each host sheet supplies its own trailing row via `row` — a single-tap add for the
@@ -43,14 +58,14 @@ struct MuscleGroupedPicker<Row: View, Footer: View>: View {
     }
 
     private var orderedMuscles: [Muscle] {
-        Muscle.allCases.filter { !(grouped[$0]?.isEmpty ?? true) }
+        Muscle.displayOrder.filter { !(grouped[$0]?.isEmpty ?? true) }
     }
 
     var body: some View {
         List {
             // One section for all groups — inset-grouped gives every Section its own card
             // with a big gap, which is the opposite of condensed. Contiguous rows in a
-            // single card keep the eight groups tight.
+            // single card keep the groups tight.
             Section {
                 if isSearching {
                     // Flat matches — no headers to hide behind while filtering.
@@ -100,7 +115,7 @@ struct MuscleGroupedPicker<Row: View, Footer: View>: View {
             HStack(spacing: 12) {
                 ExerciseIcon(name: "", equipment: .bodyweight, muscle: muscle,
                              size: emblemSize, color: SettColor.heroCyan)
-                Text(muscle.rawValue.uppercased())
+                Text(muscle.displayName.uppercased())
                     .font(.system(.subheadline, design: .monospaced).weight(.bold))
                     .kerning(1.5)
                     .foregroundStyle(SettColor.bone)
@@ -118,7 +133,7 @@ struct MuscleGroupedPicker<Row: View, Footer: View>: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.borderless)
-        .accessibilityLabel("\(muscle.rawValue.capitalized), \(count) exercise\(count == 1 ? "" : "s")")
+        .accessibilityLabel("\(muscle.displayName), \(count) exercise\(count == 1 ? "" : "s")")
         .accessibilityValue(expanded.contains(muscle) ? "Expanded" : "Collapsed")
         .accessibilityHint(expanded.contains(muscle) ? "Hides this group's exercises"
                                                      : "Shows this group's exercises")

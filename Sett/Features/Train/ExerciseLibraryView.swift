@@ -38,7 +38,7 @@ struct ExerciseLibraryView: View {
                             row(exercise)
                         }
                     } header: {
-                        Eyebrow(muscle.rawValue.uppercased())
+                        Eyebrow(muscle.displayName.uppercased())
                     }
                     .listRowBackground(SettColor.card)
                     .listRowSeparatorTint(SettColor.cardBorder)
@@ -88,8 +88,10 @@ struct ExerciseLibraryView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 muscleChip(nil, label: "All")
-                ForEach(Muscle.allCases, id: \.self) { muscle in
-                    muscleChip(muscle, label: muscle.rawValue)
+                // Pickable only — legacy .legs never gets a chip. Its stray exercises
+                // still surface under "All" in their own "Legs (legacy)" section.
+                ForEach(Muscle.pickable, id: \.self) { muscle in
+                    muscleChip(muscle, label: muscle.shortLabel)
                 }
             }
             .padding(.horizontal, 16)
@@ -138,7 +140,7 @@ struct ExerciseLibraryView: View {
     }
 
     private var orderedMuscles: [Muscle] {
-        Muscle.allCases.filter { grouped[$0] != nil }
+        Muscle.displayOrder.filter { grouped[$0] != nil }
     }
 
     // MARK: Row
@@ -305,7 +307,9 @@ struct CreateExerciseSheet: View {
                     .foregroundStyle(trimmedName.isEmpty ? SettColor.ash : SettColor.bone)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
-                Text("\(muscle.rawValue.uppercased()) · \(equipment.rawValue.uppercased())")
+                // shortLabel, not displayName — "QUADS · MACHINE" fits where
+                // "QUADRICEPS · MACHINE" would crowd the mono line.
+                Text("\(muscle.shortLabel) · \(equipment.rawValue.uppercased())")
                     .font(.system(size: 10, weight: .bold, design: .monospaced))
                     .kerning(1.2)
                     .foregroundStyle(SettColor.ash)
@@ -335,21 +339,24 @@ struct CreateExerciseSheet: View {
             Eyebrow("MUSCLE")
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4),
                       spacing: 8) {
-                ForEach(Muscle.allCases, id: \.self) { candidate in
+                // Pickable only: the four split leg groups are offered, legacy .legs
+                // is not — a legs-tagged custom being edited keeps its bucket until
+                // the user actively re-homes it.
+                ForEach(Muscle.pickable, id: \.self) { candidate in
                     choiceChip(isSelected: muscle == candidate) {
                         muscle = candidate
                     } content: {
                         VStack(spacing: 5) {
                             ExerciseIcon(name: "", equipment: equipment, muscle: candidate,
                                          size: 40, color: SettColor.heroCyan)
-                            Text(candidate.rawValue.capitalized)
+                            Text(candidate.displayName)
                                 .font(.caption2.weight(.semibold))
                                 .foregroundStyle(muscle == candidate ? SettColor.bone : SettColor.ash)
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.8)
                         }
                     }
-                    .accessibilityLabel(candidate.rawValue.capitalized)
+                    .accessibilityLabel(candidate.displayName)
                     .accessibilityAddTraits(muscle == candidate ? [.isSelected] : [])
                 }
             }

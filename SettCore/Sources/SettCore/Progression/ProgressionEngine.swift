@@ -127,8 +127,21 @@ public struct ProgressionInput: Sendable {
 /// Vexeth's scripted pacing. Every tuning constant comes from ProgressionConfig.
 public enum ProgressionEngine {
 
-    /// The six categories that feed the Strength Score.
-    static let primaryMuscles: [Muscle] = [.chest, .triceps, .biceps, .shoulders, .back, .legs]
+    /// The six STRENGTH BUCKETS that feed the Strength Score — one best e1RM per
+    /// bucket. Five are single muscles; the sixth is the whole lower body (legacy
+    /// `.legs` plus the split groups), so splitting legs into glutes / hamstrings /
+    /// quadriceps / calves cannot move PL: identical sets score identically whether
+    /// tagged `.legs` (pre-migration history) or a split group.
+    static let strengthBuckets: [Set<Muscle>] = [
+        [.chest], [.triceps], [.biceps], [.shoulders], [.back], Muscle.lowerBody,
+    ]
+
+    /// The bucket a muscle contributes to, nil for non-scoring groups
+    /// (`.core`, `.other`) — shared by the Strength Score loop and the
+    /// bucket-coverage badge so they can never disagree.
+    static func strengthBucketIndex(for muscle: Muscle) -> Int? {
+        strengthBuckets.firstIndex { $0.contains(muscle) }
+    }
 
     public static func compute(input: ProgressionInput, config: ProgressionConfig,
                                calendar: Calendar, asOf: Date) -> ProgressionSnapshot {
@@ -518,10 +531,10 @@ public enum ProgressionEngine {
         let plc = config.powerLevel
         let ssStart = calendar.date(byAdding: .day, value: -plc.strengthWindowDays, to: moment) ?? moment
         var ssLb = 0.0
-        for muscle in primaryMuscles {
+        for bucket in strengthBuckets {
             var best = 0
             for record in analysis.effectiveSets {
-                guard record.sample.muscle == muscle,
+                guard bucket.contains(record.sample.muscle),
                       record.sample.completedAt > ssStart,
                       record.sample.completedAt <= moment,
                       let verifiedAt = record.verifiedAt, verifiedAt <= moment else { continue }
@@ -1093,17 +1106,20 @@ private struct BadgeEvaluator {
 
     private func fullArsenal(_ def: ProgressionConfig.BadgeDef) -> BadgeGrant? {
         let windowDays = def.params["windowDays"] ?? 7
-        var lastSeen: [Muscle: Date] = [:]
+        // Coverage is counted in STRENGTH BUCKETS, not raw muscles: any lower-body
+        // group (legacy .legs or a split group) fills the one lower bucket, so the
+        // legs split neither demands four leg days nor breaks old grants.
+        var lastSeen: [Int: Date] = [:]
         for record in analysis.effectiveSets {
-            let muscle = record.sample.muscle
-            guard ProgressionEngine.primaryMuscles.contains(muscle) else { continue }
-            lastSeen[muscle] = record.sample.completedAt
-            guard lastSeen.count == ProgressionEngine.primaryMuscles.count else { continue }
+            guard let bucket = ProgressionEngine.strengthBucketIndex(for: record.sample.muscle)
+            else { continue }
+            lastSeen[bucket] = record.sample.completedAt
+            guard lastSeen.count == ProgressionEngine.strengthBuckets.count else { continue }
             let windowStart = calendar.date(byAdding: .day, value: -windowDays,
                                             to: record.sample.completedAt) ?? record.sample.completedAt
             if lastSeen.values.allSatisfy({ $0 >= windowStart }) {
                 return BadgeGrant(key: def.key, earnedAt: record.sample.completedAt,
-                                  valueSnapshot: ProgressionEngine.primaryMuscles.count,
+                                  valueSnapshot: ProgressionEngine.strengthBuckets.count,
                                   workoutID: record.sample.workoutID, exerciseID: nil)
             }
         }

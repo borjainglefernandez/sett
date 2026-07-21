@@ -20,6 +20,60 @@ public final class AppServices {
         self.settings = settings
         self.progression = progression
         self.session = WorkoutSessionStore(container: container, settings: settings, progression: progression)
+        // Runs synchronously at boot, BEFORE the seed/recompute task in SettApp,
+        // so legacy rows are re-bucketed before anything reads or seeds them.
+        Self.runLegsSplitMigrationIfNeeded(context: container.mainContext)
+    }
+}
+
+// MARK: - One-time legs-split migration
+
+extension AppServices {
+    /// One-time store pass for the legs split: legacy `.legs` rows are re-bucketed
+    /// into glutes / hamstrings / quadriceps / calves by exercise NAME, so the
+    /// Progress charts split HISTORY retroactively — not just new logs. PL cannot
+    /// move: the Strength Score's lower-body bucket spans `.legs` plus all four
+    /// split groups (see `ProgressionEngine.strengthBuckets`), so a re-tagged set
+    /// scores exactly as before.
+    static func runLegsSplitMigrationIfNeeded(context: ModelContext) {
+        let defaults = UserDefaults.standard
+        let flag = "sett.migration.legsSplit"
+        guard !defaults.bool(forKey: flag) else { return }
+        let legacy = Muscle.legs.rawValue
+        let now = Date.now
+        do {
+            // (a) Catalog rows — remap by their live name.
+            let exercises = try context.fetch(FetchDescriptor<Exercise>(
+                predicate: #Predicate { $0.muscleRaw == legacy }))
+            for exercise in exercises {
+                exercise.muscleRaw = LegsMigration.remap(exerciseName: exercise.name).rawValue
+                exercise.updatedAt = now
+                exercise.needsPush = true
+            }
+            // (b) Denormalized history — remap by the name snapshot the row froze,
+            // so a later catalog rename can never mis-bucket an old session.
+            let history = try context.fetch(FetchDescriptor<WorkoutExercise>(
+                predicate: #Predicate { $0.muscleRaw == legacy }))
+            for entry in history {
+                entry.muscleRaw = LegsMigration.remap(exerciseName: entry.exerciseNameSnapshot).rawValue
+                entry.updatedAt = now
+                entry.needsPush = true
+            }
+            // (c) Routine templates carry the same denormalized muscleRaw — remap
+            // them too, or their chips would read "Legs (legacy)" forever.
+            let plans = try context.fetch(FetchDescriptor<RoutineExercise>(
+                predicate: #Predicate { $0.muscleRaw == legacy }))
+            for plan in plans {
+                plan.muscleRaw = LegsMigration.remap(exerciseName: plan.exerciseNameSnapshot).rawValue
+                plan.updatedAt = now
+                plan.needsPush = true
+            }
+            try context.save()
+            // Stamp only after a clean save — a failed pass retries next boot.
+            defaults.set(true, forKey: flag)
+        } catch {
+            // Nothing was saved; the store is untouched and the next boot retries.
+        }
     }
 }
 

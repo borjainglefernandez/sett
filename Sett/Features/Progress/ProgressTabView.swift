@@ -182,6 +182,10 @@ struct ProgressTabView: View {
                 NetSummaryCard(samples: setSamples, period: period,
                                unit: unit, calendar: Self.isoCalendar,
                                phase: services.settings.phase)
+                // The prescriptive lens leads the descriptive ones: "is this
+                // enough?" before "how much was it?". Weekly by design — the
+                // landmarks are weekly numbers — so it ignores the W/M/Y picker.
+                VolumeLandmarksCard(samples: setSamples, calendar: Self.isoCalendar)
                 VolumeChartCard(samples: setSamples, period: period,
                                 unit: unit, calendar: Self.isoCalendar)
                 MuscleBalanceCard(samples: setSamples, period: period,

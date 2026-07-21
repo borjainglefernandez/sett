@@ -307,9 +307,12 @@ enum Glyphs {
 
     /// Muscle-group warrior emblems — the default icon for CUSTOM exercises. Each is
     /// the classic bodybuilding pose for that muscle group, struck by the same warrior
-    /// (front double biceps, lat spread, most-muscular, squat stance…).
+    /// (front double biceps, lat spread, most-muscular, squat stance…). Every group
+    /// the legs bucket split into shares the squat-stance emblem — one lower-body
+    /// pose exists today, so the resolve keeps the new cases off the placeholder.
     static func muscleLayers(for muscle: Muscle, in r: CGRect) -> GlyphRig.Layers {
-        GlyphRig.layers(spec: muscleEmblems[muscle] ?? Self.placeholder, in: r, phase: 1)
+        let resolved = Muscle.lowerBody.contains(muscle) ? Muscle.legs : muscle
+        return GlyphRig.layers(spec: muscleEmblems[resolved] ?? Self.placeholder, in: r, phase: 1)
     }
 
     private static func emblem(_ pose: GlyphPose) -> GlyphSpec { GlyphSpec(a: pose, b: pose) }
@@ -1396,7 +1399,7 @@ struct CreateExerciseRowLabel: View {
 }
 
 #if DEBUG
-/// Contact sheet of all 39 movement glyphs + the 8 muscle emblems — for visual QA.
+/// Contact sheet of all 39 movement glyphs + the muscle emblems — for visual QA.
 /// Shown via SETT_DEBUG_GLYPHS=1.
 struct ExerciseGlyphContactSheet: View {
     /// SETT_DEBUG_GLYPHS=1 → first 24 vectors; =2 → the rest + vector muscle emblems;
@@ -1425,7 +1428,7 @@ struct ExerciseGlyphContactSheet: View {
                             VStack(spacing: 4) {
                                 ExerciseIcon(name: "?", equipment: .bodyweight,
                                              muscle: muscle, size: 86)
-                                Text(muscle.rawValue.uppercased())
+                                Text(muscle.shortLabel)
                                     .font(.system(size: 9, weight: .bold, design: .monospaced))
                                     .kerning(1)
                                     .foregroundStyle(SettColor.ash)
@@ -1457,7 +1460,7 @@ struct ExerciseGlyphContactSheet: View {
                         ForEach(Muscle.allCases, id: \.self) { muscle in
                             VStack(spacing: 3) {
                                 ExerciseIcon(name: "?", equipment: .bodyweight, muscle: muscle, size: 62)
-                                Text(muscle.rawValue.capitalized)
+                                Text(muscle.displayName)
                                     .font(.system(size: 8, weight: .semibold, design: .monospaced))
                                     .foregroundStyle(SettColor.ash)
                             }
@@ -1475,7 +1478,7 @@ struct ExerciseGlyphContactSheet: View {
                         .foregroundStyle(SettColor.ash)
                     LazyVGrid(columns: columns, spacing: 10) {
                         ForEach(Muscle.allCases, id: \.self) { muscle in
-                            tile(ExerciseGlyphView(muscle: muscle), label: muscle.rawValue.capitalized)
+                            tile(ExerciseGlyphView(muscle: muscle), label: muscle.displayName)
                         }
                     }
                 } else {
@@ -1611,7 +1614,7 @@ struct IconLabSheet: View {
     /// POC set spread across muscle groups, each in its proposed tier colour.
     private let poc: [(name: String, muscle: Muscle, tier: Color)] = [
         ("Flat Bench Press", .chest, SettColor.heroCyan),
-        ("Squat", .legs, TimeChamber.teal),
+        ("Squat", .quadriceps, TimeChamber.teal),
         ("Deadlift", .back, TimeChamber.indigo),
         ("Shoulder Press", .shoulders, TimeChamber.scouterAmber),
         ("Bicep Curl", .biceps, TimeChamber.scouterGreen),
@@ -1661,7 +1664,7 @@ struct IconLabSheet: View {
                         Text(item.name.uppercased())
                             .font(.system(size: 8, weight: .semibold, design: .monospaced))
                             .foregroundStyle(SettColor.bone).lineLimit(2)
-                        Text(item.muscle.rawValue.uppercased())
+                        Text(item.muscle.shortLabel)
                             .font(.system(size: 7, weight: .bold, design: .monospaced))
                             .foregroundStyle(item.tier)
                     }

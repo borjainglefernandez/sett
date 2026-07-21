@@ -296,127 +296,127 @@
   {
     "id": "FE7D6731-8669-54ED-85F8-E5E1EF6D09B2",
     "name": "Squat",
-    "muscle": "legs",
+    "muscle": "quadriceps",
     "equipment": "barbell"
   },
   {
     "id": "C69FB036-5B98-5484-AC8F-FC4B86022E2B",
     "name": "Hack Squat",
-    "muscle": "legs",
+    "muscle": "quadriceps",
     "equipment": "machine"
   },
   {
     "id": "F9FB2DDD-24F6-5E76-9FD4-07784E06D375",
     "name": "Bulgarian Split Squat",
-    "muscle": "legs",
+    "muscle": "quadriceps",
     "equipment": "dumbbell"
   },
   {
     "id": "6164B819-D4E3-55D9-8EA5-75BFE755D399",
     "name": "Bulgarian Split Squat",
-    "muscle": "legs",
+    "muscle": "quadriceps",
     "equipment": "barbell"
   },
   {
     "id": "779CD684-F278-59BB-852A-7C72E0DF0DF0",
     "name": "Leg Extension",
-    "muscle": "legs",
+    "muscle": "quadriceps",
     "equipment": "machine"
   },
   {
     "id": "876B4D0A-3703-5D89-9624-9F3BC3BDD869",
     "name": "Leg Curl",
-    "muscle": "legs",
+    "muscle": "hamstrings",
     "equipment": "machine"
   },
   {
     "id": "408B769B-2B56-58B5-9A7C-D90A49ED16C2",
     "name": "Hip Thrust",
-    "muscle": "legs",
+    "muscle": "glutes",
     "equipment": "barbell"
   },
   {
     "id": "C0479CEA-1A7E-5BE5-BC7E-0A14D40973E9",
     "name": "Hip Thrust",
-    "muscle": "legs",
+    "muscle": "glutes",
     "equipment": "machine"
   },
   {
     "id": "CDE2203F-3ACC-566E-B553-E76CAE5D4D84",
     "name": "Sumo Deadlift",
-    "muscle": "legs",
+    "muscle": "glutes",
     "equipment": "barbell"
   },
   {
     "id": "2A68D069-2D51-51AA-9AA4-C5567D03B6B7",
     "name": "Romanian Deadlift",
-    "muscle": "legs",
+    "muscle": "hamstrings",
     "equipment": "barbell"
   },
   {
     "id": "968948AD-8F04-5337-ACDE-1D1E5B76ED8E",
     "name": "Romanian Deadlift",
-    "muscle": "legs",
+    "muscle": "hamstrings",
     "equipment": "dumbbell"
   },
   {
     "id": "398203A4-9E6B-53C8-B9B6-202CBF365926",
     "name": "Romanian Deadlift",
-    "muscle": "legs",
+    "muscle": "hamstrings",
     "equipment": "machine"
   },
   {
     "id": "983BA571-6A66-5AF8-8D25-039BE8C4E7A9",
     "name": "Standing Calf Raises",
-    "muscle": "legs",
+    "muscle": "calves",
     "equipment": "barbell"
   },
   {
     "id": "BF0D0261-D02B-5CA6-8D17-6C462A804E41",
     "name": "Standing Calf Raises",
-    "muscle": "legs",
+    "muscle": "calves",
     "equipment": "machine"
   },
   {
     "id": "FF98838F-E380-5A8E-B2E7-8E293CA88638",
     "name": "Standing Calf Raises",
-    "muscle": "legs",
+    "muscle": "calves",
     "equipment": "dumbbell"
   },
   {
     "id": "1C41568B-983E-5D82-B6FD-521D2747B6FE",
     "name": "Seated Calf Raises",
-    "muscle": "legs",
+    "muscle": "calves",
     "equipment": "machine"
   },
   {
     "id": "B6C546D9-88DE-583F-B62E-782CD4DCD84A",
     "name": "Kickbacks",
-    "muscle": "legs",
+    "muscle": "glutes",
     "equipment": "machine"
   },
   {
     "id": "90959E00-A318-5318-80B0-C947A5D40BAF",
     "name": "Kickbacks",
-    "muscle": "legs",
+    "muscle": "glutes",
     "equipment": "cable"
   },
   {
     "id": "39EBC74F-81C9-5FCB-8C68-D3FABB32E426",
     "name": "Lunges",
-    "muscle": "legs",
+    "muscle": "quadriceps",
     "equipment": "dumbbell"
   },
   {
     "id": "741980AC-7B79-5EF9-AA54-EA840F6598B1",
     "name": "Lunges",
-    "muscle": "legs",
+    "muscle": "quadriceps",
     "equipment": "barbell"
   },
   {
     "id": "563B381E-0AE4-5E72-9FB3-67CE596526F7",
     "name": "Leg Press",
-    "muscle": "legs",
+    "muscle": "quadriceps",
     "equipment": "machine"
   },
   {

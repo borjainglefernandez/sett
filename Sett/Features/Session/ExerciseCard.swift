@@ -953,7 +953,9 @@ extension Muscle {
         case .biceps: "figure.strengthtraining.functional"
         case .shoulders: "figure.wave"
         case .back: "figure.rower"
-        case .legs: "figure.run"
+        // The whole lower body (legacy legs + its four split groups) shares the
+        // legs treatment until per-group symbols earn their keep.
+        case .legs, .glutes, .hamstrings, .quadriceps, .calves: "figure.run"
         case .core: "figure.core.training"
         case .other: "dumbbell.fill"
         }

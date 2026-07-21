@@ -7,7 +7,9 @@ import SettCore
 /// horizontal phosphor bars. Unlike the Power tab's fixed 28-day radar, this follows
 /// the W/M/Y picker, so it answers "was THIS week balanced?". The heaviest group wears
 /// amber; groups with zero work are listed dim so a neglected muscle is visible, not
-/// just absent.
+/// just absent. Post legs-split the list stays FOLDED at the coarse axes via
+/// `MuscleFold` — the per-muscle lower-body story belongs to VolumeLandmarksCard;
+/// this card is about the big shape of the week.
 struct MuscleBalanceCard: View {
     let samples: [SetSample]
     let period: Period
@@ -34,17 +36,19 @@ struct MuscleBalanceCard: View {
         }
     }
 
-    /// (muscle, tonnage share 0…1) sorted heaviest-first; zero-work groups trail.
+    /// (coarse axis, tonnage share 0…1) sorted heaviest-first; zero-work axes trail.
+    /// Samples arrive fine-grained (glutes/hams/quads/calves) but fold to the coarse
+    /// axes here — `Muscle.allCases` would splinter "lower" into five thin rows.
     private var shares: [(muscle: Muscle, share: Double)] {
         guard let interval else { return [] }
         let working = samples.filter { interval.contains($0.completedAt) && !$0.isWarmup }
         var tonnage: [Muscle: Int] = [:]
         for sample in working {
-            tonnage[sample.muscle, default: 0] += sample.weightGrams * sample.reps
+            tonnage[MuscleFold.axis(for: sample.muscle), default: 0] += sample.weightGrams * sample.reps
         }
         let total = tonnage.values.reduce(0, +)
         guard total > 0 else { return [] }
-        return Muscle.allCases
+        return MuscleFold.balanceAxes
             .map { (muscle: $0, share: Double(tonnage[$0] ?? 0) / Double(total)) }
             .sorted { $0.share > $1.share }
     }
@@ -75,7 +79,7 @@ struct MuscleBalanceCard: View {
         let color: Color = share == 0 ? SettColor.iron
                          : isTop ? TimeChamber.scouterAmber : SettColor.heroCyan
         return HStack(spacing: 10) {
-            Text(muscle.rawValue.uppercased())
+            Text(MuscleFold.label(for: muscle))
                 .font(.system(size: 10, weight: .bold, design: .monospaced))
                 .kerning(1)
                 .foregroundStyle(SettColor.ash)
@@ -106,8 +110,44 @@ struct MuscleBalanceCard: View {
 
     private func accessibilitySummary(_ shares: [(muscle: Muscle, share: Double)]) -> String {
         let parts = shares.filter { $0.share > 0 }.prefix(3).map {
-            "\($0.muscle.rawValue) \($0.share.formatted(.percent.precision(.fractionLength(0))))"
+            "\(MuscleFold.spokenName(for: $0.muscle)) \($0.share.formatted(.percent.precision(.fractionLength(0))))"
         }
         return "Muscle balance \(periodCaption): " + parts.joined(separator: ", ")
+    }
+}
+
+// MARK: - MuscleFold (the ONE coarse-axis fold both balance surfaces read through)
+
+/// After the legs split the store speaks in fine-grained lower-body muscles
+/// (glutes / hamstrings / quadriceps / calves, plus the legacy `.legs`), but a
+/// 9-axis mini radar has no readable shape and a splintered share list buries the
+/// signal — so this card AND the Power tab's radar fold every `Muscle.lowerBody`
+/// case into one "LOWER" axis. `.legs` is the fold's key: it's already the
+/// legacy lower-body bucket, so pre-migration data lands on the same axis for
+/// free. One helper, deliberately in this file (not PowerTabView), so the two
+/// surfaces can't drift apart on what "LOWER" contains.
+enum MuscleFold {
+    /// The coarse axis a sample files under: lower-body folds to `.legs`,
+    /// everything else is already coarse.
+    static func axis(for muscle: Muscle) -> Muscle {
+        Muscle.lowerBody.contains(muscle) ? .legs : muscle
+    }
+
+    /// The six primary axes in fixed radar order (top, clockwise) — the shape
+    /// the Power radar has always drawn.
+    static let radarAxes: [Muscle] = [.chest, .triceps, .biceps, .shoulders, .back, .legs]
+
+    /// Every axis the balance list shows: the radar six plus core and other.
+    static let balanceAxes: [Muscle] = radarAxes + [.core, .other]
+
+    /// Mono chip label — on a folded surface `.legs` means "all of lower body",
+    /// so it wears LOWER, not the legacy LEGS.
+    static func label(for axis: Muscle) -> String {
+        axis == .legs ? "LOWER" : axis.rawValue.uppercased()
+    }
+
+    /// VoiceOver name for an axis ("lower body", not the raw "legs").
+    static func spokenName(for axis: Muscle) -> String {
+        axis == .legs ? "lower body" : axis.rawValue
     }
 }

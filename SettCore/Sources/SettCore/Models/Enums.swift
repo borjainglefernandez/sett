@@ -15,7 +15,58 @@ public enum WeightUnit: String, Codable, Sendable, CaseIterable {
 }
 
 public enum Muscle: String, Codable, Sendable, CaseIterable {
+    /// `.legs` is a LEGACY case: old rows decode, but new pickers hide it — the
+    /// lower body now splits into glutes / hamstrings / quadriceps / calves so
+    /// weekly volume landmarks can be honest per group (a "legs day" that is all
+    /// squats is zero hamstring sets, and the chart should say so).
     case chest, triceps, biceps, shoulders, back, legs, core, other
+    case glutes, hamstrings, quadriceps, calves
+}
+
+extension Muscle {
+    /// Human-readable name for detail rows and pickers.
+    public var displayName: String {
+        switch self {
+        case .chest: "Chest"
+        case .triceps: "Triceps"
+        case .biceps: "Biceps"
+        case .shoulders: "Shoulders"
+        case .back: "Back"
+        case .legs: "Legs (legacy)"
+        case .core: "Core"
+        case .other: "Other"
+        case .glutes: "Glutes"
+        case .hamstrings: "Hamstrings"
+        case .quadriceps: "Quadriceps"
+        case .calves: "Calves"
+        }
+    }
+
+    /// Mono chip label — short enough for the tightest chips, so the split
+    /// groups abbreviate ("QUADS", "HAMS") while the rest stay full.
+    public var shortLabel: String {
+        switch self {
+        case .quadriceps: "QUADS"
+        case .hamstrings: "HAMS"
+        default: rawValue.uppercased()
+        }
+    }
+
+    /// The ten muscle groups that carry weekly volume landmarks, in the order
+    /// the Progress charts render them (big pushers first, lower body split last).
+    /// `.legs` (legacy) and `.other` are deliberately absent — neither has a
+    /// defensible evidence-based landmark.
+    public static let volumeGroups: [Muscle] = [
+        .chest, .back, .shoulders, .biceps, .triceps, .core,
+        .quadriceps, .hamstrings, .glutes, .calves,
+    ]
+
+    /// Every case that fills the single lower-body STRENGTH bucket. The legacy
+    /// `.legs` rides along so pre-split history scores identically to re-tagged
+    /// history — PL stability is sacred.
+    public static let lowerBody: Set<Muscle> = [
+        .legs, .glutes, .hamstrings, .quadriceps, .calves,
+    ]
 }
 
 public enum Equipment: String, Codable, Sendable, CaseIterable {

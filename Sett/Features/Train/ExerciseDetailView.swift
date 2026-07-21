@@ -121,7 +121,7 @@ struct ExerciseDetailView: View {
                     .foregroundStyle(SettColor.bone)
                     .lineLimit(2)
                     .minimumScaleFactor(0.8)
-                Eyebrow("\(exercise.muscle.rawValue) · \(exercise.equipment.rawValue)".uppercased())
+                Eyebrow("\(exercise.muscle.displayName) · \(exercise.equipment.rawValue)".uppercased())
             }
             Spacer(minLength: 0)
         }
