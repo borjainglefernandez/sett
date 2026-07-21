@@ -840,9 +840,26 @@ struct HomeTabView: View {
     private var launchSubline: String {
         if let routine = todaysRoutine {
             let count = routine.orderedExercises.count
-            return "\(count) EXERCISE\(count == 1 ? "" : "S")"
+            var line = "\(count) EXERCISE\(count == 1 ? "" : "S")"
+            // "usually ~51 min" — a planning cue from this routine's own history.
+            if let mins = typicalRoutineMinutes(routine) { line += " · ~\(mins) MIN" }
+            return line
         }
         return "EMPTY CHAMBER — LOG AS YOU GO"
+    }
+
+    /// The typical wall-clock length of this routine, from its own finished sessions
+    /// (active time — paused seconds are subtracted, matching the summary's duration).
+    /// nil until there are at least two real sessions to average, so the card only
+    /// claims "usually" once it can back it up; sub-5-minute blips are ignored.
+    private func typicalRoutineMinutes(_ routine: Routine) -> Int? {
+        let seconds = finishedWorkouts.compactMap { workout -> Int? in
+            guard workout.routineID == routine.id, let ended = workout.endedAt else { return nil }
+            let active = Int(ended.timeIntervalSince(workout.startedAt)) - workout.pausedSeconds
+            return active > 300 ? active : nil
+        }
+        guard seconds.count >= 2 else { return nil }
+        return max(1, Int((Double(seconds.reduce(0, +)) / Double(seconds.count) / 60).rounded()))
     }
 
     /// The rested-bonus mechanic, surfaced: after a full rest day the next session is
