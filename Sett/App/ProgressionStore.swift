@@ -69,7 +69,7 @@ public final class ProgressionStore {
         snapshot = try? ProgressionReconciler.reconcile(context: context, config: config)
         refreshUnlockedPatrons(context: context)
         recordWeeklyPLSample()
-        checkRivalRebirth()
+        advanceRival()
         recordHighestSeenRivalForm()
         seedFormBaselineIfNeeded()
     }
@@ -80,21 +80,39 @@ public final class ProgressionStore {
         TransformationTier(rawValue: min(UserForm.form(forPL: snapshotPowerLevel).index, 4)) ?? .base
     }
 
-    // MARK: - Rival Rebirth (the endless race)
+    // MARK: - Rival state machine (the endless race)
     //
-    // Cycle 1 is the engine's scripted Vexeth. Beating his FINAL form triggers a
-    // rebirth: he returns 10% above the user's PL with growth adapted to the user's
-    // own trailing pace — clamped so the race stays winnable but never trivial.
-    // State is app-side (UserDefaults): the engine stays a pure function of history.
+    // "He never trains, he responds." The engine hands us an absence-frozen, pace-aware
+    // BASELINE (snapshot.rivalPL) and the qualifying day-starts; the STORE owns the
+    // per-cycle form machine — a real three-climb race — persisted in UserDefaults:
+    //   • Each form has a base PL (formStartPL) and a growth clock (formStartDate). His
+    //     effective PL creeps up daily, but only across weeks the user actually trained.
+    //   • Out-climb the current form and Vexeth SURGES: his base leaps ~6% clear of the
+    //     user and the NEXT form is revealed (pendingRivalFormReveal). So Star -> Nova ->
+    //     Singularity are three distinct fights — the Singularity can't be revealed and
+    //     beaten in one tick.
+    //   • Out-climb the surged Form 3 and rebirth fires (checkRivalRebirth): a new cycle,
+    //     Form 1 at ~10% above the user. Growth is always capped near the user's own pace
+    //     so the race is winnable for anyone; a zero-session week never advances him.
+    // The engine stays a pure function of history; all persisted state lives here.
+
+    /// Floor on Vexeth's weekly growth — he still creeps while the user climbs, but the
+    /// pace-aware cap keeps him from ever out-running a consistent trainer.
+    private static let rivalGrowthFloor = 50
 
     private enum RivalKeys {
         static let cycle = "sett.rival.cycle"
+        static let currentForm = "sett.rival.currentForm"   // this cycle's form, 1...3
+        static let formStartPL = "sett.rival.formStartPL"   // current form's base (surge base)
+        static let formStartDate = "sett.rival.formStartDate" // current form's growth clock
+        static let formReveal = "sett.rival.formReveal"     // 2/3 when a form just revealed
+        static let announce = "sett.rival.announce"         // rebirth just fired
+        static let highestSeenForm = "sett.rival.highestSeenForm"
+        static let plHistory = "sett.plHistory"             // [isoWeekKey: PL], trailing 8
+        // Legacy keys (pre form-machine) — read only to migrate an in-flight cycle.
         static let startPL = "sett.rival.startPL"
         static let weeklyGrowth = "sett.rival.weeklyGrowth"
         static let cycleStart = "sett.rival.cycleStart"
-        static let announce = "sett.rival.announce"
-        static let highestSeenForm = "sett.rival.highestSeenForm"
-        static let plHistory = "sett.plHistory"   // [isoWeekKey: PL], trailing 8
     }
 
     public var rivalCycle: Int { max(1, UserDefaults.standard.integer(forKey: RivalKeys.cycle)) }
@@ -109,23 +127,29 @@ public final class ProgressionStore {
         bumpRivalStateVersion()
     }
 
-    /// Effective rival after rebirth cycles — cycle 1 defers to the engine.
+    /// Vexeth's live PL and current form — the app-side authority for every rival
+    /// surface. His PL is his form's base plus growth accrued over ACTIVE weeks since the
+    /// form began, pro-rated by day so he creeps a little each day (never on a week the
+    /// user skipped). Before the machine is seeded (no training yet) it defers to the
+    /// engine baseline. Side-effect free — the surge/rebirth transitions run in
+    /// `advanceRival()` during recompute.
     public var effectiveRival: (pl: Int, form: Int) {
         _ = rivalStateVersion   // observation hook
-        guard let snapshot else { return (0, 1) }
         let defaults = UserDefaults.standard
-        guard rivalCycle > 1,
-              let cycleStart = defaults.object(forKey: RivalKeys.cycleStart) as? Date else {
+        let startPL = (config?.rival["startPL"] as? Int) ?? 0
+        guard let snapshot else { return (startPL, 1) }
+        guard defaults.object(forKey: RivalKeys.formStartPL) != nil,
+              let formStartDate = defaults.object(forKey: RivalKeys.formStartDate) as? Date else {
             return (snapshot.rivalPL, snapshot.rivalForm)
         }
-        let startPL = defaults.integer(forKey: RivalKeys.startPL)
-        let growth = defaults.integer(forKey: RivalKeys.weeklyGrowth)
-        let weeks = max(0, Calendar.current.dateComponents([.day], from: cycleStart, to: .now).day ?? 0) / 7
-        let pl = startPL + growth * weeks
-        let leadPL = (config?.rival["formRevealLeadPL"] as? Int) ?? 500
-        let form = min(3, 1
-                       + (snapshot.powerLevel > pl ? 1 : 0)
-                       + (snapshot.allTimePeakPL > pl + leadPL ? 1 : 0))
+        let base = defaults.integer(forKey: RivalKeys.formStartPL)
+        let form = max(1, defaults.integer(forKey: RivalKeys.currentForm))
+        let weeks = ProgressionEngine.rivalEffectiveWeeks(
+            qualifyingDayStarts: snapshot.qualifyingDayStarts,
+            clockStart: formStartDate, asOf: .now,
+            calendar: Self.isoWeekCalendar, proRateCurrentWeek: true)
+        let pl = ProgressionEngine.rivalEffectivePL(
+            base: base, weeklyGrowth: effectiveRivalGrowth, weeks: weeks)
         return (pl, form)
     }
 
@@ -156,30 +180,160 @@ public final class ProgressionStore {
         return max(0, deltas.reduce(0, +) / deltas.count)
     }
 
+    /// True once there are >= 2 weekly PL samples — enough to read a pace. Before that
+    /// Vexeth runs his scripted opening menace instead of the pace-aware cap.
+    private var rivalHasTrend: Bool {
+        let history = UserDefaults.standard.dictionary(forKey: RivalKeys.plHistory) as? [String: Int] ?? [:]
+        return history.count >= 2
+    }
+
+    /// Seed the form-machine state the first time the user has trained (or migrate an
+    /// in-flight legacy rebirth cycle into it). Idempotent — guarded on formStartPL.
+    private func seedRivalStateIfNeeded() {
+        let defaults = UserDefaults.standard
+        guard defaults.object(forKey: RivalKeys.formStartPL) == nil else { return }
+        guard let first = snapshot?.qualifyingDayStarts.first else { return }
+        if rivalCycle > 1,
+           let legacyStart = defaults.object(forKey: RivalKeys.startPL) as? Int,
+           let legacyStartDate = defaults.object(forKey: RivalKeys.cycleStart) as? Date {
+            defaults.set(legacyStart, forKey: RivalKeys.formStartPL)
+            defaults.set(legacyStartDate, forKey: RivalKeys.formStartDate)
+            defaults.set(1, forKey: RivalKeys.currentForm)
+        } else {
+            let startPL = (config?.rival["startPL"] as? Int) ?? 3000
+            defaults.set(startPL, forKey: RivalKeys.formStartPL)
+            defaults.set(first, forKey: RivalKeys.formStartDate)
+            defaults.set(1, forKey: RivalKeys.currentForm)
+        }
+    }
+
+    /// One tick of the form machine: seed if needed, then let the engine's pure step
+    /// decide. Out-climbing a form makes Vexeth SURGE (base leaps clear of the user,
+    /// next form revealed); out-climbing the final form triggers rebirth. At most one
+    /// transition per recompute — the surge immediately re-takes the lead.
+    private func advanceRival() {
+        guard let snapshot else { return }
+        seedRivalStateIfNeeded()
+        let defaults = UserDefaults.standard
+        guard defaults.object(forKey: RivalKeys.formStartPL) != nil else { return }
+        let eff = effectiveRival
+        let surgeFactor = (config?.rival["surgeFactor"] as? Double) ?? 1.06
+        let step = ProgressionEngine.rivalFormStep(
+            currentForm: eff.form,
+            currentBasePL: defaults.integer(forKey: RivalKeys.formStartPL),
+            effectivePL: eff.pl, userPL: snapshot.powerLevel, surgeFactor: surgeFactor)
+        if step.rebirth {
+            checkRivalRebirth()
+        } else if let revealed = step.revealed {
+            defaults.set(step.form, forKey: RivalKeys.currentForm)
+            defaults.set(step.formBasePL, forKey: RivalKeys.formStartPL)
+            defaults.set(Date.now, forKey: RivalKeys.formStartDate)
+            defaults.set(revealed, forKey: RivalKeys.formReveal)   // 2 or 3 -> reveal banner
+            if step.form > defaults.integer(forKey: RivalKeys.highestSeenForm) {
+                defaults.set(step.form, forKey: RivalKeys.highestSeenForm)
+            }
+            bumpRivalStateVersion()
+        }
+    }
+
     private func checkRivalRebirth() {
         guard let snapshot else { return }
         let rival = effectiveRival
-        // Rebirth fires only when the FINAL form has been beaten.
+        // Rebirth fires only when the FINAL (surged) form has been out-climbed.
         guard rival.form >= 3, snapshot.powerLevel > rival.pl else { return }
         let defaults = UserDefaults.standard
-        // The user just BEAT form 3 — stamp the high-water mark before the new
-        // cycle resets him to form 1, or the witness record would lose it.
+        // The user just BEAT form 3 — stamp the high-water mark before the new cycle
+        // resets him to form 1, or the witness record would lose it.
         defaults.set(3, forKey: RivalKeys.highestSeenForm)
+        // He returns ~10% above the user, rounded to a clean hundred, as a fresh Form 1;
+        // growth stays live-adaptive (effectiveRivalGrowth), so the new cycle is winnable.
         let newStart = Int((Double(snapshot.powerLevel) * 1.10 / 100).rounded(.up)) * 100
-        let pace = trailingWeeklyPace
-        let configGrowth = (config?.rival["weeklyGrowth"] as? Int) ?? 350
-        // Adaptive growth: 1.15× the user's own pace, floored at 50 so a slow rival
-        // still moves, ceilinged at 2× pace (or the scripted growth when pace is 0)
-        // so he never becomes uncatchable.
-        let newGrowth = pace > 0
-            ? min(max(Int(Double(pace) * 1.15), 50), pace * 2)
-            : min(configGrowth, max(50, snapshot.powerLevel / 40))
         defaults.set(rivalCycle + 1, forKey: RivalKeys.cycle)
-        defaults.set(newStart, forKey: RivalKeys.startPL)
-        defaults.set(newGrowth, forKey: RivalKeys.weeklyGrowth)
-        defaults.set(Date.now, forKey: RivalKeys.cycleStart)
+        defaults.set(1, forKey: RivalKeys.currentForm)
+        defaults.set(newStart, forKey: RivalKeys.formStartPL)
+        defaults.set(Date.now, forKey: RivalKeys.formStartDate)
+        defaults.removeObject(forKey: RivalKeys.formReveal)   // rebirth has its own banner
         defaults.set(true, forKey: RivalKeys.announce)
         bumpRivalStateVersion()
+    }
+
+    // MARK: - Rival form reveal (S2 plays the transform, then acks)
+
+    /// 2 or 3 when Vexeth has just transformed and the UI hasn't acknowledged the reveal
+    /// yet; nil otherwise. Mirrors the engine step's `revealed`. (Mirrors the
+    /// rivalRebirthAnnounce template.)
+    public var pendingRivalFormReveal: Int? {
+        _ = rivalStateVersion   // observation hook
+        let value = UserDefaults.standard.integer(forKey: RivalKeys.formReveal)
+        return (value == 2 || value == 3) ? value : nil
+    }
+
+    /// The UI has played the reveal — clear it so it won't fire again until the next form.
+    public func acknowledgeRivalFormReveal() {
+        UserDefaults.standard.removeObject(forKey: RivalKeys.formReveal)
+        bumpRivalStateVersion()
+    }
+
+    /// A single crimson-voiced line keyed to the current gap state — deterministic
+    /// (week-stable, never random flicker), terse, and NEVER guilt: an absent user is
+    /// met with patience. Data-driven, picked from a per-state bank.
+    public var rivalTaunt: String {
+        _ = rivalStateVersion   // observation hook
+        let eff = effectiveRival
+        let userPL = snapshotPowerLevel
+        let pace = trailingWeeklyPace
+        let growth = effectiveRivalGrowth
+        // Stable within a week, varied across weeks/forms/cycles — no per-render flicker.
+        let weekOrdinal = Calendar.current.component(.weekOfYear, from: .now)
+        let seed = abs(rivalCycle &* 31 &+ eff.form &+ weekOrdinal)
+
+        let bank: [String]
+        if rivalRebirthAnnounce {
+            bank = ["Again. Higher.",
+                    "You thought that was my ceiling? Cute.",
+                    "The climb resets. I do not."]
+        } else if pendingRivalFormReveal != nil {
+            bank = ["This is not my final form.",
+                    "You've forced my hand.",
+                    "Deeper, then. Follow if you can."]
+        } else if userPL > eff.pl {
+            bank = ["You've forced my hand.",
+                    "A lead. Enjoy it while it lasts."]
+        } else if pace > growth {
+            bank = ["Your pace climbs. I feel it.",
+                    "You gain. I notice.",
+                    "Closer. I do not slow for it."]
+        } else {
+            bank = ["The gap holds. For now.",
+                    "Still the climb. Take your time.",
+                    "I am here when you are ready."]
+        }
+        return bank[seed % bank.count]
+    }
+
+    /// The weekly race: your PL (from the trajectory) against Vexeth's scripted PL at each
+    /// ISO week over the trailing `weeks`. bone = you, crimson = Vexeth. Empty if there
+    /// are fewer than two weeks to plot.
+    public func rivalRaceLines(weeks: Int) -> [(weekStart: Date, you: Int, rival: Int)] {
+        let you = powerLevelWeeklyChanges(weeks: weeks)
+        guard you.count >= 2, let snapshot else { return [] }
+        let defaults = UserDefaults.standard
+        let base = defaults.object(forKey: RivalKeys.formStartPL) != nil
+            ? defaults.integer(forKey: RivalKeys.formStartPL)
+            : ((config?.rival["startPL"] as? Int) ?? 0)
+        let clockStart = (defaults.object(forKey: RivalKeys.formStartDate) as? Date)
+            ?? snapshot.qualifyingDayStarts.first ?? you[0].weekStart
+        let growth = effectiveRivalGrowth
+        let cal = Self.isoWeekCalendar
+        return you.map { week in
+            let weekEnd = cal.date(byAdding: .weekOfYear, value: 1, to: week.weekStart) ?? week.weekStart
+            let asOfWeek = min(weekEnd, .now)
+            let w = ProgressionEngine.rivalEffectiveWeeks(
+                qualifyingDayStarts: snapshot.qualifyingDayStarts,
+                clockStart: clockStart, asOf: asOfWeek, calendar: cal, proRateCurrentWeek: false)
+            let rivalPL = ProgressionEngine.rivalEffectivePL(base: base, weeklyGrowth: growth, weeks: w)
+            return (weekStart: week.weekStart, you: week.endPL, rival: rivalPL)
+        }
     }
 
     /// The deepest Vexeth form the user has ever witnessed (1…3) — a high-water
@@ -208,12 +362,15 @@ public final class ProgressionStore {
         return String(format: "%04d-%02d", comps.yearForWeekOfYear ?? 0, comps.weekOfYear ?? 0)
     }
 
-    /// The rival's CURRENT weekly growth (scripted for cycle 1, adaptive after).
+    /// The rival's CURRENT weekly growth — always capped near the user's own trailing
+    /// pace so the race stays winnable (never outruns a consistent trainer, freezes on a
+    /// plateau), and floored so he still creeps. Falls back to the scripted growth only
+    /// while there's no pace trend yet (a brand-new user's opening menace).
     public var effectiveRivalGrowth: Int {
-        if rivalCycle > 1 {
-            return UserDefaults.standard.integer(forKey: RivalKeys.weeklyGrowth)
-        }
-        return (config?.rival["weeklyGrowth"] as? Int) ?? 350
+        let configGrowth = (config?.rival["weeklyGrowth"] as? Int) ?? 350
+        return ProgressionEngine.rivalAdaptiveGrowth(
+            configGrowth: configGrowth, trailingWeeklyPace: trailingWeeklyPace,
+            floor: Self.rivalGrowthFloor, hasTrend: rivalHasTrend)
     }
 
     /// Last completed week's ΔPL (last week's sample minus the week before's) —

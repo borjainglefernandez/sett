@@ -663,3 +663,183 @@ struct PowerLevelBreakdownTests {
         #expect(attr.strength + attr.volume + attr.consistency == attr.deltaPL)
     }
 }
+
+// MARK: - Rival (Emperor Vexeth) — surge state machine, absence freeze, winnability
+
+/// A consistently-improving trainer: two qualifying days a week (Mon bench, Thu row),
+/// weights creeping up ~2 kg/week — a steady, sub-350/wk climb that a naive 350/wk
+/// Vexeth would out-run forever. Used to prove the pace-aware clamp keeps the race
+/// winnable (the gap can't diverge).
+private func progressiveHistory(weeks: Int) -> ([WorkoutSample], [SetSample]) {
+    let benchEx = UUID(), rowEx = UUID()
+    var workouts: [WorkoutSample] = []
+    var allSets: [SetSample] = []
+    let base = date(2025, 6, 2, 18)             // Monday
+    for w in 0..<weeks {
+        let monday = base.addingTimeInterval(Double(w) * 7 * 86_400)
+        let thursday = monday.addingTimeInterval(3 * 86_400)
+        let wMon = workout(UUID(), start: monday)
+        let wThu = workout(UUID(), start: thursday)
+        workouts += [wMon, wThu]
+        allSets += sets(benchEx, muscle: .chest, grams: 80_000 + w * 2_000, reps: 5, count: 4, workout: wMon)
+        allSets += sets(rowEx, muscle: .back, grams: 90_000 + w * 2_000, reps: 5, count: 4, workout: wThu)
+    }
+    return (workouts, allSets)
+}
+
+@Suite("ProgressionEngine — Rival (Vexeth)")
+struct RivalTests {
+
+    // (1) FORM 3 STANDS — a surge holds the field; the Singularity is not beaten the tick
+    // it reveals. Three distinct climbs, then rebirth.
+    @Test("Form 3 is not instantly beaten the tick it reveals — the surge holds")
+    func formThreeStandsAfterSurge() {
+        let surge = 1.06
+        // User out-climbs Form 2 (base 5,000, no growth yet -> effective 5,000).
+        let userPL = 10_000
+        let toForm3 = ProgressionEngine.rivalFormStep(
+            currentForm: 2, currentBasePL: 5_000, effectivePL: 5_000,
+            userPL: userPL, surgeFactor: surge)
+        #expect(toForm3.form == 3)
+        #expect(toForm3.revealed == 3)              // Singularity revealed
+        #expect(toForm3.rebirth == false)
+        #expect(toForm3.formBasePL > userPL)        // he surged AHEAD of the user
+
+        // Immediately after the reveal his effective PL is the surge base (0 active
+        // weeks). Stepping again on the SAME user PL must NOT beat him.
+        let justAfter = ProgressionEngine.rivalEffectivePL(
+            base: toForm3.formBasePL, weeklyGrowth: 300, weeks: 0)
+        let held = ProgressionEngine.rivalFormStep(
+            currentForm: 3, currentBasePL: toForm3.formBasePL, effectivePL: justAfter,
+            userPL: userPL, surgeFactor: surge)
+        #expect(held.rebirth == false)              // Form 3 stands
+        #expect(held.form == 3)
+        #expect(held.revealed == nil)
+
+        // Only after OUT-climbing the surged Form 3 does the rebirth fire.
+        let beaten = ProgressionEngine.rivalFormStep(
+            currentForm: 3, currentBasePL: toForm3.formBasePL, effectivePL: justAfter,
+            userPL: justAfter + 1, surgeFactor: surge)
+        #expect(beaten.rebirth == true)
+        #expect(beaten.revealed == nil)             // no 4th form — a cycle resets instead
+    }
+
+    // (5) FORM-REVEAL FLAG — the store's pendingRivalFormReveal mirrors `revealed`.
+    @Test("A form advance reveals the next form (drives pendingRivalFormReveal)")
+    func formRevealFiresOnAdvance() {
+        // Form 1 base 3,000; the user passes it -> Nova (form 2) revealed.
+        let step = ProgressionEngine.rivalFormStep(
+            currentForm: 1, currentBasePL: 3_000, effectivePL: 3_000,
+            userPL: 3_200, surgeFactor: 1.06)
+        #expect(step.revealed == 2)
+        #expect(step.form == 2)
+        // Still behind -> no advance, no reveal.
+        let quiet = ProgressionEngine.rivalFormStep(
+            currentForm: 1, currentBasePL: 3_000, effectivePL: 3_000,
+            userPL: 2_900, surgeFactor: 1.06)
+        #expect(quiet.revealed == nil)
+        #expect(quiet.form == 1)
+    }
+
+    // (3) ABSENCE FREEZE — a zero-session week never advances Vexeth.
+    @Test("A zero-session week does not advance the rival")
+    func zeroSessionWeekFreezesGrowth() {
+        let cal = madridCalendar()
+        let clock = date(2025, 6, 2)                 // Mon, week A
+        let asOf = date(2025, 6, 30, 20)             // Mon, week E (the in-progress week)
+        // Trained weeks A (Jun 2), C (Jun 16), D (Jun 23). Week B (Jun 9) is a shield
+        // week — zero sessions.
+        let trained = [date(2025, 6, 2), date(2025, 6, 16), date(2025, 6, 23)]
+        let active = ProgressionEngine.rivalEffectiveWeeks(
+            qualifyingDayStarts: trained, clockStart: clock, asOf: asOf,
+            calendar: cal, proRateCurrentWeek: false)
+        #expect(active == 3)                         // A, C, D — NOT the empty week B
+
+        // Had week B also been trained he'd have advanced one more week — proof the
+        // empty week, and only it, was frozen.
+        let trainedAll = trained + [date(2025, 6, 9)]
+        let activeAll = ProgressionEngine.rivalEffectiveWeeks(
+            qualifyingDayStarts: trainedAll, clockStart: clock, asOf: asOf,
+            calendar: cal, proRateCurrentWeek: false)
+        #expect(activeAll == 4)
+        #expect(activeAll > active)
+
+        // The frozen week costs the user nothing in Vexeth PL.
+        let plFrozen = ProgressionEngine.rivalEffectivePL(base: 3_000, weeklyGrowth: 350, weeks: active)
+        let plAll = ProgressionEngine.rivalEffectivePL(base: 3_000, weeklyGrowth: 350, weeks: activeAll)
+        #expect(plFrozen < plAll)
+    }
+
+    // (4) DAILY PRO-RATE — he creeps within an active week, but a sessionless current
+    // week stays frozen.
+    @Test("Daily pro-rate creeps within an active week, frozen when the week is empty")
+    func dailyProRateCreepsWithinActiveWeek() {
+        let cal = madridCalendar()
+        let clock = date(2025, 6, 2)                 // Mon
+        // Current week (Jun 2) has a Monday session; measure Thursday.
+        let thu = date(2025, 6, 5, 20)
+        let creeping = ProgressionEngine.rivalEffectiveWeeks(
+            qualifyingDayStarts: [date(2025, 6, 2)], clockStart: clock, asOf: thu,
+            calendar: cal, proRateCurrentWeek: true)
+        #expect(creeping > 0 && creeping < 1)        // partway through the first week
+
+        // Same instant, but the user has NOT trained this week -> frozen at 0.
+        let frozen = ProgressionEngine.rivalEffectiveWeeks(
+            qualifyingDayStarts: [], clockStart: clock, asOf: thu,
+            calendar: cal, proRateCurrentWeek: true)
+        #expect(frozen == 0)
+
+        // The whole-week (snapshot) view never pro-rates the current week.
+        let wholeWeek = ProgressionEngine.rivalEffectiveWeeks(
+            qualifyingDayStarts: [date(2025, 6, 2)], clockStart: clock, asOf: thu,
+            calendar: cal, proRateCurrentWeek: false)
+        #expect(wholeWeek == 0)
+    }
+
+    // (2) WINNABLE — his growth never outruns a consistently-improving user.
+    @Test("Adaptive growth stays strictly under the user's pace (gap can't diverge)")
+    func adaptiveGrowthIsWinnable() {
+        let floor = 50
+        for pace in [40, 100, 200, 300, 500, 1_200] {
+            let g = ProgressionEngine.rivalAdaptiveGrowth(
+                configGrowth: 350, trailingWeeklyPace: pace, floor: floor, hasTrend: true)
+            #expect(g < pace)                        // the gap shrinks every week
+            #expect(g <= 350)                        // never above the script
+        }
+        // A flat trainer (pace 0, but training) freezes him — nothing to respond to.
+        #expect(ProgressionEngine.rivalAdaptiveGrowth(
+            configGrowth: 350, trailingWeeklyPace: 0, floor: floor, hasTrend: true) == 0)
+        // A brand-new user with no trend meets the scripted opening menace.
+        #expect(ProgressionEngine.rivalAdaptiveGrowth(
+            configGrowth: 350, trailingWeeklyPace: 0, floor: floor, hasTrend: false) == 350)
+    }
+
+    // (2) end-to-end: a consistent sub-350/wk climber's gap does not diverge over time.
+    @Test("A consistent sub-350/wk user's gap does not diverge over time")
+    func consistentUserGapDoesNotDiverge() throws {
+        let config = try loadConfig()
+        let cal = madridCalendar()
+        let (workouts, allSets) = progressiveHistory(weeks: 30)
+        let payload = input(workouts: workouts, sets: allSets)
+
+        func sample(atWeek w: Int) -> (gap: Int, rivalPL: Int, userPL: Int, activeWeeks: Double) {
+            let asOf = date(2025, 6, 2, 20).addingTimeInterval(Double(w) * 7 * 86_400)
+            let snap = ProgressionEngine.compute(input: payload, config: config, calendar: cal, asOf: asOf)
+            let active = ProgressionEngine.rivalEffectiveWeeks(
+                qualifyingDayStarts: snap.qualifyingDayStarts, clockStart: date(2025, 6, 2),
+                asOf: asOf, calendar: cal, proRateCurrentWeek: false)
+            return (snap.rivalPL - snap.powerLevel, snap.rivalPL, snap.powerLevel, active)
+        }
+
+        let early = sample(atWeek: 10)
+        let late = sample(atWeek: 28)
+        // The user is genuinely climbing at a sub-350/wk pace.
+        #expect(late.userPL > early.userPL)
+        let observedPace = (late.userPL - early.userPL) / 18
+        #expect(observedPace > 0 && observedPace < 350)
+        // Non-divergence: the gap at week 28 is no larger than at week 10.
+        #expect(late.gap <= early.gap)
+        // The clamp is doing the work — Vexeth is well under the naive 350/wk script.
+        #expect(late.rivalPL < 3_000 + 350 * Int(late.activeWeeks))
+    }
+}

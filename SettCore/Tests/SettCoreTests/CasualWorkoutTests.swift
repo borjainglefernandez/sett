@@ -188,3 +188,66 @@ struct CasualCommentaryTests {
         #expect(text == CommentaryFallback.casualLines[0])
     }
 }
+
+// MARK: - Commentary persona routing
+
+@Suite("Commentary — persona routing")
+struct CommentaryPersonaTests {
+
+    @Test("Default persona is Vego and preserves the classic line, unchanged")
+    func defaultsToVego() {
+        // 45,360 g ≈ 100 lb; only the volume line fires (no PL, no badges).
+        let facts = CommentaryFacts(title: "Push", netReps: 3, netVolumeGrams: 45_360,
+                                    netIsNew: false, newBadgeCount: 0, powerLevelDelta: 0)
+        let (text, source) = CommentaryFallback.generate(facts: facts)
+        #expect(source == .fallbackTemplate)
+        #expect(text == "+100 lb over last time. Adequate.")
+    }
+
+    @Test("Barok speaks in mass on a tonnage-up day and never quotes a figure")
+    func barokVoice() {
+        let facts = CommentaryFacts(title: "Legs", netReps: 6, netVolumeGrams: 90_000,
+                                    netIsNew: false, newBadgeCount: 1, powerLevelDelta: 3,
+                                    persona: .barok)
+        let (text, _) = CommentaryFallback.generate(facts: facts)
+        #expect(text.contains("mountain"))
+        #expect(!text.contains { $0.isNumber })
+    }
+
+    @Test("Zyn's comeback voice differs from Vego for the same facts")
+    func zynVoiceIsDistinct() {
+        let base = CommentaryFacts(title: "Back", netReps: 2, netVolumeGrams: 30_000,
+                                   netIsNew: false, newBadgeCount: 0, powerLevelDelta: 0)
+        let zyn = CommentaryFacts(title: "Back", netReps: 2, netVolumeGrams: 30_000,
+                                  netIsNew: false, newBadgeCount: 0, powerLevelDelta: 0,
+                                  persona: .zyn)
+        let (vegoText, _) = CommentaryFallback.generate(facts: base)
+        let (zynText, _) = CommentaryFallback.generate(facts: zyn)
+        #expect(vegoText != zynText)
+        #expect(zynText.contains("..."))   // shy fragments
+    }
+
+    @Test("A cut dip is never shamed, whoever is speaking")
+    func cutDipNeverShamed() {
+        let shaming = ["failure", "failed", "lost", "weak", "pathetic", "complacen"]
+        for persona in CharacterKey.allCases {
+            let facts = CommentaryFacts(title: "Cut day", netReps: -2, netVolumeGrams: -20_000,
+                                        netIsNew: false, newBadgeCount: 0, powerLevelDelta: 0,
+                                        phase: .cutting, persona: persona)
+            let (text, _) = CommentaryFallback.generate(facts: facts)
+            #expect(!text.isEmpty)
+            let lowered = text.lowercased()
+            #expect(!shaming.contains { lowered.contains($0) })
+        }
+    }
+
+    @Test("Casual stays a number-free Vego line even when a patron is routed")
+    func casualIgnoresPersona() {
+        let facts = CommentaryFacts(title: "Evening", netReps: 4, netVolumeGrams: 999,
+                                    netIsNew: false, newBadgeCount: 2, powerLevelDelta: 5,
+                                    isCasual: true, persona: .zyn)
+        let (text, _) = CommentaryFallback.generate(facts: facts)
+        #expect(CommentaryFallback.casualLines.contains(text))
+        #expect(!text.contains { $0.isNumber })
+    }
+}

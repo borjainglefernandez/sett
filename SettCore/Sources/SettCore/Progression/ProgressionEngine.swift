@@ -68,13 +68,20 @@ public struct ProgressionSnapshot: Sendable {
     /// ending at "now". Empty until the first qualifying workout. Defaulted so
     /// existing call sites (DEBUG mocks, tests) keep compiling.
     public let powerLevelHistory: [PLPoint]
+    /// The distinct qualifying-day starts (startOfDay), oldest first. The app-side
+    /// rival state machine reads these to count ACTIVE weeks (absence-frozen growth)
+    /// and to pro-rate the current week — a computation that needs real training days,
+    /// not the trailing "now" anchor that powerLevelHistory carries. Defaulted so
+    /// existing call sites keep compiling.
+    public let qualifyingDayStarts: [Date]
 
     public init(powerLevel: Int, allTimePeakPL: Int, strengthScore: Int, weeklyVolumeLb: Int,
                 consistencyMultiplier: Double, streakWeeks: Int,
                 badges: [BadgeGrant],
                 rivalPL: Int, rivalForm: Int, restedBonusActive: Bool = false,
                 badgeCounts: [String: Int] = [:],
-                powerLevelHistory: [PLPoint] = []) {
+                powerLevelHistory: [PLPoint] = [],
+                qualifyingDayStarts: [Date] = []) {
         self.powerLevel = powerLevel
         self.allTimePeakPL = allTimePeakPL
         self.strengthScore = strengthScore
@@ -87,6 +94,7 @@ public struct ProgressionSnapshot: Sendable {
         self.restedBonusActive = restedBonusActive
         self.badgeCounts = badgeCounts
         self.powerLevelHistory = powerLevelHistory
+        self.qualifyingDayStarts = qualifyingDayStarts
     }
 }
 
@@ -198,20 +206,41 @@ public enum ProgressionEngine {
         badgeCounts["million_pound_club"] = Int(Units.pounds(fromGrams: lifetimeGrams)) / 1_000_000
         badgeCounts["explorer"] = Set(analysis.effectiveSets.map(\.sample.exerciseID)).count / 20
 
-        // Vexeth pacing script.
+        // Vexeth pacing script — pace-aware (winnable) and absence-frozen. The surge/
+        // form state machine, the daily creep and the rebirth are app-side
+        // (ProgressionStore), a pure function of THIS baseline plus persisted per-cycle
+        // state. Here we produce the cycle-1 baseline the snapshot exposes
+        // (rivalPL/rivalForm) and the day-starts the store needs for the active-week math.
         let rival = config.rival
         let startPL = rival["startPL"] as? Int ?? 0
-        let weeklyGrowth = rival["weeklyGrowth"] as? Int ?? 0
+        let configGrowth = rival["weeklyGrowth"] as? Int ?? 0
         let forms = rival["forms"] as? Int ?? 3
-        let leadPL = rival["formRevealLeadPL"] as? Int ?? 0
-        var rivalWeeks = 0
+        let growthFloor = rival["growthFloor"] as? Int ?? 50
+        let rivalDayStarts = distinctQualifyingDayStarts(qualifying: qualifying)
+        let rivalPL: Int
+        let rivalForm: Int
         if let first = input.firstWorkoutDate, first <= asOf {
-            rivalWeeks = max(0, daysBetween(first, asOf, calendar: calendar) / 7)
+            // Cap his growth near the user's OWN trailing pace so the race can never
+            // diverge (points 2 + 3): a consistent trainer always closes eventually, an
+            // absent one freezes him. A brand-new user (no trend yet) meets the script.
+            let paceInfo = rivalTrailingWeeklyPace(history: powerLevelHistory,
+                                                   calendar: calendar, asOf: asOf)
+            let growth = rivalAdaptiveGrowth(configGrowth: configGrowth,
+                                             trailingWeeklyPace: paceInfo.pace,
+                                             floor: growthFloor, hasTrend: paceInfo.hasTrend)
+            let weeks = rivalEffectiveWeeks(qualifyingDayStarts: rivalDayStarts, clockStart: first,
+                                            asOf: asOf, calendar: calendar,
+                                            proRateCurrentWeek: false)
+            rivalPL = rivalEffectivePL(base: startPL, weeklyGrowth: growth, weeks: weeks)
+            // Baseline indicator only — the real three-climb form/surge machine and the
+            // rebirth live app-side (ProgressionStore.effectiveRival), so nothing here
+            // can reveal AND beat a form in one tick. 1 until the user out-climbs the
+            // baseline, then 2; the store owns the true form.
+            rivalForm = min(forms, current.pl > rivalPL ? 2 : 1)
+        } else {
+            rivalPL = startPL
+            rivalForm = 1
         }
-        let rivalPL = startPL + weeklyGrowth * rivalWeeks
-        let rivalForm = min(forms, 1
-                            + (current.pl > rivalPL ? 1 : 0)
-                            + (peak > rivalPL + leadPL ? 1 : 0))
 
         // Would a qualifying workout started right now earn the rested bonus?
         // Same predicate as the XP economy, evaluated for the day containing asOf.
@@ -234,7 +263,8 @@ public enum ProgressionEngine {
             rivalForm: rivalForm,
             restedBonusActive: restedActive,
             badgeCounts: badgeCounts,
-            powerLevelHistory: powerLevelHistory
+            powerLevelHistory: powerLevelHistory,
+            qualifyingDayStarts: rivalDayStarts
         )
     }
 
@@ -585,6 +615,133 @@ public enum ProgressionEngine {
             days.append(session.dayStart)
         }
         return days
+    }
+
+    // MARK: - Rival (Vexeth) — pace-aware, absence-frozen, surge state machine
+    //
+    // The engine owns the PURE math; the STORE owns the persisted per-cycle state
+    // (form, formStartPL, formStartDate) in UserDefaults and drives these helpers, so
+    // the engine stays a pure function of history. "He never trains, he responds":
+    //   • his growth is capped near the user's OWN pace, so the gap can never diverge
+    //     (winnable) and an absence — a zero-session week — freezes him entirely;
+    //   • each form is a real climb: out-climbing one makes him SURGE ahead (base jumps
+    //     to ~1.06× the user) and reveal the next, so the Singularity is revealed AND
+    //     beaten as three separate fights, never in a single tick.
+
+    /// Vexeth's effective PL: his form's base plus growth accrued over `weeks` of
+    /// active training (see `rivalEffectiveWeeks`). Floored so his number only creeps up.
+    public static func rivalEffectivePL(base: Int, weeklyGrowth: Int, weeks: Double) -> Int {
+        base + Int((Double(weeklyGrowth) * max(0, weeks)).rounded(.down))
+    }
+
+    /// Active training weeks between `clockStart` and `asOf`, ABSENCE-FROZEN: only ISO
+    /// weeks containing >= 1 qualifying session accrue growth, so a shield week or an
+    /// illness (zero sessions) never advances Vexeth — "absence met with patience". With
+    /// `proRateCurrentWeek` the in-progress week pro-rates by elapsed days (daily creep),
+    /// but only once that week itself has a session (an absent current week stays frozen).
+    public static func rivalEffectiveWeeks(qualifyingDayStarts dayStarts: [Date],
+                                           clockStart: Date, asOf: Date,
+                                           calendar: Calendar,
+                                           proRateCurrentWeek: Bool) -> Double {
+        guard asOf >= clockStart,
+              let currentWeekStart = calendar.dateInterval(of: .weekOfYear, for: asOf)?.start
+        else { return 0 }
+        let clockDayStart = calendar.startOfDay(for: clockStart)
+        let relevant = dayStarts.filter { $0 >= clockDayStart && $0 <= asOf }
+        var weeks = 0.0
+        // Whole weeks strictly before the current week; a week with no session is skipped.
+        for weekStart in weekStarts(from: clockStart, upToWeekContaining: asOf,
+                                    calendar: calendar, includeFinal: false) {
+            guard let weekEnd = calendar.date(byAdding: .weekOfYear, value: 1, to: weekStart)
+            else { continue }
+            if relevant.contains(where: { $0 >= weekStart && $0 < weekEnd }) { weeks += 1 }
+        }
+        if proRateCurrentWeek, relevant.contains(where: { $0 >= currentWeekStart }) {
+            let elapsed = daysBetween(currentWeekStart, asOf, calendar: calendar)
+            weeks += Double(min(max(elapsed, 0), 7)) / 7.0
+        }
+        return weeks
+    }
+
+    /// The user's trailing mean weekly ΔPL from the trajectory — the pace Vexeth's growth
+    /// is measured against. Skips the opening week (which measures up from 0) and the
+    /// in-progress week (still partial). `hasTrend` stays false until a completed,
+    /// non-opening week exists; before that Vexeth runs his scripted opening menace.
+    public static func rivalTrailingWeeklyPace(history: [PLPoint], calendar: Calendar,
+                                               asOf: Date,
+                                               window: Int = 5) -> (pace: Int, hasTrend: Bool) {
+        let changes = PowerLevelBreakdown.weeklyChanges(history: history, calendar: calendar,
+                                                        weeks: Int.max)
+        guard changes.count >= 2 else { return (0, false) }
+        var completed = changes
+        if let currentWeekStart = calendar.dateInterval(of: .weekOfYear, for: asOf)?.start,
+           completed.last?.weekStart == currentWeekStart {
+            completed.removeLast()
+        }
+        completed = Array(completed.dropFirst())   // drop the opening (from-zero) week
+        guard !completed.isEmpty else { return (0, false) }
+        let recent = completed.suffix(max(1, window))
+        let mean = recent.map(\.deltaPL).reduce(0, +) / recent.count
+        return (max(0, mean), true)
+    }
+
+    /// Winnable-by-construction weekly growth. Capped strictly below the user's own
+    /// trailing pace (so a consistently-improving trainer always closes the gap — it can
+    /// never diverge), never above the configured script, and floored so Vexeth still
+    /// creeps while the user climbs. A flat user (pace 0, but with a trend) freezes him —
+    /// nothing to respond to. With no trend yet (brand-new user) he opens at the script.
+    public static func rivalAdaptiveGrowth(configGrowth: Int, trailingWeeklyPace pace: Int,
+                                           floor: Int, hasTrend: Bool) -> Int {
+        guard hasTrend else { return configGrowth }
+        // Aim ~10% under the user's pace, but never above the script.
+        let target = min(configGrowth, Int((Double(pace) * 0.9).rounded()))
+        let floored = max(floor, target)
+        // Hard ceiling at pace − 1 guarantees the gap shrinks for any moving user.
+        return max(0, min(floored, pace - 1))
+    }
+
+    /// The result of one tick of the form state machine (`rivalFormStep`).
+    public struct RivalFormStep: Sendable, Equatable {
+        /// The form after this tick (1...maxForms).
+        public let form: Int
+        /// Vexeth's base PL after this tick — a fresh surge base when he advanced,
+        /// otherwise the base he came in with.
+        public let formBasePL: Int
+        /// 2 or 3 when a NEW form was revealed this tick (drives the reveal banner);
+        /// nil otherwise. The store mirrors this into `pendingRivalFormReveal`.
+        public let revealed: Int?
+        /// True when the user out-climbed the FINAL (already-surged) form — a rebirth is
+        /// due. The store resets the cycle; nothing here ever reveals a 4th form.
+        public let rebirth: Bool
+
+        public init(form: Int, formBasePL: Int, revealed: Int?, rebirth: Bool) {
+            self.form = form
+            self.formBasePL = formBasePL
+            self.revealed = revealed
+            self.rebirth = rebirth
+        }
+    }
+
+    /// One tick of Vexeth's form state machine. If the user has NOT out-climbed his
+    /// current effective PL, nothing changes. If they have and a form remains, he SURGES:
+    /// his base jumps to `surgeFactor`× the user's PL — retaking the lead, so the newly
+    /// revealed form is a real climb and can never be beaten the instant it appears — and
+    /// the next form is revealed. Out-climbing the final form returns `rebirth`. Pure: the
+    /// store persists `form`/`formBasePL`; tests drive it directly.
+    public static func rivalFormStep(currentForm: Int, currentBasePL: Int,
+                                     effectivePL: Int, userPL: Int,
+                                     surgeFactor: Double, maxForms: Int = 3) -> RivalFormStep {
+        guard userPL > effectivePL else {
+            return RivalFormStep(form: currentForm, formBasePL: currentBasePL,
+                                 revealed: nil, rebirth: false)
+        }
+        if currentForm < maxForms {
+            let next = currentForm + 1
+            let surgeBase = Int((Double(userPL) * surgeFactor).rounded(.up))
+            return RivalFormStep(form: next, formBasePL: surgeBase, revealed: next, rebirth: false)
+        }
+        return RivalFormStep(form: currentForm, formBasePL: currentBasePL,
+                             revealed: nil, rebirth: true)
     }
 }
 

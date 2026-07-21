@@ -776,6 +776,73 @@ public final class WorkoutSessionStore {
         rotationCycleSealed = false
     }
 
+    // MARK: Commentary persona (domain-routed patron voice)
+
+    /// Whose voice narrates this session's Power Scan recap. Cast law: patrons only
+    /// REACT inside their badge domain, and only once AWAKENED — a sealed patron is
+    /// never voiced, so every branch is gated on `progression.unlockedPatrons` and
+    /// falls through to Vego, who walks with the lifter from the first scan.
+    ///
+    /// Priority mirrors how loud the headline is: a long layoff reframes the whole
+    /// session (Zyn) before any tally; then a freshly-minted badge routes to its
+    /// owner; then the softer domain signals for events that didn't happen to mint a
+    /// new badge (trained rested → Luma, a streak-extending day → Nyra, a goal met →
+    /// Torren, reaching for new lifts → Gosi).
+    private func commentaryPersona(for workout: Workout, newBadges: [String],
+                                   completedGoalCount: Int) -> CharacterKey {
+        let awake = progression.unlockedPatrons
+        func ready(_ patron: CharacterKey) -> Bool { awake.contains(patron) }
+
+        // A comeback after 21+ days is the biggest story in the room — Zyn owns the return.
+        if let prevEnd = lastFinishedWorkoutEnd(before: workout),
+           workout.startedAt.timeIntervalSince(prevEnd) >= 21 * 86_400, ready(.zyn) {
+            return .zyn
+        }
+
+        // A new badge is the loudest thing the scanner prints — route to its owner.
+        // Sorted for a stable pick; a Vego badge (a plain PR) falls through so a softer
+        // domain signal can still speak.
+        for key in newBadges.sorted() {
+            if let patron = PatronUnlocks.patron(forBadgeKey: key), patron != .vego, ready(patron) {
+                return patron
+            }
+        }
+
+        // No badge this time — the softer domain signals, in cast order.
+        if workout.restedSurge, ready(.luma) { return .luma }                       // trained rested
+        if distinctTrainingDaysThisWeek(including: workout) >= 3, ready(.nyra) { return .nyra }
+        if completedGoalCount > 0, ready(.torren) { return .torren }                 // a goal fell today
+        if newExerciseCount(in: workout) >= 2, ready(.gosi) { return .gosi }         // reached for new lifts
+
+        return .vego
+    }
+
+    /// Distinct calendar days with a finished, non-casual workout in the ISO week of
+    /// `workout` (this session included) — the streak-extending "3rd day" signal.
+    private func distinctTrainingDaysThisWeek(including workout: Workout) -> Int {
+        var cal = Calendar(identifier: .iso8601)
+        cal.timeZone = .current
+        guard let week = cal.dateInterval(of: .weekOfYear, for: workout.startedAt) else { return 1 }
+        let workouts = (try? context.fetch(FetchDescriptor<Workout>())) ?? []
+        var days = Set<Int>()
+        for w in workouts
+        where w.deletedAt == nil && w.endedAt != nil && !w.isCasual && week.contains(w.startedAt) {
+            days.insert(cal.dateKey(for: w.startedAt))
+        }
+        days.insert(cal.dateKey(for: workout.startedAt))   // count this session even if the fetch lagged
+        return days.count
+    }
+
+    /// How many of this workout's exercises had no prior finished, non-casual history —
+    /// the "first-of-many-new-exercises" breadth signal (Gosi's domain).
+    private func newExerciseCount(in workout: Workout) -> Int {
+        var count = 0
+        for we in workout.orderedExercises where we.deletedAt == nil {
+            if previousSets(exerciseID: we.exerciseID, excluding: workout.id).isEmpty { count += 1 }
+        }
+        return count
+    }
+
     public func finishWorkout() {
         guard let workout = activeWorkout else { return }
         // Prune exercises opened but never logged into — they'd clutter history and
@@ -836,6 +903,12 @@ public final class WorkoutSessionStore {
             netIsNew = net.isNew
         }
 
+        // Domain-routed voice: a casual session is Vego's alone; otherwise the patron
+        // whose badge domain owns this session's headline event narrates (else Vego).
+        let persona: CharacterKey = isCasual
+            ? .vego
+            : commentaryPersona(for: workout, newBadges: newBadges, completedGoalCount: completedGoals.count)
+
         let facts = CommentaryFacts(
             title: workout.title,
             netReps: netReps,
@@ -844,7 +917,8 @@ public final class WorkoutSessionStore {
             newBadgeCount: newBadges.count,
             powerLevelDelta: progression.snapshotPowerLevel - plBefore,
             isCasual: isCasual,
-            phase: workout.phase   // so Vego's line reframes a cut dip / maintain hold, never shames it
+            phase: workout.phase,   // so the line reframes a cut dip / maintain hold, never shames it
+            persona: persona        // routes to an awakened patron in their domain
         )
         let (commentary, source) = CommentaryFallback.generate(facts: facts)
 

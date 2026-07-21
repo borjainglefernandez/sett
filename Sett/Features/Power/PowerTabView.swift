@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import Charts
 import SettCore
 import UIKit
 
@@ -14,11 +15,27 @@ import UIKit
 ///     wakes someone new.
 struct PowerTabView: View {
     @Environment(ProgressionStore.self) private var progression
+    @Environment(AppServices.self) private var services
     @Environment(\.modelContext) private var modelContext
 
     @Query private var saiyanStates: [SaiyanState]
     @Query private var badgeAwards: [BadgeAward]
+    // Mirrors of Home's streak inputs — the Character Sheet STREAK row must read the
+    // SAME number Home shows (StreakEngine.streakState), not the snapshot's 2-day
+    // consistency streak. Same predicates HomeTabView uses so the two never disagree.
+    @Query private var finishedWorkouts: [Workout]
+    @Query private var streakRoutines: [Routine]
+    @Query private var frequencyGoals: [Goal]
 
+    /// The section the sub-nav last jumped to — drives the selected chip fill. The
+    /// content is one long scroll (all sections always visible), so this reflects the
+    /// last tap, not a scroll position.
+    @State private var activeSection: PowerSection = .form
+    /// A chip tap sets this; the vertical ScrollView's ScrollViewReader watches it and
+    /// scrolls (then clears it). Decoupling via state is what makes the jump reliable —
+    /// wrapping the reader around the whole VStack bound the proxy to the horizontal
+    /// sub-nav ScrollView instead of the content, so scrollTo silently no-op'd.
+    @State private var scrollTarget: PowerSection?
     @State private var showingHowPowerWorks = false
     @State private var radarShares = [Double](repeating: 0, count: PowerTabView.radarMuscles.count)
     /// Non-nil after a roster swap — keys a one-shot cyan burst on the new avatar.
@@ -43,38 +60,80 @@ struct PowerTabView: View {
     init() {
         let badgeAwardFilter = #Predicate<BadgeAward> { $0.deletedAt == nil }
         _badgeAwards = Query(filter: badgeAwardFilter, sort: [SortDescriptor(\BadgeAward.earnedAt, order: .reverse)])
+
+        // Same three queries HomeTabView uses to derive the display streak.
+        let finishedFilter = #Predicate<Workout> { $0.endedAt != nil && $0.deletedAt == nil }
+        _finishedWorkouts = Query(filter: finishedFilter,
+                                  sort: [SortDescriptor(\Workout.startedAt, order: .reverse)])
+
+        let routineFilter = #Predicate<Routine> { $0.deletedAt == nil && !$0.isArchived }
+        _streakRoutines = Query(filter: routineFilter, sort: [SortDescriptor(\Routine.orderIndex)])
+
+        let goalFilter = #Predicate<Goal> { $0.kindRaw == "frequency" && $0.isActive && $0.deletedAt == nil }
+        _frequencyGoals = Query(filter: goalFilter)
     }
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    // Pinned above the hero, mirroring Home's rotationSealBanner —
-                    // acknowledgeAscension clears it on both tabs (single source of truth).
-                    if let form = progression.pendingAscension {
-                        LevelUpBanner(form: form) { withAnimation(.snappy) { progression.acknowledgeAscension() } }
+            VStack(spacing: 0) {
+                // Sticky sub-nav: pinned OUTSIDE the ScrollView so it holds under the
+                // nav bar while the sections scroll beneath it. Same chip grammar as
+                // ProgressTabView.sectionChips (one pattern, two tabs).
+                subNav
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 16) {
+                            // At most ONE banner rides above the hero: the user's gold
+                            // ascension leads (their reward beat), and only once it's
+                            // acknowledged does Vexeth's crimson response surface — so a
+                            // crimson banner is NEVER stacked beside the gold one (color law).
+                            // Both flags are persistent, so deferring the reveal never drops it.
+                            if let form = progression.pendingAscension {
+                                LevelUpBanner(form: form) { withAnimation(.snappy) { progression.acknowledgeAscension() } }
+                            } else if let revealForm = progression.pendingRivalFormReveal {
+                                VexethRespondsBanner(form: revealForm) {
+                                    withAnimation(.snappy) { progression.acknowledgeRivalFormReveal() }
+                                }
+                            }
+                            hero
+                                .id(PowerSection.form)
+                            characterSheetCard
+                                .id(PowerSection.sheet)
+                            badgeCasePreview
+                                .id(PowerSection.badges)
+                            // Sits directly above the roster (not pinned at the top like
+                            // the ascension banner) — the beat points at the strip where
+                            // the new card just unsealed.
+                            if let awakened = progression.pendingPatronAwakening {
+                                patronAwakeningSlab(awakened)
+                            }
+                            rosterCard
+                                .id(PowerSection.lineup)
+                            // The crimson rival closes the sheet — last, matching the
+                            // FORM/SHEET/BADGES/LINEUP/RIVAL sub-nav order, and no gold
+                            // surface sits beside this, the app's only crimson card.
+                            RivalCard(rivalPL: rivalPL,
+                                      rivalForm: rivalForm,
+                                      userPL: progression.snapshotPowerLevel,
+                                      pace: progression.trailingWeeklyPace,
+                                      growth: progression.effectiveRivalGrowth,
+                                      cycle: progression.rivalCycle,
+                                      taunt: progression.rivalTaunt,
+                                      raceLines: progression.rivalRaceLines(weeks: 10),
+                                      revealPending: progression.pendingRivalFormReveal != nil,
+                                      rebirthAnnounce: progression.rivalRebirthAnnounce,
+                                      onAcknowledgeRebirth: { withAnimation(.snappy) { progression.acknowledgeRivalRebirth() } })
+                                .id(PowerSection.rival)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 24)
                     }
-                    hero
-                    characterSheetCard
-                    RivalCard(rivalPL: rivalPL,
-                              rivalForm: rivalForm,
-                              userPL: progression.snapshotPowerLevel,
-                              pace: progression.trailingWeeklyPace,
-                              growth: progression.effectiveRivalGrowth,
-                              cycle: progression.rivalCycle,
-                              rebirthAnnounce: progression.rivalRebirthAnnounce,
-                              onAcknowledgeRebirth: { withAnimation(.snappy) { progression.acknowledgeRivalRebirth() } })
-                    badgeCasePreview
-                    // Sits directly above the roster (not pinned at the top like
-                    // the ascension banner) — the beat points at the strip where
-                    // the new card just unsealed.
-                    if let awakened = progression.pendingPatronAwakening {
-                        patronAwakeningSlab(awakened)
+                    .onChange(of: scrollTarget) { _, target in
+                        guard let target else { return }
+                        withAnimation(.snappy) { proxy.scrollTo(target, anchor: .top) }
+                        scrollTarget = nil
                     }
-                    rosterCard
                 }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 24)
             }
             .dungeonBackground()
             .navigationTitle("Power")
@@ -108,6 +167,65 @@ struct PowerTabView: View {
         }
     }
 
+    // MARK: (1) Sticky sub-nav — jump to the section anchors
+
+    /// The five destinations on this tab, in scroll order. Each has a matching
+    /// `.id(PowerSection.x)` anchor on its section so a chip tap scroll-anchors to it.
+    private enum PowerSection: String, CaseIterable, Hashable {
+        case form, sheet, badges, lineup, rival
+
+        /// Mono-uppercased chip label.
+        var title: String {
+            switch self {
+            case .form:   return "Form"
+            case .sheet:  return "Sheet"
+            case .badges: return "Badges"
+            case .lineup: return "Lineup"
+            case .rival:  return "Rival"
+            }
+        }
+    }
+
+    /// The pinned chip row — reuses ProgressTabView.sectionChips wholesale (heroCyan
+    /// fill + etch ink selected, card + ash unselected, Haptics.light, chipEdgeFade),
+    /// but instead of switching the visible graph it scroll-anchors the long scroll to
+    /// the tapped section. One pattern, two tabs.
+    private var subNav: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach(PowerSection.allCases, id: \.self) { section in
+                    subNavChip(section)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8) // breathing room so the capsules aren't clipped
+        }
+        .chipEdgeFade()
+    }
+
+    private func subNavChip(_ section: PowerSection) -> some View {
+        let isSelected = activeSection == section
+        return Button {
+            Haptics.light()
+            activeSection = section
+            scrollTarget = section   // the content ScrollViewReader watches this and jumps
+        } label: {
+            Text(section.title.uppercased())
+                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                .kerning(1.5)
+                .lineLimit(1)
+                // etch is the app's ink-on-heroCyan (see ChamberSegments); ash otherwise.
+                .foregroundStyle(isSelected ? SettColor.etch : SettColor.ash)
+                .padding(.horizontal, 14)
+                .frame(minHeight: 34)
+                .background(Capsule().fill(isSelected ? SettColor.heroCyan : SettColor.card))
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(section.title)
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+    }
+
     // MARK: Derived state
 
     private var activeCharacter: CharacterKey {
@@ -122,6 +240,52 @@ struct PowerTabView: View {
     /// function of PL) — characters are patrons, not parallel ladders.
     private var activeTier: TransformationTier {
         progression.userFormTier
+    }
+
+    /// The single-colour reading of Aura.forTier — the ki-gauge fill wants a Color,
+    /// not a gradient. Cyan holds through ASCENDANT, the sacred gold arrives at RADIANT
+    /// (where the PL itself turns gold), a scarce white-cyan caps Zenith. Mirrors the
+    /// Aura.forTier ramp so the gauge, halo, and frame material read as one material.
+    private var tierAccent: Color {
+        switch activeTier {
+        case .base, .kindled, .ascendant: SettColor.heroCyan
+        case .radiant: SettColor.saiyanGold
+        case .zenith: Color(dynamicLight: 0xB8FAFF, dark: 0xB8FAFF)   // the Aura.zenith white-cyan
+        }
+    }
+
+    // MARK: Display streak (must match Home's number, not the snapshot's)
+
+    /// Streaks use ISO weeks (Monday start), matching the engines and HomeTabView.
+    private static let isoCalendar: Calendar = {
+        var calendar = Calendar(identifier: .iso8601)
+        calendar.timeZone = .current
+        return calendar
+    }()
+
+    private var weeklyGoalTarget: Int { frequencyGoals.first?.targetValue ?? 3 }
+
+    /// The week's real commitment — mirrors HomeTabView.streakTarget exactly: the
+    /// frequency goal, capped by the scheduled-day count in weekday mode.
+    private var streakTarget: Int {
+        let goal = max(1, weeklyGoalTarget)
+        if services.settings.scheduleMode == .weekday {
+            let mask = Scheduling.orderedActive(streakRoutines).reduce(0) { $0 | $1.daysOfWeekMask }
+            let scheduled = mask.nonzeroBitCount
+            if scheduled > 0 { return min(goal, scheduled) }
+        }
+        return goal
+    }
+
+    /// The SAME shielded, target-aware streak Home shows — so the Character Sheet
+    /// STREAK row never disagrees with the dashboard.
+    private var displayStreakWeeks: Int {
+        StreakEngine.streakState(
+            workoutDates: finishedWorkouts.map(\.startedAt),
+            weeklyTarget: streakTarget,
+            calendar: Self.isoCalendar,
+            asOf: .now
+        ).weeks
     }
 
     private var peakPL: Int {
@@ -165,11 +329,13 @@ struct PowerTabView: View {
     private var hero: some View {
         VStack(spacing: 12) {
             ZStack {
-                // Rank lives in the frame material now, so the idle aura stays
-                // ki-cyan at every tier — only Zenith earns its own gradient.
-                BreathingAura(gradient: activeTier == .zenith ? Aura.zenith : Aura.cyan)
+                // Form-tinted identity chrome: the idle aura now rides Aura.forTier so an
+                // ascending form visibly upgrades the halo material alongside the frame —
+                // ki-cyan through ASCENDANT, gold-veined at RADIANT (the tier where the PL
+                // itself turns gold), white-cyan at Zenith. Pure atmosphere.
+                BreathingAura(gradient: Aura.forTier(activeTier))
                     .frame(width: 118, height: 118)
-                    .opacity(0.55)   // the gold PL below is the lead; the aura is ambience
+                    .opacity(0.55)   // the PL below is the lead; the aura is ambience
                 CharacterAvatarView(character: activeCharacter, tier: activeTier, size: 132)
                 if let rosterBurstID {
                     // Roster swap only — never fires on plain appearance (clear under RM).
@@ -203,22 +369,23 @@ struct PowerTabView: View {
                         .kerning(1.5)
                         .foregroundStyle(SettColor.ash)
                 }
-                // The USER's form on the endless ladder — one title, one next target.
+                // The USER's form on the endless ladder — current title, then the named
+                // destination (not a cryptic pip count): where the next rung is and what
+                // it's called. The next form is the one whose floor is this form's nextPL.
                 let form = UserForm.form(forPL: progression.snapshotPowerLevel)
+                let nextForm = UserForm.form(forPL: form.nextPL)
                 VStack(spacing: 3) {
                     Text(form.title)
                         .font(.system(.subheadline, design: .monospaced).weight(.heavy).smallCaps())
                         .kerning(2)
                         .foregroundStyle(SettColor.heroCyan)
-                    Text("\((form.nextPL - progression.snapshotPowerLevel).formatted()) PL TO NEXT FORM")
-                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                        .kerning(1)
-                        .foregroundStyle(SettColor.ash)
-                    // Ki Gauge, not a stock bar — its fused n/12 numeral counts cells,
-                    // the caption above counts PL, so the two never double-report.
+                    // e.g. "NEXT · RADIANT 9,000" — the destination in Eyebrow voice.
+                    Eyebrow("NEXT · \(nextForm.title) \(nextForm.floorPL.formatted())")
+                    // Ki Gauge, pure fill viz — form-tinted to match the frame (cyan → gold
+                    // at RADIANT → white-cyan at Zenith), so ascending upgrades the gauge too.
                     // gaugeStart/gaugeTarget are driven by animateHero(); .id(heroRoll)
                     // re-mounts it so the fill replays alongside the number's odometer.
-                    AnimatedKiGauge(target: gaugeTarget, from: gaugeStart, accent: SettColor.heroCyan)
+                    AnimatedKiGauge(target: gaugeTarget, from: gaugeStart, accent: tierAccent)
                         .frame(width: 180)
                         .id(heroRoll)
                 }
@@ -239,8 +406,10 @@ struct PowerTabView: View {
     // MARK: (2) Character sheet — mono stat rows + muscle radar
 
     /// PR-milestone badge keys — the snapshot exposes no raw PR count, so this
-    /// tracks the earned PR-milestone badge ladder (0–3), not a total PR count.
-    private static let prBadgeKeys: Set<String> = ["new_ceiling", "limit_break", "walking_legend"]
+    /// tracks the earned milestone ladder (0–3). `walking_legend` was pruned from the
+    /// live 10-badge config (3/3 was unreachable); `scanner_breaker` — the 9,000-PL
+    /// ceiling-break — is the reachable capstone rung.
+    private static let prBadgeKeys: Set<String> = ["new_ceiling", "limit_break", "scanner_breaker"]
 
     private var prBadgeCount: Int {
         earnedBadgeKeys.intersection(Self.prBadgeKeys).count
@@ -254,7 +423,9 @@ struct PowerTabView: View {
                 hairline
                 statRow("WEEKLY VOLUME", "\((progression.snapshot?.weeklyVolumeLb ?? 0).formatted()) LB")
                 hairline
-                statRow("STREAK", "\(progression.snapshot?.streakWeeks ?? 0) WK")
+                // The display streak — same StreakEngine.streakState number Home shows,
+                // not the snapshot's 2-day consistency streak (they disagreed before).
+                statRow("STREAK", "\(displayStreakWeeks) WK")
                 hairline
                 statRow("PR MILESTONES", "\(prBadgeCount)/3")
             }
@@ -384,12 +555,25 @@ struct PowerTabView: View {
         .buttonStyle(.plain)
     }
 
+    /// A premiere is still glowing the next day: an award earned within 48h wears the
+    /// same slow gold breath the PR crown / badge-detail sheet use, so a fresh badge
+    /// reads as new even after the earn moment's one-shot burst has spent itself.
+    private func isFresh(_ award: BadgeAward) -> Bool {
+        award.earnedAt > Date.now.addingTimeInterval(-48 * 3600)
+    }
+
     /// Earned medallion slot: rank reads from the frame material — engraved
     /// gold, or prismatic for legendary. The medal itself stays bone.
     private func previewMedallion(_ award: BadgeAward) -> some View {
         let legendary = progression.config?.badge(award.badgeKey)?.rarity == .legendary
         return VStack(spacing: 6) {
             ZStack {
+                if isFresh(award) {
+                    // Gold breath = reward; the case's only animated slot, and only
+                    // while the award is fresh (<48h), so idle badges stay still.
+                    BreathingAura(gradient: Aura.gold)
+                        .frame(width: 60, height: 60)
+                }
                 Circle()
                     .fill(SettColor.card)
                 Image(systemName: "medal.fill")
@@ -688,12 +872,37 @@ private struct RivalCard: View {
     let pace: Int
     let growth: Int
     var cycle: Int = 1
+    /// The System Voice's line keyed to the current gap state (from the store) —
+    /// replaces the old three hard-coded quotes.
+    var taunt: String = ""
+    /// bone = you, crimson = Vexeth, over the trailing weeks. Empty when < 2 weeks.
+    var raceLines: [(weekStart: Date, you: Int, rival: Int)] = []
+    /// True while a form reveal is unacknowledged — fires the one-shot portrait burn-in.
+    var revealPending: Bool = false
     var rebirthAnnounce: Bool = false
     var onAcknowledgeRebirth: () -> Void = {}
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// The current form's epithet — Star / Nova / Singularity — so the subtitle and
+    /// the "Form N of 3" pill never disagree (subtitle was previously hard-Star).
+    private var formEpithet: String {
+        switch rivalForm {
+        case 2: return "the Crimson Nova"
+        case 3: return "the Crimson Singularity"
+        default: return "the Crimson Star"
+        }
+    }
     /// Drives the slow crimson menace pulse on the border (static under RM).
     @State private var menace = false
+    /// One-shot crimson flash over the portrait when a form reveal lands: set hot,
+    /// then animated to 0. 0 = spent (nothing drawn).
+    @State private var burnIn: Double = 0
+    /// Guards the burn-in to once per reveal — the card lives at the bottom of a
+    /// non-lazy scroll, so its onAppear fires off-screen; the flash is instead armed
+    /// to the moment the portrait actually scrolls into view. Rearmed when the reveal
+    /// is acknowledged so the NEXT transformation burns in too.
+    @State private var burnedInForReveal = false
 
     /// The forward hook: how far behind Vexeth stands and, if the user is
     /// out-pacing his growth, how many weeks until the catch — mirrors Home's
@@ -740,7 +949,7 @@ private struct RivalCard: View {
                         .font(.headline)
                         .kerning(1.2)
                         .foregroundStyle(SettColor.villainCrimson)
-                    Text(cycle > 1 ? "the Crimson Star · Cycle \(cycle)" : "the Crimson Star")
+                    Text(cycle > 1 ? "\(formEpithet) · Cycle \(cycle)" : formEpithet)
                         .font(.footnote)
                         .foregroundStyle(SettColor.villainCrimson.opacity(0.8))
                 }
@@ -760,6 +969,14 @@ private struct RivalCard: View {
                 .background(SettColor.villainCrimson.opacity(0.055),
                             in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .overlay {
+                    // One-shot crimson burn-in when a reveal is pending: a hot wash that
+                    // fades to nothing, so the transformation reads on the portrait itself.
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(SettColor.villainCrimson.opacity(burnIn))
+                        .blendMode(.plusLighter)
+                        .allowsHitTesting(false)
+                }
+                .overlay {
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .strokeBorder(SettColor.villainCrimson.opacity(0.24), lineWidth: 1)
                 }
@@ -768,8 +985,11 @@ private struct RivalCard: View {
                 .font(.system(size: 12, weight: .heavy, design: .monospaced))
                 .monospacedDigit()
                 .foregroundStyle(SettColor.villainCrimson)
-            Text(rebirthAnnounce ? "\u{201C}You thought that was my ceiling? Cute.\u{201D}"
-                 : userPL > rivalPL ? "You've forced my hand." : "He hasn't shown his final form.")
+            raceSparkline
+            // The rival's line, keyed to the gap state by the store (closing / stalling /
+            // just-passed / transformed / post-rebirth / trailing) — no longer three
+            // hard-coded strings.
+            Text(taunt)
                 .font(.subheadline.italic())
                 .foregroundStyle(SettColor.ash)
         }
@@ -782,6 +1002,14 @@ private struct RivalCard: View {
                 .strokeBorder(SettColor.villainCrimson.opacity(reduceMotion ? 0.4 : (menace ? 0.5 : 0.3)),
                               lineWidth: 1)
         }
+        // Arm the portrait burn-in to the moment it scrolls into view (onAppear fires
+        // off-screen here). Fires at most once per reveal.
+        .onScrollVisibilityChange(threshold: 0.35) { visible in
+            if visible, revealPending, !burnedInForReveal {
+                burnedInForReveal = true
+                fireBurnIn()
+            }
+        }
         .onAppear {
             guard !reduceMotion else { return }
             withAnimation(.easeInOut(duration: 4).repeatForever(autoreverses: true)) {
@@ -791,7 +1019,127 @@ private struct RivalCard: View {
         .onChange(of: rebirthAnnounce) { _, announced in
             if announced { Haptics.rigid() }   // one hit as the rebirth banner lands
         }
+        .onChange(of: revealPending) { _, pending in
+            if !pending { burnedInForReveal = false }   // rearm for the next transformation
+        }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Emperor Vexeth, the Crimson Star. Power level \(rivalPL), form \(rivalForm) of 3, \(gapLine).")
+        .accessibilityLabel("Emperor Vexeth, \(formEpithet). Power level \(rivalPL), form \(rivalForm) of 3, \(gapLine).")
+    }
+
+    /// A compact two-line race: bone = you, crimson = Vexeth, converging or diverging
+    /// over the trailing weeks. Hidden until there are at least two weekly points.
+    @ViewBuilder
+    private var raceSparkline: some View {
+        if raceLines.count >= 2 {
+            VStack(alignment: .leading, spacing: 4) {
+                Chart {
+                    ForEach(Array(raceLines.enumerated()), id: \.offset) { item in
+                        LineMark(x: .value("Week", item.element.weekStart),
+                                 y: .value("PL", item.element.you),
+                                 series: .value("Series", "You"))
+                            .foregroundStyle(SettColor.bone)
+                            .lineStyle(StrokeStyle(lineWidth: 1.5))
+                        LineMark(x: .value("Week", item.element.weekStart),
+                                 y: .value("PL", item.element.rival),
+                                 series: .value("Series", "Vexeth"))
+                            .foregroundStyle(SettColor.villainCrimson)
+                            .lineStyle(StrokeStyle(lineWidth: 1.5))
+                    }
+                }
+                .chartXAxis(.hidden)
+                .chartYAxis(.hidden)
+                .chartLegend(.hidden)
+                .frame(height: 52)
+                // Inline legend — bone you / crimson Vexeth, so the two lines read.
+                HStack(spacing: 12) {
+                    raceKey(SettColor.bone, "YOU")
+                    raceKey(SettColor.villainCrimson, "VEXETH")
+                }
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(raceAccessibilityLabel)
+        }
+    }
+
+    private func raceKey(_ color: Color, _ label: String) -> some View {
+        HStack(spacing: 5) {
+            Capsule().fill(color).frame(width: 12, height: 2)
+            Text(label)
+                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .kerning(1)
+                .foregroundStyle(SettColor.ash)
+        }
+        .accessibilityHidden(true)
+    }
+
+    private var raceAccessibilityLabel: String {
+        guard let first = raceLines.first, let last = raceLines.last else { return "" }
+        let openGap = first.rival - first.you
+        let nowGap = last.rival - last.you
+        let trend = nowGap < openGap ? "closing" : nowGap > openGap ? "widening" : "holding"
+        return "Race over \(raceLines.count) weeks: the gap to Vexeth is \(trend)."
+    }
+
+    private func fireBurnIn() {
+        guard !reduceMotion else { return }
+        burnIn = 0.55
+        withAnimation(.easeOut(duration: 0.9)) { burnIn = 0 }
+    }
+}
+
+// MARK: - (2) Vexeth Responds banner — the crimson mirror of LevelUpBanner
+
+/// "VEXETH RESPONDS — NOVA / — SINGULARITY": the rival's crimson answer to the user's
+/// climb, pinned above the hero when a form reveal is unacknowledged. A structural
+/// mirror of LevelUpBanner (glowing mark → eyebrow → big title, tap or × to ack,
+/// materialize entrance) but crimson-only — never gold. Draws no burst, since
+/// AuraBurstView only speaks gold/cyan; the portrait burn-in carries the flash instead.
+/// Landing haptic is a single rigid hit (the villain's), not the level-up ramp.
+private struct VexethRespondsBanner: View {
+    /// 2 (Nova) or 3 (Singularity).
+    let form: Int
+    let onAcknowledge: () -> Void
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var formName: String { form >= 3 ? "SINGULARITY" : "NOVA" }
+
+    var body: some View {
+        Button(action: acknowledge) {
+            HStack(spacing: 12) {
+                // The sacred sigil in crimson — the rival's dark reflection of your power.
+                SettSigil(size: 30, color: SettColor.villainCrimson)
+                    .auraGlow(SettColor.villainCrimson, radius: 10)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("VEXETH RESPONDS")
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .kerning(2)
+                        .foregroundStyle(SettColor.villainCrimson.opacity(0.9))
+                    Text("— \(formName)")
+                        .font(.system(.title3, design: .rounded).weight(.heavy).smallCaps())
+                        .kerning(1)
+                        .foregroundStyle(SettColor.villainCrimson)
+                        .shadow(color: SettColor.villainCrimson.opacity(0.5), radius: 6)
+                }
+                Spacer(minLength: 8)
+                Image(systemName: "xmark")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(SettColor.ash)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .hudCard(tint: SettColor.villainCrimson)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .materialize()
+        .onAppear { if !reduceMotion { Haptics.rigid() } }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Vexeth responds, \(formName). Tap to dismiss.")
+        .accessibilityAddTraits(.isButton)
+    }
+
+    private func acknowledge() {
+        Haptics.selection()
+        onAcknowledge()
     }
 }

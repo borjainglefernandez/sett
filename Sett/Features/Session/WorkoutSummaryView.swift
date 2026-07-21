@@ -60,6 +60,15 @@ struct WorkoutSummaryView: View {
     @State private var showCrack = false
     @State private var crackProgress: Double = 0
     @State private var crackOpacity: Double = 1
+    // The RADIANT scanner-overload glitch (odometer crossing 9,000): a bone crack
+    // that ticks across the scan glass — card-scoped and bone, NOT the gold ceiling
+    // break — while the display chokes on the over-9,000 reading.
+    @State private var showGlitchCrack = false
+    @State private var glitchCrack: Double = 0
+    // DIRECTIVE SEALED — resolved once from the workout's routine link (never a fetch
+    // in `body`): true when this session ran a planned routine, so it fulfilled today's
+    // training directive. A casual / off-record session never seals a directive.
+    @State private var directiveSealed = false
 
     var body: some View {
         ScrollView {
@@ -83,6 +92,13 @@ struct WorkoutSummaryView: View {
                             .transition(.opacity.combined(with: .move(edge: .bottom)))
                     }
                 }
+                // The scanner's word on the session, surfaced directly under NET PROGRESS
+                // so the space below the reading carries the System Voice instead of dead
+                // backdrop. Rides in with the net beat; skipped when there's nothing to say.
+                if stage >= .net && !summary.commentary.isEmpty {
+                    commentarySlab
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                }
                 if stage >= .badges && !summary.completedGoalTitles.isEmpty {
                     goalCompleteCard
                         .transition(.opacity.combined(with: .move(edge: .bottom)))
@@ -91,9 +107,14 @@ struct WorkoutSummaryView: View {
                     badgesCard
                         .transition(.opacity.combined(with: .move(edge: .bottom)))
                 }
-                if stage >= .commentary {
-                    commentaryCard
+                // A planned routine completed = today's directive fulfilled. Gold (a reward
+                // beat), sits with the rest of the rewards; no crimson near it. Home owns
+                // the Home-side seal — this is only the session's own acknowledgement.
+                if stage >= .badges && directiveSealed {
+                    directiveSealedLine
                         .transition(.opacity.combined(with: .move(edge: .bottom)))
+                }
+                if stage >= .commentary {
                     wrapUp
                         .transition(.opacity)
                 }
@@ -103,6 +124,18 @@ struct WorkoutSummaryView: View {
         .background(
             TimeChamberBackground(tier: summaryTier, assetName: bgAsset).ignoresSafeArea()
         )
+        // A persistent, always-in-view exit. The summary scrolls long — reading,
+        // rewards, rating, notes, share — with the Done button at the very end of that
+        // scroll, so there was no dismiss on screen until you reached the bottom. This
+        // capsule rides above the scroll and calls the SAME dismiss Done does; it
+        // arrives once the ceremony settles (stage ≥ .commentary) so it never cuts the
+        // reveal short. Additive — the Done button and its tap-skip arrangement are
+        // untouched.
+        .safeAreaInset(edge: .bottom) {
+            if stage >= .commentary {
+                returnToChamberBar
+            }
+        }
         .overlay {
             // The ceiling break: UI fractures over the whole screen, gold light
             // leaking through (bone cores over the gold ramp — "shattered by YOUR
@@ -221,11 +254,17 @@ struct WorkoutSummaryView: View {
 
         // (b) the real SacredNumberView is now showing powerLevelBefore; after a
         // beat, flip the value and let its odometer (slot roll, hit-stop at every
-        // crossed hundred, ember burst) do the count-up.
+        // crossed hundred, ember burst) do the count-up. When this ascension carries
+        // the reading up across 9,000 into RADIANT, the scouter can't parse the
+        // over-9,000 number — it stutters (the franchise joke) before it breaks through.
         try? await Task.sleep(for: .milliseconds(250))
         guard stage == .power else { return }
-        displayedPowerLevel = summary.powerLevelAfter
-        try? await Task.sleep(for: .seconds(1.1))
+        if crossesRadiant {
+            await runRadiantOverload()
+        } else {
+            displayedPowerLevel = summary.powerLevelAfter
+            try? await Task.sleep(for: .seconds(1.1))
+        }
         guard stage == .power else { return }
 
         // (d) completion ceremony. A GAIN earns the full transformation: level-up
@@ -284,12 +323,65 @@ struct WorkoutSummaryView: View {
         withAnimation(.snappy) { stage = .commentary }
     }
 
+    /// This ascension carries the odometer up across 9,000 into RADIANT — the
+    /// "over 9000" reading the scouter chokes on. Gates the scanner-overload stutter.
+    private var crossesRadiant: Bool {
+        summary.powerLevelBefore < 9_000 && summary.powerLevelAfter >= 9_000
+    }
+
+    /// The over-9,000 stutter (Scanner-Breaker's franchise wink). The reading climbs
+    /// to the brink, then the display overloads: the numeral scrambles again, a bone
+    /// crack ticks across the scan glass with a rigid jolt, and only then does the
+    /// number break through and land on the RADIANT value. This is the scanner's OWN
+    /// glass failing on the reading — so the crack is bone and card-scoped, never the
+    /// gold ceiling break (that lands later, separately). Only ever reached with Reduce
+    /// Motion off (runStages direct-sets under RM, so the stutter is skipped entirely).
+    private func runRadiantOverload() async {
+        // Climb to the brink — the last clean reading before the overflow. If we're
+        // already sitting in the 8,99x band, the display's already there; don't roll back.
+        let brink = 8_990
+        if summary.powerLevelBefore < brink {
+            displayedPowerLevel = brink
+            try? await Task.sleep(for: .seconds(0.9)) // odometer roll + its hit-stops
+        }
+        guard stage == .power else { return }
+
+        // Overload: the reading can't resolve. Scramble reprise where the numeral sits,
+        // a bone crack ramping to its flash across the scan glass, a rigid tick.
+        Haptics.rigid()
+        showGlitchCrack = true
+        glitchCrack = 0
+        scrambling = true
+        let steps = 5
+        for step in 1 ... steps {
+            try? await Task.sleep(for: .milliseconds(45))
+            guard stage == .power else { scrambling = false; showGlitchCrack = false; return }
+            glitchCrack = Double(step) / Double(steps) // reaching 1 fires CrackOverlay's flash
+        }
+        try? await Task.sleep(for: .milliseconds(350)) // let the flash decay + a beat of held static
+        guard stage == .power else { scrambling = false; showGlitchCrack = false; return }
+        Haptics.rigid()
+        scrambling = false
+        showGlitchCrack = false
+
+        // Break through — the reading resolves past 9,000; the odometer lands on RADIANT
+        // and the gold FORM ASCENDED line on the receipt gets its payoff. The short beat
+        // here lets SacredNumberView re-mount at the brink first, so the FINAL stretch
+        // rolls (same reason the opening prelude sleeps before flipping the value).
+        try? await Task.sleep(for: .milliseconds(200))
+        guard stage == .power else { return }
+        displayedPowerLevel = summary.powerLevelAfter
+        try? await Task.sleep(for: .seconds(1.1))
+    }
+
     private func skipToEnd() {
         guard stage < .commentary else { return }
         // Land everything: the running task's stage guards all fail after this.
         scrambling = false
         showCrack = false
         crackOpacity = 1
+        showGlitchCrack = false
+        glitchCrack = 0
         shakeX = 0
         ceremonyPunch = 1
         displayedPowerLevel = summary.powerLevelAfter
@@ -351,6 +443,16 @@ struct WorkoutSummaryView: View {
             if stage == .scanning && !reduceMotion {
                 scanline
                     .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            }
+        }
+        .overlay {
+            // The scanner glass fracturing on the over-9,000 reading — bone (the scouter
+            // whiting out past red), clipped to the card so it stays a scan-glass crack,
+            // not the screen-wide gold ceiling break. Brief; gone as the number lands.
+            if showGlitchCrack {
+                CrackOverlay(progress: glitchCrack, color: SettColor.bone)
+                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .allowsHitTesting(false)
             }
         }
         .scaleEffect(ceremonyPunch)
@@ -553,7 +655,9 @@ struct WorkoutSummaryView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .top, spacing: 16) {
                     ForEach(Array(summary.newBadgeKeys.enumerated()), id: \.element) { index, key in
-                        BadgePremiereMedallion(name: badgeName(key), index: index)
+                        BadgePremiereMedallion(name: badgeName(key),
+                                               patronLine: PatronLines.line(forBadgeKey: key),
+                                               index: index)
                     }
                 }
             }
@@ -584,10 +688,36 @@ struct WorkoutSummaryView: View {
     }
 
 
-    // MARK: Stage 5 — commentary + wrap-up
+    // MARK: Rewards — directive seal
 
-    private var commentaryCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
+    /// This session ran a planned routine, so today's training directive is sealed — a
+    /// small gold beat in the rewards cluster (gold = reward; no crimson sits near it).
+    /// Home owns the persistent Home-side seal; this is the session's own acknowledgement.
+    private var directiveSealedLine: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "checkmark.seal.fill")
+                .font(.caption)
+                .foregroundStyle(SettColor.saiyanGold)
+            Text("DIRECTIVE SEALED")
+                .font(.system(size: 11, weight: .heavy, design: .monospaced))
+                .kerning(1.5)
+                .foregroundStyle(SettColor.saiyanGold)
+        }
+        .frame(maxWidth: .infinity)
+        .materialize()
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Today's directive sealed")
+    }
+
+    // MARK: The System Voice slab — the scanner's read, surfaced under NET PROGRESS
+
+    /// The scanner's word on the session, given the System Voice's weight: hudCard +
+    /// the shared materialize entrance, the line in bone, its source in iron. Lives
+    /// directly under NET PROGRESS (was a settCard buried at the very bottom of the
+    /// scroll) so the reading and its commentary read as one beat and the space below
+    /// isn't dead backdrop.
+    private var commentarySlab: some View {
+        VStack(alignment: .leading, spacing: 10) {
             Label {
                 Eyebrow("SCANNER REPORT", tint: SettColor.bone)
             } icon: {
@@ -598,12 +728,44 @@ struct WorkoutSummaryView: View {
             Text(summary.commentary)
                 .font(.body)
                 .foregroundStyle(SettColor.bone)
+                .frame(maxWidth: .infinity, alignment: .leading)
             Text(summary.commentarySource == .onDevice ? "Generated on device" : "sett scanner")
                 .font(.footnote)
                 .foregroundStyle(SettColor.iron)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .settCard()
+        .hudCard(tint: SettColor.heroCyan)
+        .materialize()
+    }
+
+    // MARK: Wrap-up + persistent exit
+
+    /// The always-in-view exit pinned below the scroll. Cyan/bone — an exit is an
+    /// action, never a gold reward — and calls the SAME `dismiss()` the Done button
+    /// does, so both close the sheet identically. Additive: the Done button and its
+    /// tap-to-skip arrangement are left exactly as they were.
+    private var returnToChamberBar: some View {
+        Button { dismiss() } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "arrow.uturn.backward")
+                    .font(.footnote.weight(.bold))
+                Text("RETURN TO CHAMBER")
+                    .font(.system(size: 13, weight: .bold, design: .monospaced))
+                    .kerning(1.5)
+            }
+            .foregroundStyle(SettColor.bone)
+            .frame(maxWidth: .infinity, minHeight: 50)
+            .background(TimeChamber.void.opacity(0.9), in: Capsule())
+            .overlay {
+                Capsule().strokeBorder(SettColor.heroCyan.opacity(0.5), lineWidth: 1)
+            }
+            .contentShape(Capsule())
+        }
+        .buttonStyle(PressableSlabStyle(haptic: .light))
+        .padding(.horizontal, 16)
+        .padding(.bottom, 8)
+        .transition(.move(edge: .bottom).combined(with: .opacity))
+        .accessibilityLabel("Return to chamber")
     }
 
     private var wrapUp: some View {
@@ -740,6 +902,10 @@ struct WorkoutSummaryView: View {
         let workout = fetchWorkout()
         ratingHalfStars = workout?.ratingHalfStars ?? 0
         sessionNotes = workout?.notes
+        // A session started from a routine carries its routineID — that's the planned
+        // routine, so completing it fulfills today's training directive. Off-record
+        // sessions never seal. Resolved here on the one fetch so `body` stays fetch-free.
+        directiveSealed = !summary.isCasual && workout?.routineID != nil
     }
 
     private func persistRating() {
@@ -762,10 +928,13 @@ struct WorkoutSummaryView: View {
 
 /// One earned medallion, premiered: a spring scale-in (0.6 → 1) plus a one-shot
 /// gold AuraBurstView, staggered ~150 ms per index so a multi-badge haul reads as
-/// a volley, not a clump. Reduce Motion: direct-set scale, no burst (AuraBurstView
-/// is RM-clear anyway).
+/// a volley, not a clump. When the owning patron has a premiere line, it sits beneath
+/// the name in their voice — italic, bone/ash, never crimson — the cast beat on the
+/// medallion itself. Reduce Motion: direct-set scale, no burst (AuraBurstView is
+/// RM-clear anyway).
 private struct BadgePremiereMedallion: View {
     let name: String
+    var patronLine: String? = nil
     let index: Int
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -792,7 +961,18 @@ private struct BadgePremiereMedallion: View {
                 .multilineTextAlignment(.center)
                 .lineLimit(2)
                 .minimumScaleFactor(0.8)
-                .frame(width: 84, height: 28, alignment: .top)
+                .frame(width: 112, height: 28, alignment: .top)
+            if let patronLine {
+                // The owning patron's word over the fresh medallion — italic, ash, no
+                // gold (the medal already carries the reward hue) and no crimson.
+                Text(patronLine)
+                    .font(.caption2.italic())
+                    .foregroundStyle(SettColor.ash)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(4)
+                    .minimumScaleFactor(0.8)
+                    .frame(width: 112, alignment: .top)
+            }
         }
         .task {
             guard !reduceMotion else {
