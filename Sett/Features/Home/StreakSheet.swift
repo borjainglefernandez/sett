@@ -15,9 +15,20 @@ struct StreakSheet: View {
     /// The streak's consistency multiplier on the power level (1.0…1.5) — the reason
     /// the fire matters mechanically, not just emotionally. nil hides the row.
     var plMultiplier: Double? = nil
+    /// Days since the last logged workout — a 21-day+ gap means a comeback now earns
+    /// the Reforged badge, so the rekindle face teases it. nil hides the tease.
+    var daysSinceLastWorkout: Int? = nil
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// The fire went cold but this user HAD a streak — met with patience, not a dead
+    /// "0 WK": embers that remember, and the short path back to relighting them.
+    private var isRekindle: Bool { state.weeks == 0 && state.bestWeeks > 0 }
+    /// Days still needed THIS week to relight the streak (never below one).
+    private var relightDays: Int { max(1, state.weeklyTarget - state.daysThisWeek) }
+    /// A 21-day gap qualifies the comeback for the Reforged badge.
+    private var reforgedQualifies: Bool { (daysSinceLastWorkout ?? 0) >= 21 }
 
     @State private var flameScale: CGFloat = 1
     /// A separate idle loop so the repeatForever breath never collides with the
@@ -58,13 +69,15 @@ struct StreakSheet: View {
         VStack(spacing: 6) {
             Image(systemName: "flame.fill")
                 .font(.system(size: 34))
-                .foregroundStyle(SettColor.heroCyan)
-                .shadow(color: SettColor.heroCyan.opacity(0.6), radius: 8)
+                // Rekindle dims the flame to an ember — remembered, not extinguished.
+                .foregroundStyle(SettColor.heroCyan.opacity(isRekindle ? 0.5 : 1))
+                .shadow(color: SettColor.heroCyan.opacity(isRekindle ? 0.3 : 0.6), radius: 8)
                 .scaleEffect(flameScale)
                 .scaleEffect(flameBreath)
                 .background {
-                    // The hearth behind the fire — embers thicken as the streak grows.
-                    EmberHalo(intensity: min(1, 0.3 + Double(state.weeks) * 0.07))
+                    // The hearth behind the fire — embers thicken as the streak grows, and
+                    // a rekindling fire still glows low (embers remember).
+                    EmberHalo(intensity: isRekindle ? 0.35 : min(1, 0.3 + Double(state.weeks) * 0.07))
                         .padding(-36)
                 }
                 .onAppear {
@@ -79,21 +92,38 @@ struct StreakSheet: View {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.6)) { flameScale = 1 }
                     Haptics.success()
                 }
-            Text("\(state.weeks) WK")
-                .font(.system(size: 40, weight: .heavy, design: .monospaced))
-                .monospacedDigit()
-                .foregroundStyle(SettColor.bone)
-            if state.extendedThisWeek {
-                // A sanctioned gold pulse — the streak extending IS the reward moment.
-                Text("STREAK EXTENDED THIS WEEK")
-                    .font(.system(size: 11, weight: .bold, design: .monospaced))
-                    .kerning(1.5)
-                    .foregroundStyle(SettColor.saiyanGold)
-            } else if state.weeks > 0 {
-                Text("TRAIN \(max(0, state.weeklyTarget - state.daysThisWeek)) MORE DAY\(state.weeklyTarget - state.daysThisWeek == 1 ? "" : "S") TO EXTEND")
-                    .font(.system(size: 11, weight: .bold, design: .monospaced))
-                    .kerning(1.2)
+            if isRekindle {
+                // The dead "0 WK" face, replaced: patience + the short path back.
+                Text("THE FIRE REMEMBERS")
+                    .font(.system(size: 22, weight: .heavy, design: .monospaced))
+                    .kerning(1)
+                    .foregroundStyle(SettColor.bone)
+                    .multilineTextAlignment(.center)
+                Text("\(relightDays) day\(relightDays == 1 ? "" : "s") this week relights it")
+                    .font(.footnote)
                     .foregroundStyle(SettColor.ash)
+                if reforgedQualifies {
+                    // A 21-day gap: the comeback earns Reforged — teased, never shamed.
+                    StatusChip("REFORGED WITHIN REACH", tint: SettColor.heroCyan, icon: "hammer.fill")
+                        .padding(.top, 2)
+                }
+            } else {
+                Text("\(state.weeks) WK")
+                    .font(.system(size: 40, weight: .heavy, design: .monospaced))
+                    .monospacedDigit()
+                    .foregroundStyle(SettColor.bone)
+                if state.extendedThisWeek {
+                    // A sanctioned gold pulse — the streak extending IS the reward moment.
+                    Text("STREAK EXTENDED THIS WEEK")
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        .kerning(1.5)
+                        .foregroundStyle(SettColor.saiyanGold)
+                } else if state.weeks > 0 {
+                    Text("TRAIN \(max(0, state.weeklyTarget - state.daysThisWeek)) MORE DAY\(state.weeklyTarget - state.daysThisWeek == 1 ? "" : "S") TO EXTEND")
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        .kerning(1.2)
+                        .foregroundStyle(SettColor.ash)
+                }
             }
             if state.bestWeeks > state.weeks {
                 Text("BEST \(state.bestWeeks) WK")
@@ -250,6 +280,12 @@ struct StreakSheet: View {
     }
 
     private var heroAccessibility: String {
+        if isRekindle {
+            var parts = ["The fire remembers. \(relightDays) day\(relightDays == 1 ? "" : "s") this week relights your streak",
+                         "best \(state.bestWeeks) weeks"]
+            if reforgedQualifies { parts.append("a comeback now earns the Reforged badge") }
+            return parts.joined(separator: ", ")
+        }
         var parts = ["Streak: \(state.weeks) weeks"]
         if state.extendedThisWeek { parts.append("extended this week") }
         if state.bestWeeks > state.weeks { parts.append("best \(state.bestWeeks) weeks") }

@@ -83,10 +83,8 @@ struct SetPlayerView: View {
             Spacer(minLength: 8)
             scouterCore
             Spacer(minLength: 8)
-            readout
+            settingBlock
                 .padding(.horizontal, 20)
-                .padding(.bottom, 10)
-            chipsRow
                 .padding(.bottom, 12)
             slab
                 .padding(.horizontal, 20)
@@ -325,7 +323,7 @@ struct SetPlayerView: View {
                                                     unit: services.settings.unit),
                          unit: services.settings.unit.symbol.uppercased(),
                          field: .weight, salt: 0x11, accessibility: "Weight",
-                         spokenUnit: spokenWeightUnit)
+                         spokenUnit: spokenWeightUnit, locksWhenCommitted: true)
                 Spacer(minLength: 6)
                 powerReadout
                 Spacer(minLength: 6)
@@ -414,17 +412,40 @@ struct SetPlayerView: View {
     }
 
     /// One half of the scouter: the big number (tap to type) flanked by − / + circle
-    /// pickers, with the unit inline. Committed slots show the number alone.
+    /// pickers, with the unit inline. Committed slots show the number alone — or, when
+    /// `locksWhenCommitted`, a padlock in the minus-stepper's footprint (balanced by an
+    /// invisible trailing slot so the numeral stays centred): the reticle already reads
+    /// LOCK, and this pairs that with plain iconography so a first-timer knows a logged
+    /// reading is sealed — not broken — without tapping to find out.
     private func fieldRow(text: String, unit: String, field: NumericField,
-                          salt: UInt64, accessibility: String, spokenUnit: String? = nil) -> some View {
+                          salt: UInt64, accessibility: String, spokenUnit: String? = nil,
+                          locksWhenCommitted: Bool = false) -> some View {
         HStack(spacing: 12) {
-            if !isCommitted { stepCircle("minus") { step(field, -1) } }
+            if !isCommitted {
+                stepCircle("minus") { step(field, -1) }
+            } else if locksWhenCommitted {
+                lockBadge
+            }
             HStack(alignment: .firstTextBaseline, spacing: 5) {
                 numeralText(text, field: field, salt: salt, accessibility: accessibility, spokenUnit: spokenUnit)
                 unitCaption(unit)
             }
-            if !isCommitted { stepCircle("plus") { step(field, 1) } }
+            if !isCommitted {
+                stepCircle("plus") { step(field, 1) }
+            } else if locksWhenCommitted {
+                Color.clear.frame(width: 44, height: 44)
+            }
         }
+    }
+
+    /// The committed-set padlock — matches the stepCircle footprint so the weight row
+    /// stays centred, echoing the reticle's LOCK caption in plain iconography.
+    private var lockBadge: some View {
+        Image(systemName: "lock.fill")
+            .font(.subheadline.weight(.bold))
+            .foregroundStyle(SettColor.ash)
+            .frame(width: 44, height: 44)
+            .accessibilityHidden(true)
     }
 
     /// Full-word unit spoken to VoiceOver on the weight numeral only, so "Weight 147.5"
@@ -797,32 +818,47 @@ struct SetPlayerView: View {
         !isCommitted && pendingNote?.isEmpty != false && reference?.note?.isEmpty == false
     }
 
-    // MARK: Warm-up chip (open slots only)
+    // MARK: Setting/note card + WARM-UP toggle chip
 
+    /// The SETTING/NOTE card with the WARM-UP toggle tucked in at its top-right — a
+    /// small chip, not a second full-width capsule stacked over LOG SET (where it read
+    /// as a rival primary, nearly LOG SET's weight). Open slots only for the chip; the
+    /// card itself still renders on committed slots.
     @ViewBuilder
-    private var chipsRow: some View {
-        if !isCommitted {
-            Button {
-                isWarmup.toggle()
-                Haptics.selection()
-            } label: {
-                Text("WARM-UP")
-                    .font(.system(size: 11, weight: .bold, design: .monospaced))
-                    .kerning(2)
-                    .foregroundStyle(isWarmup ? TimeChamber.teal : SettColor.ash)
-                    .padding(.horizontal, 14)
-                    .frame(height: 32)
-                    .background {
-                        Capsule().strokeBorder(
-                            isWarmup ? TimeChamber.teal.opacity(0.6) : SettColor.cardBorder,
-                            lineWidth: 1
-                        )
-                    }
-                    .contentShape(Capsule())
+    private var settingBlock: some View {
+        VStack(spacing: 8) {
+            if !isCommitted {
+                HStack(spacing: 0) {
+                    Spacer(minLength: 0)
+                    warmupChip
+                }
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(isWarmup ? "Warm-up set, on" : "Warm-up set, off")
+            readout
         }
+    }
+
+    /// Small WARM-UP toggle — a chip, not a slab. FILLED teal (void ink) when a warm-up
+    /// is staged, a quiet ash stroke when off, so its selected state is unmistakable and
+    /// it no longer competes with LOG SET for "primary" weight.
+    private var warmupChip: some View {
+        Button {
+            isWarmup.toggle()
+            Haptics.selection()
+        } label: {
+            Text("WARM-UP")
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .kerning(1.5)
+                .foregroundStyle(isWarmup ? TimeChamber.void : SettColor.ash)
+                .padding(.horizontal, 11)
+                .frame(height: 26)
+                .background {
+                    Capsule().fill(isWarmup ? TimeChamber.teal : Color.clear)
+                    Capsule().strokeBorder(isWarmup ? Color.clear : SettColor.cardBorder, lineWidth: 1)
+                }
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(isWarmup ? "Warm-up set, on" : "Warm-up set, off")
     }
 
     // MARK: The LOG slab
@@ -832,7 +868,12 @@ struct SetPlayerView: View {
         if isCommitted {
             PlayerSlab(title: "LOGGED", flashesCyan: false, isEnabled: false) {}
         } else {
-            PlayerSlab(title: "LOG SET", accent: liveTier.color, isEnabled: reps > 0) { log() }
+            // The app's most-pressed button: FILLED with the live scouter hue (etch ink),
+            // matching ChamberSheet's commit-capsule grammar, so it's unmistakably THE
+            // primary action. `accent: liveTier.color` keeps the green→amber→red readback
+            // ramp — the button itself reads holding/beat/overload as you dial.
+            PlayerSlab(title: "LOG SET", accent: liveTier.color, filled: true,
+                       isEnabled: reps > 0) { log() }
         }
     }
 
@@ -928,10 +969,16 @@ struct PlayerSlab: View {
     var titleKerning: CGFloat = 4
     var flashesCyan = true
     var accent: Color = SettColor.heroCyan
+    /// Solid accent fill (etch ink) instead of a ghost capsule — the commit-capsule
+    /// grammar for THE primary action (LOG SET). Only fills while enabled; a disabled
+    /// filled slab falls back to the ghost look so it never advertises a dead action.
+    var filled = false
     var isEnabled = true
     let action: () -> Void
 
     @State private var flashOpacity: Double = 0
+
+    private var isFilled: Bool { filled && isEnabled }
 
     var body: some View {
         Button {
@@ -944,22 +991,24 @@ struct PlayerSlab: View {
             Text(title)
                 .font(.system(size: 17, weight: .bold, design: .monospaced))
                 .kerning(titleKerning)
-                .foregroundStyle(isEnabled ? SettColor.bone : SettColor.iron)
+                .foregroundStyle(isFilled ? SettColor.etch : (isEnabled ? SettColor.bone : SettColor.iron))
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
                 .padding(.horizontal, 16)
                 .frame(maxWidth: .infinity, minHeight: 92)
                 .background {
                     ZStack {
-                        Capsule().fill(TimeChamber.void.opacity(0.7))
-                        Capsule().strokeBorder(isEnabled ? accent.opacity(0.5) : SettColor.cardBorder,
-                                               lineWidth: 1)
+                        Capsule().fill(isFilled ? accent : TimeChamber.void.opacity(0.7))
+                        Capsule().strokeBorder(
+                            isFilled ? SettColor.etch.opacity(0.35)
+                                     : (isEnabled ? accent.opacity(0.5) : SettColor.cardBorder),
+                            lineWidth: 1)
                         Capsule().strokeBorder(SettColor.etch, lineWidth: 1).padding(2)
                     }
                 }
                 .overlay {
                     Capsule()
-                        .strokeBorder(accent, lineWidth: 1.5)
+                        .strokeBorder(isFilled ? SettColor.bone : accent, lineWidth: 1.5)
                         .opacity(flashOpacity)
                 }
                 .contentShape(Capsule())

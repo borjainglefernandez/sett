@@ -971,6 +971,15 @@ public final class WorkoutSessionStore {
 
     // MARK: Receipt inputs (qualification + goal completion)
 
+    /// Live read for the session top bar's FINISH affordance: does the CURRENT active
+    /// workout already clear the qualifying bar (min effective in-band sets + min
+    /// duration, measured against now)? Same authoritative check the receipt runs, so
+    /// the filled-green FINISH promise matches the scan the summary will actually report.
+    public var activeWorkoutQualifies: Bool {
+        guard let workout = activeWorkout else { return false }
+        return workoutQualifies(workout)
+    }
+
     /// Whether this workout clears the qualifying bar the scanner advertises
     /// (min effective sets in the rep band + min duration) — so a +0 receipt can
     /// say WHY instead of staying silent. Uses the same config thresholds as

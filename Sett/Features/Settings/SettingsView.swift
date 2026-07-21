@@ -29,12 +29,13 @@ struct SettingsView: View {
                                         compact: true)
                     }
                     .padding(.vertical, 4)
-                    Picker("Weight increment", selection: $settings.incrementGrams) {
-                        ForEach(incrementOptions, id: \.self) { grams in
-                            Text(settings.displayWeight(grams)).tag(grams)
-                        }
+                    VStack(alignment: .leading, spacing: 8) {
+                        Eyebrow("WEIGHT INCREMENT")
+                        ChamberSegments(selection: $settings.incrementGrams,
+                                        options: incrementOptions.map { ($0, settings.displayWeight($0)) },
+                                        compact: true)
                     }
-                    .foregroundStyle(SettColor.bone)
+                    .padding(.vertical, 4)
                     HStack {
                         Text("Default rest")
                             .foregroundStyle(SettColor.bone)

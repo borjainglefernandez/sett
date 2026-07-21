@@ -3,14 +3,20 @@ import SwiftData
 import UIKit
 import SettCore
 
-// MARK: - 7-Slot Burst Row (Dark Chamber v3 — replaces the weekly goal ring)
+// MARK: - This Week card (the ONE weekly card — slots + counters + net, merged)
 
-/// Seven forged-medallion slots, one per day of the ISO week (Monday first).
-/// Each trained day pops a small cyan sigil into its slot; today's slot wears a
-/// subtle pulsing ring. Hitting the weekly goal MATERIALIZES a gold Burst
-/// button that didn't exist before — firing it opens the week-seal ceremony
-/// and marks the burst claimed for this ISO week. Claimed weeks show a quiet
-/// mono `SEALED ✓` caption instead.
+/// The single weekly card. Top half: seven forged-medallion slots, one per day
+/// of the ISO week (Monday first) — each trained day pops a cyan sigil, today
+/// wears a pulsing reticle. Hitting the weekly goal MATERIALIZES a gold Burst
+/// button (fires the week-seal ceremony, marks the burst claimed for this ISO
+/// week); a claimed week reads a quiet cyan `WEEK SEALED`. Bottom half (below a
+/// divider, only when the week has work): the counters + net-vs-last-week strip
+/// that used to be a second, always-adjacent card answering the same "how is my
+/// week going?" question.
+///
+/// Week-sealed micro-beat: the moment the trained-day count first reaches the
+/// target, a one-shot cyan sweep runs across the filled slots (once per ISO week,
+/// persisted). The matching flame-flare on the Home streak chip lives in Home.
 struct SevenSlotBurstRow: View {
     /// Trained days of the current ISO week: 0 = Monday … 6 = Sunday.
     let trainedDays: Set<Int>
@@ -20,7 +26,11 @@ struct SevenSlotBurstRow: View {
 
     @State private var isClaimed: Bool
     @State private var isShowingCeremony = false
+    /// One-shot cyan sweep across the filled slots when the week first seals.
+    @State private var sweeping = false
+    @State private var sweepPhase: CGFloat = -0.5
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(trainedDays: Set<Int>, goalTarget: Int, streakWeeks: Int = 0) {
         self.trainedDays = trainedDays
@@ -40,6 +50,13 @@ struct SevenSlotBurstRow: View {
     private static var claimKey: String {
         let comps = isoCalendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: .now)
         return "sett.burstClaimed.\(comps.yearForWeekOfYear ?? 0)-\(comps.weekOfYear ?? 0)"
+    }
+
+    /// One seal-sweep per ISO week — the celebratory sweep plays the moment the
+    /// week seals and never again, even across a re-open of an already-sealed week.
+    private static var sweptKey: String {
+        let comps = isoCalendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: .now)
+        return "sett.weekSwept.\(comps.yearForWeekOfYear ?? 0)-\(comps.weekOfYear ?? 0)"
     }
 
     private static let dayLetters = ["M", "T", "W", "T", "F", "S", "S"]
@@ -80,20 +97,35 @@ struct SevenSlotBurstRow: View {
                     .frame(maxWidth: .infinity)
                 }
             }
+            // The one-shot cyan sweep rides over the filled slots when the week seals.
+            .overlay { sealSweep }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("\(trainedDays.count) of 7 day slots filled")
 
             if isBurstReady {
                 BurstReadyButton(action: fireBurst)
             } else if isClaimed {
-                Text("SEALED ✓")
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                // The rest-of-the-week seal marker — cyan (ki), the chip's flame echoes it.
+                Text("WEEK SEALED")
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
                     .kerning(1.5)
-                    .foregroundStyle(SettColor.ash)
-                    .accessibilityLabel("Weekly burst sealed")
+                    .foregroundStyle(SettColor.heroCyan)
+                    .accessibilityLabel("Week sealed")
+            }
+
+            // Lower half of the SAME card: counters + net vs last week. Only when the
+            // week has trained days — a zero week ends on seven empty rings, not zeros.
+            if !trainedDays.isEmpty {
+                NetGlanceStrip()
             }
         }
         .settCard()
+        // The moment the trained-day count first reaches the target, run the seal
+        // sweep (once per week). Only fires on a live transition — a fresh open of an
+        // already-sealed week doesn't re-play it (onChange never fires on appear).
+        .onChange(of: trainedDays.count) { oldCount, newCount in
+            if oldCount < goalTarget && newCount >= goalTarget { runSealSweep() }
+        }
         // claimKey reads the live ISO week, but isClaimed is seeded once at init.
         // Re-read it on foreground and at local midnight so the SEALED ✓ / burst
         // state follows the ISO-week rollover instead of freezing on the old week.
@@ -113,6 +145,41 @@ struct SevenSlotBurstRow: View {
         UserDefaults.standard.set(true, forKey: Self.claimKey)
         isClaimed = true
         isShowingCeremony = true
+    }
+
+    /// A cyan light-band that wipes left-to-right across the filled slots. Masked to
+    /// the slot row via the overlay, additive so it reads as a charge, not a bar.
+    @ViewBuilder
+    private var sealSweep: some View {
+        if sweeping {
+            GeometryReader { geo in
+                LinearGradient(colors: [.clear, SettColor.heroCyan.opacity(0.6), .clear],
+                               startPoint: .leading, endPoint: .trailing)
+                    .frame(width: geo.size.width * 0.5)
+                    .offset(x: sweepPhase * geo.size.width)
+                    .blendMode(.plusLighter)
+            }
+            .clipped()
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+        }
+    }
+
+    /// Fire the seal sweep once per ISO week. Reduce Motion still marks the week swept
+    /// and gives the haptic, but holds the slots still (no wipe).
+    private func runSealSweep() {
+        guard !UserDefaults.standard.bool(forKey: Self.sweptKey) else { return }
+        UserDefaults.standard.set(true, forKey: Self.sweptKey)
+        Haptics.success()
+        guard !reduceMotion else { return }
+        sweeping = true
+        sweepPhase = -0.5
+        withAnimation(.easeInOut(duration: 0.7)) { sweepPhase = 1.0 }
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(750))
+            sweeping = false
+            sweepPhase = -0.5
+        }
     }
 }
 

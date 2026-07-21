@@ -58,12 +58,15 @@ struct ExerciseDetailView: View {
     /// session under the finger. nil when not scrubbing.
     @State private var e1rmScrubDate: Date?
     @State private var volumeScrubDate: Date?
+    /// One-shot sweep for the PR-target ring (mirrors GoalRingView's on-appear fill).
+    @State private var targetSweep = false
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
+                heroHeader
                 if showsMachineSetupCard {
                     machineSetupCard
                 }
@@ -100,6 +103,30 @@ struct ExerciseDetailView: View {
             CreateExerciseSheet(initialName: "", existing: exercise)
         }
         .onAppear(perform: loadIfNeeded)
+    }
+
+    // MARK: Header (hero the commissioned art — it only ever drew at list size)
+
+    /// A compact identity row that leads the screen: the exercise's region-framed
+    /// Gemini art at 64pt beside its name and muscle · equipment line. The art is canon
+    /// for every lift but had only ever rendered at ~44pt in pickers — never large.
+    /// `ExerciseIcon` keeps the same art → muscle-art → glyph fallback the lists use.
+    private var heroHeader: some View {
+        HStack(spacing: 14) {
+            ExerciseIcon(name: exercise.name, equipment: exercise.equipment,
+                         muscle: exercise.muscle, size: 64)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(exercise.name)
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(SettColor.bone)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.8)
+                Eyebrow("\(exercise.muscle.rawValue) · \(exercise.equipment.rawValue)".uppercased())
+            }
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
     }
 
     // MARK: Machine setup (Exercise.instructions — the machine-setup field app-wide)
@@ -202,8 +229,8 @@ struct ExerciseDetailView: View {
     // earned — gold stays reserved for the earned PR numeral in prCard otherwise)
 
     /// Distance-to-goal for the committed PR target on this lift. Shown only when an
-    /// active prTarget goal exists; reuses GoalRingView so it reads like every other
-    /// goal in the app. EmptyView when there's no goal.
+    /// active prTarget goal exists; a local ring (see `targetRing`) carries the same
+    /// grammar as GoalRingView but reads the remaining amount. EmptyView with no goal.
     @ViewBuilder
     private var prTargetCard: some View {
         if let goal = prTargetGoal {
@@ -211,7 +238,7 @@ struct ExerciseDetailView: View {
             VStack(alignment: .leading, spacing: 12) {
                 Eyebrow("TARGET")
                 HStack(spacing: 16) {
-                    GoalRingView(progress: progress, title: exercise.name)
+                    targetRing(progress)
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Target \(progress.targetValue) \(services.settings.unit.symbol)")
                             .font(.subheadline)
@@ -221,7 +248,9 @@ struct ExerciseDetailView: View {
                                 .font(.subheadline.weight(.semibold))
                                 .foregroundStyle(SettColor.saiyanGold)
                         } else {
-                            Text("\(max(0, progress.targetValue - progress.currentValue)) \(services.settings.unit.symbol) to go")
+                            // The distance now lives inside the ring ("12 TO GO"), so the
+                            // label states the current lift instead of repeating the gap.
+                            Text("Current \(progress.currentValue) \(services.settings.unit.symbol)")
                                 .font(.subheadline)
                                 .foregroundStyle(SettColor.ash)
                         }
@@ -251,6 +280,55 @@ struct ExerciseDetailView: View {
             targetValue: Int((Double(raw.targetValue) / unit.gramsPerUnit).rounded()),
             isComplete: raw.isComplete
         )
+    }
+
+    /// The PR-target ring, drawn locally so its center reads the DISTANCE ("12 TO GO")
+    /// rather than "current/target". The target already sits in the label beside it, so
+    /// GoalRingView's inner "220/232" was the number said twice. Same grammar otherwise:
+    /// 12pt round-cap trim, cyan in progress, gold once earned.
+    private func targetRing(_ progress: GoalProgress) -> some View {
+        let remaining = max(0, progress.targetValue - progress.currentValue)
+        return ZStack {
+            Circle()
+                .stroke(SettColor.cardNested, lineWidth: 12)
+            Circle()
+                .trim(from: 0, to: targetSweep ? progress.fraction : 0)
+                .stroke(progress.isComplete ? Aura.gold : Aura.cyan,
+                        style: StrokeStyle(lineWidth: 12, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+            VStack(spacing: 1) {
+                if progress.isComplete {
+                    Image(systemName: "checkmark")
+                        .font(.headline.weight(.heavy))
+                        .foregroundStyle(SettColor.saiyanGold)
+                } else {
+                    Text("\(remaining)")
+                        .font(.title3.weight(.bold))
+                        .foregroundStyle(SettColor.bone)
+                        .monospacedDigit()
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.5)
+                    Text("TO GO")
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .kerning(1)
+                        .foregroundStyle(SettColor.ash)
+                }
+            }
+            .padding(.horizontal, 12)
+        }
+        .frame(width: 88, height: 88)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(progress.isComplete
+            ? "Target reached"
+            : "\(remaining) \(services.settings.unit.symbol) to go, \(progress.currentValue) of \(progress.targetValue)")
+        .onAppear {
+            guard !targetSweep else { return }
+            if reduceMotion {
+                targetSweep = true
+            } else {
+                withAnimation(.snappy(duration: 0.5)) { targetSweep = true }
+            }
+        }
     }
 
     // MARK: e1RM trend (cyan line, gold dot on the all-time max ONLY)
@@ -358,7 +436,10 @@ struct ExerciseDetailView: View {
                 ForEach(volumePoints) { point in
                     BarMark(
                         x: .value("Date", point.date, unit: .day),
-                        y: .value("Volume", volumeDisplay(point.volumeGrams))
+                        y: .value("Volume", volumeDisplay(point.volumeGrams)),
+                        // Was a 1–2px hairline that read as a barcode — fill ~60% of the
+                        // day slot so each session lands as a real bar.
+                        width: .ratio(0.6)
                     )
                     .foregroundStyle(scrub?.id == point.id
                                      ? SettColor.heroCyan

@@ -273,26 +273,31 @@ struct ActiveWorkoutView: View {
         }
     }
 
-    // MARK: Top bar (✕ · elapsed mono iron · overview · ✓ — all small, ash)
+    // MARK: Top bar (discard · elapsed mono iron · sets · FINISH — labeled, not mystery-meat)
 
     private func topBar(_ workout: Workout) -> some View {
-        // Timer in a centered overlay (not between Spacers) so it sits at TRUE screen
-        // center — the left has one control (✕) but the right has three.
-        HStack(spacing: 0) {
-            barButton("xmark", label: "Cancel workout") {
+        // Timer in a top-aligned overlay pinned to the 44pt glyph band so it stays at
+        // TRUE screen center and aligned with the glyphs even though each control now
+        // hangs a tiny mono identity label below it. The left has one control
+        // (discard); the right has three (record · sets · FINISH).
+        HStack(alignment: .top, spacing: 0) {
+            barControl("xmark", micro: "DISCARD", label: "Discard workout") {
                 isConfirmingCancel = true
             }
             Spacer()
-            recordToggle(workout)
-            barButton(isShowingOverview ? "dot.viewfinder" : "list.bullet",
-                      label: isShowingOverview ? "Show scanner" : "Show set list") {
+            recordControl(workout)
+            barControl(isShowingOverview ? "dot.viewfinder" : "list.bullet",
+                       micro: isShowingOverview ? "SCAN" : "SETS",
+                       label: isShowingOverview ? "Show scanner" : "Show set list") {
                 toggleOverview()
             }
-            barButton("checkmark", label: "Finish workout") {
-                finishTapped()
-            }
+            finishControl(workout)
         }
-        .overlay { elapsedTimer(workout).allowsHitTesting(false) }
+        .overlay(alignment: .top) {
+            elapsedTimer(workout)
+                .frame(height: 44)   // sit in the glyph band, not centered over the labels
+                .allowsHitTesting(false)
+        }
         .padding(.horizontal, 8)
         .padding(.vertical, 2)
         // Dark halo so the bar (elapsed time + controls) reads over bright realms.
@@ -300,23 +305,67 @@ struct ActiveWorkoutView: View {
         .shadow(color: .black.opacity(0.45), radius: 8)
     }
 
-    /// Off-the-record toggle (item 6a): turning ON confirms; OFF is silent.
-    private func recordToggle(_ workout: Workout) -> some View {
-        Button {
-            if workout.isCasual {
-                session.setCasual(false)
-            } else {
-                isConfirmingCasual = true
+    /// The FINISH control — the checkmark that ends the session and fires the whole
+    /// reading ceremony, one thumb-width from the ✕. Never again a bare glyph: the
+    /// checkmark rides in a scouter-green disc — FILLED (etch check) once the session
+    /// QUALIFIES as a scan, a ghost green ring until then — under a mono FINISH label
+    /// (green, the one emphasized label in the bar). So it names itself AND doubles as a
+    /// live "will this scan count?" readout. Kept to the 44pt glyph footprint so the
+    /// centered elapsed timer keeps its clearance. `finishTapped` still confirms when an
+    /// exercise has no sets.
+    private func finishControl(_ workout: Workout) -> some View {
+        let qualifies = session.activeWorkoutQualifies
+        return VStack(spacing: 1) {
+            Button {
+                finishTapped()
+            } label: {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 15, weight: .heavy))
+                    .foregroundStyle(qualifies ? SettColor.etch : TimeChamber.scouterGreen)
+                    .frame(width: 30, height: 30)
+                    .background {
+                        Circle().fill(qualifies ? TimeChamber.scouterGreen : Color.clear)
+                        Circle().strokeBorder(TimeChamber.scouterGreen.opacity(qualifies ? 0 : 0.75),
+                                              lineWidth: 1.5)
+                    }
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
-        } label: {
-            Image(systemName: workout.isCasual ? "record.circle.fill" : "record.circle")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(workout.isCasual ? SettColor.bone : SettColor.ash)
-                .frame(width: 44, height: 44)
-                .contentShape(Rectangle())
+            .buttonStyle(.plain)
+            .accessibilityLabel("Finish workout")
+            .accessibilityValue(qualifies ? "This session qualifies as a scan"
+                                           : "Not enough sets to qualify as a scan yet")
+            Text("FINISH")
+                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .kerning(1)
+                .foregroundStyle(qualifies ? TimeChamber.scouterGreen
+                                           : TimeChamber.scouterGreen.opacity(0.7))
+                .lineLimit(1)
+                .accessibilityHidden(true)
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel(workout.isCasual ? "Off the record, on" : "Go off the record")
+    }
+
+    /// Off-the-record toggle (item 6a): turning ON confirms; OFF is silent. Labeled
+    /// REC / OFF beneath the record dot so its meaning survives a one-hour session.
+    private func recordControl(_ workout: Workout) -> some View {
+        VStack(spacing: 1) {
+            Button {
+                if workout.isCasual {
+                    session.setCasual(false)
+                } else {
+                    isConfirmingCasual = true
+                }
+            } label: {
+                Image(systemName: workout.isCasual ? "record.circle.fill" : "record.circle")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(workout.isCasual ? SettColor.bone : SettColor.ash)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(workout.isCasual ? "Off the record, on" : "Go off the record")
+            barMicroLabel(workout.isCasual ? "OFF" : "REC")
+        }
     }
 
     /// Persistent tiny pill under the top bar while the session is off the record.
@@ -334,17 +383,32 @@ struct ActiveWorkoutView: View {
             .accessibilityLabel("This session is off the record")
     }
 
-    private func barButton(_ symbol: String, label: String,
-                           action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: symbol)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(SettColor.ash)
-                .frame(width: 44, height: 44)
-                .contentShape(Rectangle())
+    /// A top-bar glyph control with a tiny mono identity label beneath it, so none of
+    /// the session's highest-stakes controls stays unlabeled mystery-meat. The button
+    /// keeps its own 44pt tap target and accessibility label; the micro-label is decorative.
+    private func barControl(_ symbol: String, micro: String, label: String,
+                            action: @escaping () -> Void) -> some View {
+        VStack(spacing: 1) {
+            Button(action: action) {
+                Image(systemName: symbol)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(SettColor.ash)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(label)
+            barMicroLabel(micro)
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel(label)
+    }
+
+    private func barMicroLabel(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 8, weight: .bold, design: .monospaced))
+            .kerning(1)
+            .foregroundStyle(SettColor.iron)
+            .lineLimit(1)
+            .accessibilityHidden(true)
     }
 
     // MARK: Elapsed timer (wall-clock derived — survives backgrounding)

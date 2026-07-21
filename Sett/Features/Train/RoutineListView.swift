@@ -31,33 +31,25 @@ struct RoutineListView: View {
     /// The lifted routine card during a rotation-order drag.
     @State private var draggingRoutine: Routine?
     @State private var isArchiveExpanded = false
+    /// The demoted scheduling controls, opened from the compact SCHEDULE row.
+    @State private var isShowingScheduleSheet = false
 
     var body: some View {
-        @Bindable var settings = services.settings
-        return Group {
+        Group {
             if routines.isEmpty && archivedRoutines.isEmpty {
                 emptyState
             } else {
                 List {
+                    // Scheduling demoted to a compact disclosure row — a set-once
+                    // setting no longer holds the prime slot, so the realm-art routine
+                    // cards below are the first thing the eye lands on.
                     Section {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Eyebrow("SCHEDULING")
-                            ChamberSegments(selection: $settings.scheduleMode,
-                                            options: ScheduleMode.allCases.map { ($0, $0.title) })
-                            Text(isRotation
-                                 ? "ROTATION — your split in order. Finish the next-up routine and the cycle advances; the day doesn't matter."
-                                 : "WEEKDAY — each routine runs on the days you assign it. Today's routine is the one that's up.")
-                                .font(.system(size: 11, weight: .medium, design: .monospaced))
-                                .foregroundStyle(SettColor.ash)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                        .padding(14)
-                        .hudCard()
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
-                        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 10, trailing: 16))
+                        scheduleRow
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
+                            .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 8, trailing: 16))
                     }
-                    ForEach(routines) { routine in
+                    ForEach(displayRoutines) { routine in
                         row(routine)
                             .listRowBackground(Color.clear)
                             .listRowSeparator(.hidden)
@@ -119,6 +111,39 @@ struct RoutineListView: View {
                 .accessibilityLabel("New Routine")
             }
         }
+        .sheet(isPresented: $isShowingScheduleSheet) {
+            ScheduleModeSheet(settings: services.settings)
+        }
+    }
+
+    // MARK: Schedule (demoted) — the compact disclosure row + its sheet
+
+    /// A slim tap-target in place of the old scheduling slab: the active mode shown as
+    /// an eyebrow, a chevron opening the WEEKDAY/ROTATION toggle in a sheet.
+    private var scheduleRow: some View {
+        Button { isShowingScheduleSheet = true } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "calendar")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(SettColor.heroCyan)
+                Eyebrow("SCHEDULE · \(services.settings.scheduleMode.title.uppercased())")
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(SettColor.iron)
+            }
+            .padding(.horizontal, 12)
+            .frame(height: 38)
+            .background(SettColor.cardNested, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(SettColor.cardBorder, lineWidth: 1)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Schedule: \(services.settings.scheduleMode.title)")
+        .accessibilityHint("Opens scheduling options")
     }
 
     // MARK: Row — a sleek realm card (the routine's domain as the backdrop; a
@@ -180,18 +205,33 @@ struct RoutineListView: View {
             HStack(spacing: 5) {
                 ForEach(TrainDays.sundayFirstOrder, id: \.self) { day in
                     if TrainDays.isSet(mask, day: day) {
-                        Text(TrainDays.shortNames[day])
-                            .font(.system(size: 11, weight: .bold, design: .rounded))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 3)
-                            .background(.white.opacity(0.18), in: Capsule())
-                            .overlay { Capsule().strokeBorder(.white.opacity(0.2), lineWidth: 0.5) }
-                            .accessibilityLabel(TrainDays.names[day])
+                        dayChip(day)
                     }
                 }
             }
         }
+    }
+
+    /// One scheduled-day capsule, now in the app's single capsule voice: mono
+    /// uppercase with a cardBorder rim (matching every Eyebrow/StatusChip/segment).
+    /// Today's chip fills heroCyan with etch ink — the "up now" tick.
+    private func dayChip(_ day: Int) -> some View {
+        let today = day == todayIndex
+        return Text(TrainDays.shortNames[day].uppercased())
+            .font(.system(size: 10, weight: .bold, design: .monospaced))
+            .kerning(1)
+            .foregroundStyle(today ? SettColor.etch : .white.opacity(0.9))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background {
+                if today {
+                    Capsule().fill(SettColor.heroCyan)
+                } else {
+                    Capsule().fill(.black.opacity(0.32))
+                    Capsule().strokeBorder(SettColor.cardBorder, lineWidth: 1)
+                }
+            }
+            .accessibilityLabel(today ? "\(TrainDays.names[day]), today" : TrainDays.names[day])
     }
 
     private func exerciseCountText(_ routine: Routine) -> String {
@@ -212,6 +252,7 @@ struct RoutineListView: View {
         } else if routine.daysOfWeekMask == 0 {
             parts.append("No scheduled days")
         } else {
+            if isToday(routine) { parts.append("Today") }
             let days = TrainDays.sundayFirstOrder
                 .filter { TrainDays.isSet(routine.daysOfWeekMask, day: $0) }
                 .map { TrainDays.names[$0] }
@@ -225,6 +266,29 @@ struct RoutineListView: View {
 
     private var isRotation: Bool { services.settings.scheduleMode == .rotation }
     private var nextUpID: UUID? { Scheduling.nextRoutine(routines, settings: services.settings)?.id }
+
+    // MARK: Today (weekday mode) — float today's routines up + tick their chip
+
+    /// Monday-indexed weekday for now (0 = Mon … 6 = Sun) — matching `daysOfWeekMask`
+    /// bit semantics and the weekday branch of `Scheduling.nextRoutine`.
+    private var todayIndex: Int {
+        let weekday = Calendar.current.component(.weekday, from: .now) // 1=Sun … 7=Sat
+        return (weekday + 5) % 7
+    }
+
+    /// A weekday-mode routine assigned to today. Inert in rotation (chips are hidden).
+    private func isToday(_ routine: Routine) -> Bool {
+        !isRotation && TrainDays.isSet(routine.daysOfWeekMask, day: todayIndex)
+    }
+
+    /// Display order: in weekday mode, today's routines float to the top (their relative
+    /// order kept). Rotation keeps the split order untouched so the drag-reorder indices
+    /// still line up with `Scheduling.orderedActive`.
+    private var displayRoutines: [Routine] {
+        guard !isRotation else { return routines }
+        return routines.filter { TrainDays.isSet($0.daysOfWeekMask, day: todayIndex) }
+             + routines.filter { !TrainDays.isSet($0.daysOfWeekMask, day: todayIndex) }
+    }
 
     /// The split position + a NEXT-UP badge, in place of weekday chips.
     @ViewBuilder
@@ -399,5 +463,50 @@ struct RoutineListView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(32)
+    }
+}
+
+// MARK: - Schedule mode sheet
+
+/// The scheduling controls lifted out of the list's prime slot: the WEEKDAY/ROTATION
+/// toggle plus the one-line explainer for the active mode. Live-bound to settings, so
+/// flipping the mode reshapes the list behind it before the sheet is even dismissed.
+private struct ScheduleModeSheet: View {
+    @Bindable var settings: UserSettingsStore
+    @Environment(\.dismiss) private var dismiss
+
+    private var isRotation: Bool { settings.scheduleMode == .rotation }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Eyebrow("SCHEDULING")
+                Spacer()
+                Button { dismiss() } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(SettColor.ash)
+                        .frame(width: 30, height: 30)
+                        .background(SettColor.cardNested, in: Circle())
+                        .overlay { Circle().strokeBorder(SettColor.cardBorder, lineWidth: 1) }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Close")
+            }
+            ChamberSegments(selection: $settings.scheduleMode,
+                            options: ScheduleMode.allCases.map { ($0, $0.title) })
+            Text(isRotation
+                 ? "ROTATION — your split in order. Finish the next-up routine and the cycle advances; the day doesn't matter."
+                 : "WEEKDAY — each routine runs on the days you assign it. Today's routine is the one that's up.")
+                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                .foregroundStyle(SettColor.ash)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .dungeonBackground()
+        .presentationDetents([.height(230)])
+        .presentationDragIndicator(.visible)
     }
 }

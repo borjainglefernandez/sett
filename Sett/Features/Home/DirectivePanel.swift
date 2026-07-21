@@ -3,23 +3,21 @@ import SwiftData
 import UIKit
 import SettCore
 
-// MARK: - Directive Panel (Dark Chamber v3 — the ONLY quest surface in the app)
+// MARK: - Directive Panel (Dark Chamber v3 — the day's NON-workout asks)
 
-/// `TODAY'S DIRECTIVES` — two imperative rows computed from today's data:
-/// train (start the plan, or feed the Scanner ten sets) and log bodyweight.
-/// Each row's trailing control runs iron GO → pulsing gold CLAIM (a sanctioned
-/// reward pulse) → dimmed CLAIMED ✓, except the training row, which carries no
-/// GO — the launch card above IS its start affordance. Claims persist per
-/// local day under `sett.directives.<yyyymmdd>`.
+/// `TODAY'S DIRECTIVES` — the day's asks that DON'T start a workout: log
+/// bodyweight (and, later, sleep / rest notes). The workout-start rows moved
+/// out entirely: the doorway hero above IS the start affordance, so a "Start
+/// Push Day 0/1" row here was the same call a third time. Each row's trailing
+/// control runs iron GO → pulsing gold CLAIM (a sanctioned reward pulse) →
+/// dimmed CLAIMED ✓. Claims persist per local day under `sett.directives.<yyyymmdd>`.
+/// If a day ever has no non-workout asks the panel hides itself.
 struct DirectivePanel: View {
     @Environment(AppServices.self) private var services
     @Environment(\.scenePhase) private var scenePhase
 
-    @Query private var todaysWorkouts: [Workout]
     @Query private var todaysBodyweight: [BodyweightEntry]
-    @Query private var todaysSets: [SetEntry]
     @Query private var latestBodyweight: [BodyweightEntry]
-    @Query private var routines: [Routine]
 
     @State private var claimedKeys: Set<String>
     @State private var isLoggingBodyweight = false
@@ -28,9 +26,7 @@ struct DirectivePanel: View {
     @State private var burstKey: String?
 
     private enum DirectiveKey {
-        static let chamber = "chamber"
         static let bodyweight = "bodyweight"
-        static let scanner = "scanner"
     }
 
     init() {
@@ -38,21 +34,10 @@ struct DirectivePanel: View {
         let dayStart = calendar.startOfDay(for: .now)
         let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart) ?? dayStart
 
-        let workoutFilter = #Predicate<Workout> {
-            $0.endedAt != nil && $0.deletedAt == nil
-                && $0.startedAt >= dayStart && $0.startedAt < dayEnd
-        }
-        _todaysWorkouts = Query(filter: workoutFilter)
-
         let bodyweightFilter = #Predicate<BodyweightEntry> {
             $0.deletedAt == nil && $0.loggedAt >= dayStart && $0.loggedAt < dayEnd
         }
         _todaysBodyweight = Query(filter: bodyweightFilter)
-
-        let setFilter = #Predicate<SetEntry> {
-            $0.deletedAt == nil && $0.completedAt >= dayStart && $0.completedAt < dayEnd
-        }
-        _todaysSets = Query(filter: setFilter)
 
         // Latest entry overall, to prefill the log sheet (same pattern as Home).
         let anyBodyweight = #Predicate<BodyweightEntry> { $0.deletedAt == nil }
@@ -63,16 +48,7 @@ struct DirectivePanel: View {
         latestDescriptor.fetchLimit = 1
         _latestBodyweight = Query(latestDescriptor)
 
-        let routineFilter = #Predicate<Routine> { $0.deletedAt == nil && !$0.isArchived }
-        _routines = Query(filter: routineFilter, sort: [SortDescriptor(\Routine.orderIndex)])
-
         _claimedKeys = State(initialValue: Self.loadClaims())
-    }
-
-    /// The routine you'd start now (weekday match or rotation next-up), so the chamber
-    /// directive starts the planned session instead of a blank one.
-    private var todaysRoutine: Routine? {
-        Scheduling.nextRoutine(routines, settings: services.settings)
     }
 
     // MARK: Claims (per local day)
@@ -88,7 +64,7 @@ struct DirectivePanel: View {
         Set(UserDefaults.standard.stringArray(forKey: dayKey) ?? [])
     }
 
-    // MARK: The three directives
+    // MARK: The directives (non-workout asks only)
 
     private struct Directive: Identifiable {
         let key: String
@@ -99,19 +75,8 @@ struct DirectivePanel: View {
     }
 
     private var directives: [Directive] {
-        let trained = todaysWorkouts.isEmpty ? 0 : 1
         let weighed = todaysBodyweight.isEmpty ? 0 : 1
-        let setCount = min(todaysSets.filter { !$0.isWarmup }.count, 10)   // working sets only, like every other count
-        // ONE training directive: on a planned day "Start <routine>" already means
-        // "feed the scanner", so the two aren't shown side by side. Without a plan, the
-        // concrete 10-set goal stands in as the day's training call.
-        let training = todaysRoutine.map {
-            Directive(key: DirectiveKey.chamber, title: "Start \($0.name)",
-                      progress: "\(trained)/1", isMet: trained == 1)
-        } ?? Directive(key: DirectiveKey.scanner, title: "Feed the Scanner",
-                       progress: "\(setCount)/10", isMet: setCount >= 10)
         return [
-            training,
             Directive(key: DirectiveKey.bodyweight, title: bodyweightTitle,
                       progress: "\(weighed)/1", isMet: weighed == 1),
         ]
@@ -129,27 +94,31 @@ struct DirectivePanel: View {
     // MARK: Body
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Eyebrow("TODAY'S DIRECTIVES", tint: SettColor.bone)
-            VStack(spacing: 12) {
-                ForEach(directives) { directive in
-                    row(directive)
+        // Empty is possible once sleep/rest asks land conditionally — hide rather
+        // than render a titled card with nothing under it.
+        if !directives.isEmpty {
+            VStack(alignment: .leading, spacing: 14) {
+                Eyebrow("TODAY'S DIRECTIVES", tint: SettColor.bone)
+                VStack(spacing: 12) {
+                    ForEach(directives) { directive in
+                        row(directive)
+                    }
                 }
             }
-        }
-        .hudCard()
-        // The panel is built once inside the persistent Home tab, so init's live
-        // dayKey freezes at first appearance. Re-seed the claim set when the app
-        // returns to foreground or the clock crosses local midnight, so a session
-        // left alive across midnight shows the new day's (empty) claims, not stale ✓.
-        .onChange(of: scenePhase) { _, phase in
-            if phase == .active { claimedKeys = Self.loadClaims() }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: UIApplication.significantTimeChangeNotification)) { _ in
-            claimedKeys = Self.loadClaims()
-        }
-        .sheet(isPresented: $isLoggingBodyweight) {
-            BodyweightLogSheet(latest: latestBodyweight.first)
+            .hudCard()
+            // The panel is built once inside the persistent Home tab, so init's live
+            // dayKey freezes at first appearance. Re-seed the claim set when the app
+            // returns to foreground or the clock crosses local midnight, so a session
+            // left alive across midnight shows the new day's (empty) claims, not stale ✓.
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active { claimedKeys = Self.loadClaims() }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.significantTimeChangeNotification)) { _ in
+                claimedKeys = Self.loadClaims()
+            }
+            .sheet(isPresented: $isLoggingBodyweight) {
+                BodyweightLogSheet(latest: latestBodyweight.first)
+            }
         }
     }
 
@@ -176,8 +145,6 @@ struct DirectivePanel: View {
     }
 
     /// The three-state control: iron GO → pulsing gold CLAIM → CLAIMED ✓.
-    /// The training row skips GO — the launch card directly above is the start
-    /// affordance; the row is progress readout until it becomes the CLAIM surface.
     @ViewBuilder
     private func control(for directive: Directive, isClaimed: Bool) -> some View {
         if isClaimed {
@@ -191,7 +158,7 @@ struct DirectivePanel: View {
                 }
         } else if directive.isMet {
             ClaimCapsule { claim(directive.key) }
-        } else if directive.key == DirectiveKey.bodyweight {
+        } else {
             Button {
                 go(directive.key)
             } label: {
@@ -218,8 +185,6 @@ struct DirectivePanel: View {
 
     // MARK: Actions
 
-    /// Only the bodyweight row carries a GO — the training row's start affordance
-    /// is the launch card directly above the panel.
     private func go(_ key: String) {
         if key == DirectiveKey.bodyweight { isLoggingBodyweight = true }
     }

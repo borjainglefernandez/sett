@@ -2,14 +2,20 @@ import SwiftUI
 import SwiftData
 import SettCore
 
-// MARK: - Net Glance Strip (Home — net reps/volume at a glance)
+// MARK: - Net Glance Strip (the week card's lower half — net reps/volume)
 
-/// A slim etched slab under the 7-Slot Burst Row: `NET THIS WEEK` on the left,
-/// this ISO week's net reps and net volume (vs last week, whole lb) on the
-/// right in mono — green when positive, red when negative, ash at zero. When
-/// the previous week had no sets the strip reads `NEW TERRITORY` in cyan
-/// instead of two meaningless "+everything" deltas. Samples are extracted once
-/// per appearance; numbers roll via numeric-text so tenet 3 holds.
+/// The lower half of the merged THIS WEEK card: three quiet counters
+/// (SESSIONS / SETS / TONNAGE) then, below a divider, this ISO week's net reps
+/// and net volume vs last week in mono — green when positive, red when negative,
+/// ash at zero. When the previous week had no sets it reads `NEW TERRITORY` in
+/// cyan instead of two meaningless "+everything" deltas.
+///
+/// The whole block self-suppresses on a ZERO week (`week.sets == 0`): a slab of
+/// `0 SESSIONS / 0 SETS / 0 TONNAGE` under seven empty rings is dead weight, so
+/// the counters vanish alongside the net row that already hid. It carries its own
+/// leading divider so it reads as one seam under the day slots. No card of its
+/// own — the SevenSlotBurstRow wraps both halves in a single settCard. Samples
+/// are extracted once per appearance; numbers roll via numeric-text so tenet 3 holds.
 struct NetGlanceStrip: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(AppServices.self) private var services
@@ -55,54 +61,64 @@ struct NetGlanceStrip: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Absolute totals — three quiet counters for the week so far.
-            HStack(spacing: 0) {
-                counter(value: week.workouts, caption: "SESSIONS")
-                counterDivider
-                counter(value: week.sets, caption: "SETS")
-                counterDivider
-                counter(value: tonnageDisplayValue, format: compactTonnage,
-                        caption: "TONNAGE \(services.settings.unit.symbol.uppercased())")
-            }
-            .padding(.vertical, 10)
-
+        // The whole net block hangs on `week.sets > 0`. On a zero week nothing
+        // renders — no counters, no net, no divider — so the merged card ends on
+        // seven empty rings instead of a slab of zeros. The counters still count
+        // UP: when the block first mounts (post-reload) they appear at 0 and
+        // CountUpNumber's onAppear rolls each to its total.
+        Group {
             if week.sets > 0 {
-                Rectangle()
-                    .fill(SettColor.cardBorder.opacity(0.6))
-                    .frame(height: 1)
-                    .padding(.horizontal, 12)
-            }
+                VStack(spacing: 0) {
+                    // The seam under the day slots — this block is the same card's lower half.
+                    Rectangle()
+                        .fill(SettColor.cardBorder.opacity(0.6))
+                        .frame(height: 1)
+                        .padding(.bottom, 2)
 
-            // Net vs last week — hidden until the week has work to compare (an all-red
-            // "-294 REPS" over three zeros read as punishment for opening the app).
-            if week.sets > 0 {
-            HStack(spacing: 12) {
-                Eyebrow("NET VS LAST WEEK")
-                Spacer(minLength: 12)
-                if net.isNew {
-                    Text("NEW TERRITORY")
-                        .font(.system(size: 12, weight: .bold, design: .monospaced))
-                        .kerning(1.5)
-                        .foregroundStyle(SettColor.heroCyan)
-                } else {
-                    HStack(spacing: 12) {
-                        stat(net.reps, suffix: "REPS")
-                        stat(netVolumeDisplay, suffix: services.settings.unit.symbol.uppercased())
+                    // Absolute totals — three quiet counters for the week so far.
+                    HStack(spacing: 0) {
+                        counter(value: week.workouts, caption: "SESSIONS")
+                        counterDivider
+                        counter(value: week.sets, caption: "SETS")
+                        counterDivider
+                        counter(value: tonnageDisplayValue, format: compactTonnage,
+                                caption: "TONNAGE \(services.settings.unit.symbol.uppercased())")
                     }
+                    .padding(.vertical, 10)
+
+                    Rectangle()
+                        .fill(SettColor.cardBorder.opacity(0.6))
+                        .frame(height: 1)
+                        .padding(.horizontal, 12)
+
+                    // Net vs last week — an all-red "-294 REPS" over three zeros read as
+                    // punishment for opening the app, so it only shows with work to compare.
+                    HStack(spacing: 12) {
+                        Eyebrow("NET VS LAST WEEK")
+                        Spacer(minLength: 12)
+                        if net.isNew {
+                            Text("NEW TERRITORY")
+                                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                                .kerning(1.5)
+                                .foregroundStyle(SettColor.heroCyan)
+                        } else {
+                            HStack(spacing: 12) {
+                                stat(net.reps, suffix: "REPS")
+                                stat(netVolumeDisplay, suffix: services.settings.unit.symbol.uppercased())
+                            }
+                        }
+                    }
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .padding(.horizontal, 14)
+                    .frame(minHeight: 38)
                 }
-            }
-            .lineLimit(1)
-            .minimumScaleFactor(0.7)
-            .padding(.horizontal, 14)
-            .frame(minHeight: 38)
+                .frame(maxWidth: .infinity)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(accessibilitySummary)
             }
         }
-        .frame(maxWidth: .infinity)
-        .settCard(padding: 0)
         .task { reload() }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(accessibilitySummary)
     }
 
     // MARK: Counters (absolute) & stats (net)
