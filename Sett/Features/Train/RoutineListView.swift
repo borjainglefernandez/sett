@@ -202,11 +202,19 @@ struct RoutineListView: View {
             StatusChip("SET SCHEDULE", tint: SettColor.heroCyan, icon: "calendar")
                 .accessibilityLabel("No days assigned. Tap the card to schedule.")
         } else {
-            HStack(spacing: 5) {
-                ForEach(TrainDays.sundayFirstOrder, id: \.self) { day in
-                    if TrainDays.isSet(mask, day: day) {
-                        dayChip(day)
-                    }
+            let days = TrainDays.sundayFirstOrder.filter { TrainDays.isSet(mask, day: $0) }
+            // Six or seven 3-letter pills overflow the card's content column (they share
+            // it with the 52pt play disc) and clip under the disc / off the rounded edge.
+            // A near-daily schedule collapses to one summary pill — clearer than seven
+            // tiny letters, and it can't overflow. A normal split (<=5 days) fits inline.
+            if days.count >= 6 {
+                dayPill(days.count == 7 ? "DAILY" : "\(days.count)× / WK",
+                        today: days.contains(todayIndex))
+                    .accessibilityLabel(days.count == 7 ? "Scheduled daily"
+                                                        : "Scheduled \(days.count) days a week")
+            } else {
+                HStack(spacing: 5) {
+                    ForEach(days, id: \.self) { dayChip($0) }
                 }
             }
         }
@@ -216,8 +224,13 @@ struct RoutineListView: View {
     /// uppercase with a cardBorder rim (matching every Eyebrow/StatusChip/segment).
     /// Today's chip fills heroCyan with etch ink — the "up now" tick.
     private func dayChip(_ day: Int) -> some View {
-        let today = day == todayIndex
-        return Text(TrainDays.shortNames[day].uppercased())
+        dayPill(TrainDays.shortNames[day].uppercased(), today: day == todayIndex)
+            .accessibilityLabel(day == todayIndex ? "\(TrainDays.names[day]), today" : TrainDays.names[day])
+    }
+
+    /// The shared capsule for both a single day chip and the near-daily summary pill.
+    private func dayPill(_ text: String, today: Bool) -> some View {
+        Text(text)
             .font(.system(size: 10, weight: .bold, design: .monospaced))
             .kerning(1)
             .foregroundStyle(today ? SettColor.etch : .white.opacity(0.9))
@@ -231,7 +244,6 @@ struct RoutineListView: View {
                     Capsule().strokeBorder(SettColor.cardBorder, lineWidth: 1)
                 }
             }
-            .accessibilityLabel(today ? "\(TrainDays.names[day]), today" : TrainDays.names[day])
     }
 
     private func exerciseCountText(_ routine: Routine) -> String {
